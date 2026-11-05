@@ -2,6 +2,8 @@ import { keccak256, toBytes, type Account, type Address, type Chain, type Hash, 
 import { indexOracleAbi, mockUsdcAbi, perpMarketAbi } from "./abi.ts";
 import { addresses, publicClient } from "./chain.ts";
 
+export const MARKETS = ["glm-5.3", "deepseek-v4.1-flash"] as const;
+
 const MM_BPS = 500n;
 const SEARCH_CEILING = 1n << 128n;
 
@@ -110,4 +112,41 @@ export async function liquidate(wallet: PerpWallet, account: Address, model: str
     args: [account, marketId(model)],
   });
   return wallet.writeContract(request);
+}
+
+export async function needsLiquidation(account: Address, model: string): Promise<boolean> {
+  return publicClient().readContract({
+    address: addresses().perpMarket,
+    abi: perpMarketAbi,
+    functionName: "canLiquidate",
+    args: [account, marketId(model)],
+  });
+}
+
+export async function postIndex(
+  wallet: PerpWallet,
+  model: string,
+  price: bigint,
+  seqFrom: bigint,
+  seqTo: bigint,
+): Promise<Hash> {
+  const { request } = await publicClient().simulateContract({
+    account: wallet.account,
+    address: addresses().indexOracle,
+    abi: indexOracleAbi,
+    functionName: "post",
+    args: [marketId(model), price, seqFrom, seqTo],
+  });
+  return wallet.writeContract(request);
+}
+
+export async function positionAccounts(fromBlock: bigint, toBlock: bigint) {
+  const events = await publicClient().getContractEvents({
+    address: addresses().perpMarket,
+    abi: perpMarketAbi,
+    eventName: "PositionModified",
+    fromBlock,
+    toBlock,
+  });
+  return events.flatMap((e) => (e.args.account && e.args.market ? [{ account: e.args.account, market: e.args.market }] : []));
 }
