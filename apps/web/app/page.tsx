@@ -4,12 +4,6 @@ import { Hero } from "../components/landing/hero";
 import { WhatWeDo } from "../components/landing/what-we-do";
 import { Navbar, NavLinks } from "../components/site-nav";
 
-const CARDS = [
-  { card: 589, label: 613, body: 613, sphere: 631, sphereTop: 1052, title: "01/ expiring supply", bodyText: "0G credits reset at midnight, plan allowances monthly. Sell what expires — always under list price, by rule.", art: { src: "/images/1st.svg", w: 252, h: 248 } },
-  { card: 947, label: 970, body: 972, sphere: 987, sphereTop: 1052, title: "02/ agents pay", bodyText: "No account, no card. A request that can't be covered answers with a price; the agent pays USDC on Hedera and streams on.", art: { src: "/images/2nd.svg", w: 257, h: 247 } },
-  { card: 1305, label: 1324, body: 1324, sphere: 1349, sphereTop: 1078, title: "03/ one human", bodyText: "World ID keeps supply human: one seller per person, and a person approves an agent's spending cap.", art: { src: "/images/3rd.svg", w: 249, h: 210 } },
-];
-
 const DIVIDER_X = [138, 428, 718, 1008, 1298, 1588];
 const TICKS = Array.from({ length: 24 }, (_, k) => 196 + 58 * k).filter(
   (x) => !DIVIDER_X.includes(x),
@@ -101,45 +95,7 @@ export default function Home() {
 
           <div className="absolute left-[55px] top-[3351px] h-[286px] w-[1617px] border border-[#CECECE] bg-[#EBEBEB]" />
 
-          <div className="absolute left-[575px] top-[726px] h-[821px] w-[1080px] bg-white" />
-
-          <p className="absolute left-[610px] top-[717px] whitespace-pre text-[20px] leading-[100px] text-black">
-            [ what we do ]
-          </p>
-          <div className={`absolute left-[1632px] top-[946px] h-[1044px] w-px ${LINE}`} />
-          <div className={`absolute left-[990px] top-[726px] h-[477px] w-px ${LINE}`} />
-          <h2 className="absolute left-[610px] top-[808px] whitespace-pre font-serif text-[60px] font-normal leading-[60px] text-[#1E1E1E]">
-            {"Sell what expires.\nTrade the rest."}
-          </h2>
-
-          {CARDS.map((c) => (
-            <Fragment key={c.card}>
-              <div
-                className="absolute top-[965px] h-[547px] w-[336px] border border-[#CECECE] bg-[#EBEBEB]"
-                style={{ left: c.card }}
-              />
-              <p
-                className="absolute whitespace-pre text-[20px] leading-[24px] text-[#1E1E1E]"
-                style={{ left: c.label, top: 987 }}
-              >
-                {c.title}
-              </p>
-              <img
-                src={c.art.src}
-                alt=""
-                width={c.art.w}
-                height={c.art.h}
-                className="absolute"
-                style={{ left: c.sphere, top: c.sphereTop }}
-              />
-              <p
-                className="absolute w-[244px] whitespace-pre-wrap text-[20px] leading-[24px] text-black"
-                style={{ left: c.body, top: 1375 }}
-              >
-                {c.bodyText}
-              </p>
-            </Fragment>
-          ))}
+          <WhatWeDo variant="canvas" />
 
           <p className="absolute left-[96px] top-[1575px] w-[876px] whitespace-pre-wrap font-serif text-[60px] font-normal leading-[60px] text-black">
             Proof over marketing. Recompute our index in your browser.
