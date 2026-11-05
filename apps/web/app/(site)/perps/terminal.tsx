@@ -322,3 +322,213 @@ export function Perps({ initialModel }: { initialModel: string }) {
           </p>
         ) : null}
       </div>
+
+      <div className="mt-5 grid gap-[17px] lg:grid-cols-[1fr_300px]">
+        <div className="border border-[#CECECE] bg-[#EBEBEB] p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex gap-5">
+              {(["Chart", "Funding"] as const).map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => setChartTab(item)}
+                  aria-pressed={chartTab === item}
+                  className={`text-[14px] ${
+                    chartTab === item
+                      ? "text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
+                      : "text-[#757575] hover:text-[#1E1E1E]"
+                  }`}
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
+            {chartTab === "Chart" ? (
+              <div className="flex gap-5">
+                {WINDOWS.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setWindowId(item.id)}
+                    aria-pressed={windowId === item.id}
+                    className={`text-[14px] ${
+                      windowId === item.id
+                        ? "text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
+                        : "text-[#757575] hover:text-[#1E1E1E]"
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+
+          {chartTab === "Chart" ? (
+            <>
+              <div className={`flex flex-wrap gap-x-4 gap-y-0.5 pt-3 text-[13px] ${MUTED}`}>
+                <span className="text-[#1E1E1E]">
+                  {model} · perp fills
+                  <span
+                    aria-hidden
+                    className={`ml-2 inline-block h-[7px] w-[7px] rounded-full ${bookFailed === null ? "bg-[#2EBD85]" : "bg-[#C9C9C9]"}`}
+                  />
+                </span>
+                {points.length > 0 ? (
+                  <>
+                    <span>
+                      first <span className="tabular-nums text-[#1E1E1E]">{first?.toFixed(4)}</span>
+                    </span>
+                    <span>
+                      high <span className="tabular-nums text-[#1E1E1E]">{high?.toFixed(4)}</span>
+                    </span>
+                    <span>
+                      low <span className="tabular-nums text-[#1E1E1E]">{low?.toFixed(4)}</span>
+                    </span>
+                    <span>
+                      last <span className="tabular-nums text-[#1E1E1E]">{last?.toFixed(4)}</span>
+                    </span>
+                  </>
+                ) : null}
+              </div>
+
+              <FillsChart
+                points={points}
+                scale={scale}
+                emptyNote="waiting for the first index post — the venue's fills seed the curve"
+              />
+
+              <div className="flex flex-wrap items-center gap-5 pt-1">
+                {(["percent", "log"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setScale(scale === mode ? "linear" : mode)}
+                    aria-pressed={scale === mode}
+                    className={`text-[14px] ${
+                      scale === mode
+                        ? "text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
+                        : "text-[#757575] hover:text-[#1E1E1E]"
+                    }`}
+                  >
+                    {mode === "percent" ? "%" : "log"}
+                  </button>
+                ))}
+                <span className={`ml-auto text-[13px] tabular-nums ${MUTED}`}>{clock ?? "--:--:--"} UTC</span>
+              </div>
+            </>
+          ) : (
+            <div className="pt-4">
+              <p className="text-[13px] text-[#1E1E1E]">[ funding on skew ]</p>
+              <p className="mt-3 max-w-xl text-[14px] leading-5 text-[#1E1E1E]">
+                Longs pay shorts when the book leans long, the other way when it leans short. The
+                accrual lands on every modify and every liquidation, off the keeper&apos;s index — the
+                same TWAP of venue fills you can recompute on /receipts.
+              </p>
+              <dl className="mt-5 border border-[#CECECE] bg-white px-4 py-3">
+                {FUNDING_FORMULAS.map((row) => (
+                  <div key={row.name} className="border-b border-[#D9D9D9] py-2 last:border-0">
+                    <dt className={`text-[13px] ${MUTED}`}>{row.name}</dt>
+                    <dd className="mt-0.5 text-[13px] leading-5 tabular-nums text-[#1E1E1E]">{row.body}</dd>
+                  </div>
+                ))}
+              </dl>
+              <p className={`mt-4 text-[13px] leading-5 ${MUTED}`}>{PARAMS}</p>
+            </div>
+          )}
+
+          <div className="mt-5 border-t border-[#D9D9D9] pt-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-serif text-[22px] leading-tight text-[#1E1E1E]">
+                {bookTab === "Order Book" ? "Ask book" : "Fill tape"}
+              </h2>
+              <div className="flex gap-4">
+                {BOOK_TABS.map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => setBookTab(item)}
+                    aria-pressed={bookTab === item}
+                    className={`text-[14px] ${
+                      bookTab === item
+                        ? "text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
+                        : "text-[#757575] hover:text-[#1E1E1E]"
+                    }`}
+                  >
+                    {item === "Order Book" ? "Order book" : "Trades"}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {bookTab === "Order Book" ? (
+              <>
+                <div className="mt-3">
+                  {asks.length === 0 ? (
+                    <p className="border-t border-[#D9D9D9] py-6 text-center text-[14px] text-[#757575]">
+                      no asks yet for {model}
+                    </p>
+                  ) : (
+                    <>
+                      <div className={`grid grid-cols-[1.1fr_1fr_1fr_2.5rem] border-t border-[#D9D9D9] py-2 text-[12px] ${MUTED}`}>
+                        <span>Price</span>
+                        <span className="text-right">Size</span>
+                        <span className="text-right">Total</span>
+                        <span className="text-right">Rail</span>
+                      </div>
+                      {ladderRows.map(({ ask, total }) => (
+                        <div
+                          key={ask.listing_id}
+                          className="relative grid grid-cols-[1.1fr_1fr_1fr_2.5rem] border-t border-[#D9D9D9] py-3 text-[13px]"
+                          style={{
+                            background: `linear-gradient(90deg, rgba(23, 67, 255, ${(Number(total) / Number(depth === 0n ? 1n : depth)) * 0.08}), rgba(23, 67, 255, 0) 100%)`,
+                          }}
+                        >
+                          <span className="tabular-nums text-[#1E1E1E]">
+                            {formatMicroPerMtok(BigInt(ask.price_micro_per_mtok))}
+                            <span className={`ml-1.5 text-[12px] ${MUTED}`}>USD / MTok</span>
+                          </span>
+                          <span className="text-right tabular-nums text-[#757575]">{tokensText(BigInt(ask.tokens_left))}</span>
+                          <span className="text-right tabular-nums text-[#757575]">{tokensText(total)}</span>
+                          <span className={`truncate text-right text-[13px] ${ask.verifiable ? "text-[#1743FF]" : MUTED}`}>
+                            {ask.rail}
+                          </span>
+                        </div>
+                      ))}
+                    </>
+                  )}
+                </div>
+                <p className={`border-t border-[#D9D9D9] pt-3 text-[13px] ${MUTED}`}>
+                  asks only — buy side clears the ladder. best ask {bestAsk !== null ? formatMicroPerMtok(bestAsk) : "—"} ·
+                  depth {tokensText(depth)} MTok
+                </p>
+              </>
+            ) : (
+              <div className="mt-3">
+                {(book?.fills.length ?? 0) === 0 ? (
+                  <p className="border-t border-[#D9D9D9] py-6 text-center text-[14px] text-[#757575]">
+                    the venue has not printed a fill for {model} yet
+                  </p>
+                ) : (
+                  book?.fills.map((fill) => (
+                    <div
+                      key={`${fill.listing_id}-${fill.created_at}`}
+                      className="flex items-baseline justify-between gap-4 border-t border-[#D9D9D9] py-3"
+                    >
+                      <span className={`text-[13px] tabular-nums ${MUTED}`}>{clockFormat.format(new Date(fill.created_at))}</span>
+                      <span className="text-[14px] tabular-nums text-[#1E1E1E]">
+                        {formatMicroPerMtok(BigInt(fill.price_micro_per_mtok))}
+                        <span className={`ml-1.5 text-[12px] ${MUTED}`}>USD / MTok</span>
+                      </span>
+                      <span className={`text-[13px] tabular-nums ${MUTED}`}>{tokensText(BigInt(fill.tokens))} MTok</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+
+            <p className={`mt-3 border-t border-[#D9D9D9] pt-3 text-[13px] ${MUTED}`}>
+              spot book · seeds the index the perp clears against
+            </p>
+          </div>
+        </div>
