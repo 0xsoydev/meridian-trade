@@ -1,6 +1,7 @@
 import { and, eq, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { expectedHost, verifySigned } from "../../../../lib/auth.ts";
+import { matchBids } from "../../../../lib/bids.ts";
 import { db } from "../../../../lib/db.ts";
 import { fail } from "../../../../lib/errors.ts";
 import { listingPriceError, parseCapacityMtok } from "../../../../lib/listings.ts";
@@ -119,6 +120,7 @@ export async function PATCH(
       });
 
     if (!updated) return fail(409, "invalid_request", "capacity is below committed tokens");
+    await matchBids(listing.model).catch(() => 0);
 
     return Response.json({
       listing_id: updated.id,

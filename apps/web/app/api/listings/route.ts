@@ -1,6 +1,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { expectedHost, verifySigned } from "../../../lib/auth.ts";
+import { matchBids } from "../../../lib/bids.ts";
 import { db } from "../../../lib/db.ts";
 import { fail } from "../../../lib/errors.ts";
 import { listingPriceError, parseCapacityMtok } from "../../../lib/listings.ts";
@@ -227,6 +228,7 @@ export async function POST(request: Request): Promise<Response> {
     .returning({ id: listings.id });
 
   if (!created) return fail(409, "invalid_request", "client_nonce has already been used");
+  await matchBids(model.canonical).catch(() => 0);
 
   return Response.json({
     listing_id: created.id,

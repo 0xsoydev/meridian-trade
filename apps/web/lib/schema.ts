@@ -196,6 +196,30 @@ export const trades = pgTable(
   ],
 );
 
+export const bids = pgTable(
+  "bids",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    keyId: uuid("key_id")
+      .notNull()
+      .references(() => keys.id),
+    model: text("model").notNull(),
+    priceMicroPerMtok: bigint("price_micro_per_mtok", { mode: "bigint" }).notNull(),
+    tokens: bigint("tokens", { mode: "bigint" }).notNull(),
+    holdUsdMicro: bigint("hold_usd_micro", { mode: "bigint" }).notNull(),
+    status: text("status").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    check("bids_status", sql`${t.status} in ('open','filled','cancelled')`),
+    check("bids_price_positive", sql`${t.priceMicroPerMtok} > 0`),
+    check("bids_tokens_non_negative", sql`${t.tokens} >= 0`),
+    check("bids_hold_non_negative", sql`${t.holdUsdMicro} >= 0`),
+    index("bids_model_status_price_idx").on(t.model, t.status, t.priceMicroPerMtok),
+    index("bids_key_status_idx").on(t.keyId, t.status),
+  ],
+);
+
 export const prepaid = pgTable(
   "prepaid",
   {
