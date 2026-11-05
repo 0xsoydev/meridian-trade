@@ -112,11 +112,12 @@ export type Rail = {
 ```
 apps/web/
   app/page.tsx
-  app/trade/page.tsx
-  app/perps/page.tsx
-  app/sell/page.tsx
-  app/keys/page.tsx
-  app/receipts/page.tsx
+  app/(site)/layout.tsx
+  app/(site)/trade/page.tsx
+  app/(site)/perps/page.tsx
+  app/(site)/sell/page.tsx
+  app/(site)/keys/page.tsx
+  app/(site)/receipts/page.tsx
   app/providers.tsx
   app/api/v1/chat/completions/route.ts
   app/api/v1/topup/route.ts
@@ -309,6 +310,8 @@ export type TopupResult = {
 };
 
 export type Balance = {
+  memo: string;
+  treasury: string | null;
   balance_usd_micro: string;
   reserved_usd_micro: string;
   topped_up_today_usd_micro: string;
@@ -457,7 +460,7 @@ export function pollApproval(approvalId: string): Promise<ApprovalStatus>;
    - `ScheduleCreateTransaction` wrapping `TransferTransaction` USDC treasury → `seller.hedera_account`, `setExpirationTime(payout.day + 1 d, 01:00 UTC)`, `setWaitForExpiry(true)`, `setAdminKey(treasury)`, `setScheduleMemo(payout.id)`. Every input comes from the payout row, so a retry before 01:00 gets `IDENTICAL_SCHEDULE_ALREADY_CREATED` with the existing schedule id, and after 01:00 creation fails and the payout stays `pending` (§21). Store `schedule_id`, status `scheduled`.
 3. Reset listings on rails with `resetPeriod = 'daily'`: `used_tokens = 0, status = 'active' where status in ('active','exhausted')`. Monthly and non-expiring rails keep their usage; the seller re-lists or raises capacity.
 4. Between 00:00 and 01:00 UTC an operator can cancel a payout with `ScheduleDeleteTransaction`.
-5. 01:05 UTC: mirror `GET /schedules/{id}` → `executed` or `cancelled`.
+5. 01:05 UTC: mirror `GET /schedules/{id}`. `executed` only when `executed_timestamp` is set and `GET /transactions?timestamp=` holds a `scheduled` transaction with `result: SUCCESS`; deleted → `cancelled`; anything else stays `scheduled` and is re-checked every minute.
 
 Schedules pay the numeric account id because resolving an EVM alias inside a scheduled transaction is unverified.
 
@@ -544,7 +547,7 @@ export type DepositResult = { tx_id: string; amount_usd_micro: string; balance_u
 3. `ensureAccount` upserts on the lowercase address; a second address presenting the same nullifier is a 409.
 4. A key is created with zero balance and `account_id`; the plaintext is returned once.
 5. `GET /api/v1/keys?address&message&signature` with `action: "list_keys"` returns that account's keys, balances and creation times.
-6. `POST /api/v1/keys/deposit` `{ tx_id }` with a bearer key: normalise the id to `0.0.x-seconds-nanos`, fetch the mirror transaction, require `result: SUCCESS`, a memo (base64) equal to the key id, and a positive USDC transfer to the treasury. Credit exactly what arrived, at most `TOPUP_MAX_MICRO`; `topups.tx_id` makes a replay a 409.
+6. `POST /api/v1/keys/deposit` `{ tx_id }` with a bearer key: normalise the id to `0.0.x-seconds-nanos`, fetch `{MIRROR_NODE_URL}/api/v1/transactions/{id}` (v1; there is no v2 path), require `result: SUCCESS`, `memo_base64` decoding to the key id, and a positive USDC transfer to the treasury. Credit exactly what arrived, at most `TOPUP_MAX_MICRO`; `topups.tx_id` makes a replay a 409. `GET /api/v1/balance` returns that memo (the key id) and the treasury account, so the deposit panel can show both.
 
 ---
 
@@ -635,7 +638,7 @@ Parameters: `MAX_LEVERAGE = 5`, `MM_BPS = 500`, `FEE_BPS = 10`, `LIQ_BPS = 50`, 
 
 `test/PerpMarket.t.sol`: long/short PnL; fee to treasury; funding sign and magnitude after warp; initial-margin rejection; liquidation boundary and reward; stale oracle revert; flip revert; OI cap; vault insufficient; oracle move guard and first post; underwater close pays the trader 0.
 
-`script/Deploy.s.sol`: deploy MockUSDC, IndexOracle(keeper), PerpMarket(usdc, oracle, treasury); list `glm-5.3`, `deepseek-v4-flash`, `0gm-1.0-35b-a3b`; fund vault 50,000 USDC.
+`script/Deploy.s.sol`: deploy MockUSDC, IndexOracle(keeper), PerpMarket(usdc, oracle, treasury); list `glm-5.3` and `deepseek-v4.1-flash`; fund vault 50,000 USDC. The demo model's market, `0gm-1.0-35b-a3b`, is listed by the seed.
 
 ---
 
@@ -785,6 +788,7 @@ M9 and M10 sit outside this table: two OAuth flows and two protocol translators 
 - Vercel production with own Privy app; second instance `pnpm dev` on `localhost:3000` with 0G's Privy app id for the credit view.
 - Keeper running ≥ 30 min before judging so the index has history.
 - Seed with `scripts/seed.ts`: two 0G asks on the demo model — a small one 15% under reference and a larger one 3% under — plus a funded router key, vault funding and MockUSDC for judges. Re-running it is idempotent.
+- The demo model is `0gm-1.0-35b-a3b`, the only model the 0G testnet router serves. The seed, the keeper's `MARKETS` and the frontend defaults must all use it. If its provider is unhealthy the day before judging, switch all of them to `glm-5.3` at once.
 - Agent terminal ready with a fresh Hedera agent account (created ≥ 1 min earlier).
 - `ENABLE_OAUTH_RAILS=0` for the demo and the recording; only the 0G and (optionally) one API-key rail appear on stage.
 
@@ -819,7 +823,12 @@ Video (2:30–2:55, human voice):
 - Prompt tokens estimated as `bytes / 3` for reservations; when actual cost exceeds what the reservation plus balance covers, the platform absorbs the rest. Upgrade: tokenizer per model.
 - Reservations swept after a function died are released at zero charge.
 - The daily cap is checked before settlement; concurrent top-ups can overshoot it by one top-up each.
-- Payouts need the seller's EVM address to be new on Hedera or able to receive USDC; otherwise the payout stays `pending`.
+- A payout needs the seller's Hedera account to be able to receive USDC. If the scheduled transfer fails at 01:00 UTC (no balance, account not associated), the payout stays `scheduled`; the keeper re-checks it every minute and logs it for an operator.
+- The daily listing reset runs only if the keeper is up when the UTC day changes; a missed day waits for the next reset or a manual run.
+- After keeper downtime longer than `INDEX_WINDOW_MIN`, minutes older than the window are never published to HCS: the index ignores them and `/receipts` cannot show them.
+- An older signed amend can be replayed inside its 5-minute window after a newer one: a listing keeps only its latest `client_nonce`.
+- Each over-cap request starts its own approval; unanswered ones simply expire.
+- Whoever completes an approval link first becomes the key's human (`link_human`); the link and its user code are bearer secrets until they expire.
 - A payout still `pending` after 01:00 UTC on its pay day needs an operator: check the mirror for a schedule with that memo before paying by hand.
 - `usage_root` inclusion proofs are not served.
 - Facilitator chosen at startup; a signed payment cannot fail over mid-flight.

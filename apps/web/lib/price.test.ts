@@ -5,20 +5,38 @@ import {
   charge,
   estimatePromptTokens,
   formatMicroPerMtok,
+  formatMtok,
+  formatUsd,
   marketPrice,
   mixedTokens,
+  parseMtok,
   parseUsd,
   parseUsdPerToken,
+  previewFill,
   referenceFor,
   reservation,
   sellerEarning,
 } from "./price.ts";
-import type { Pricing, Rail } from "./types.ts";
+import type { BookAsk, Pricing, Rail } from "./types.ts";
 
 const glm: Pricing = { prompt: 1_400_000n, completion: 4_400_000n };
 
 const dailyRail = { resetPeriod: "daily" } as Rail;
 const idleRail = { resetPeriod: null } as Rail;
+
+test("MTok inputs and token counts round-trip at the boundary", () => {
+  assert.equal(parseMtok("10"), 10_000_000n);
+  assert.equal(parseMtok("1.5"), 1_500_000n);
+  assert.equal(parseMtok("1,000"), 1_000_000_000n);
+  assert.equal(parseMtok("0.000001"), 1n);
+  assert.equal(parseMtok("junk"), 0n);
+  assert.equal(parseMtok("10."), 0n);
+  assert.equal(formatMtok(10_000_000n), "10");
+  assert.equal(formatMtok(1_500_000n), "1.5");
+  assert.equal(formatMtok(1_000n), "0.001");
+  assert.equal(formatMtok(1_200_000_000n), "1,200");
+  assert.equal(formatUsd(1_400_000n), "$1.4");
+});
 
 test("parseUsdPerToken converts USD per token to micro per MTok", () => {
   assert.equal(parseUsdPerToken("0.000000264"), 264_000n);
@@ -114,4 +132,32 @@ test("reservation covers the actual charge for a fixed sample", () => {
   const actualTokens = mixedTokens(estimatePromptTokens(3000), 400n);
   assert.ok(hold.tokens >= actualTokens);
   assert.equal(hold.micro, charge(hold.tokens, 1_500_000n));
+});
+
+const previewAsks: BookAsk[] = [
+  { listing_id: "cheap", rail: "0g", price_micro_per_mtok: "1400000", tokens_left: "500", verifiable: false },
+  { listing_id: "dear", rail: "0g", price_micro_per_mtok: "1500000", tokens_left: "1000", verifiable: false },
+];
+
+test("the fill preview walks the sorted book and splits the fee", () => {
+  const inside = previewFill(previewAsks, 1200n, 1000n);
+  assert.equal(inside.fillable, 1200n);
+  assert.equal(inside.cost, 1750n);
+  assert.equal(inside.avg, 1_458_333n);
+  assert.equal(inside.fee, 175n);
+  assert.equal(inside.net, 1575n);
+  assert.equal(inside.partial, false);
+
+  const beyond = previewFill(previewAsks, 2000n, 1000n);
+  assert.equal(beyond.fillable, 1500n);
+  assert.equal(beyond.cost, 2200n);
+  assert.equal(beyond.partial, true);
+});
+
+test("a 1M MTok listing at $1.40 produces the expected notional and seller net", () => {
+  const price = parseUsd("1.40");
+  assert.ok(price !== null);
+  const notional = charge(1_000_000n * 1_000_000n, price);
+  assert.equal(notional, 1_400_000_000_000n);
+  assert.equal(sellerEarning(notional, 1000n), 1_260_000_000_000n);
 });

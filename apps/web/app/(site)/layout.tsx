@@ -1,27 +1,12 @@
-import Link from "next/link";
-
-const nav = [
-  ["/", "Home"],
-  ["/trade", "Trade"],
-  ["/perps", "Perps"],
-  ["/sell", "Sell"],
-  ["/keys", "Keys"],
-  ["/receipts", "Receipts"],
-] as const;
+import { Navbar } from "../../components/site-nav";
 
 export default function SiteLayout({ children }: { children: React.ReactNode }) {
   return (
-    <>
-      <header className="border-b border-zinc-800">
-        <nav className="mx-auto flex max-w-5xl gap-5 p-4 text-sm">
-          {nav.map(([href, label]) => (
-            <Link key={href} href={href} className="text-zinc-400 hover:text-zinc-100">
-              {label}
-            </Link>
-          ))}
-        </nav>
-      </header>
-      <main className="mx-auto max-w-5xl p-6">{children}</main>
-    </>
+    <div className="relative flex min-h-screen flex-col bg-white">
+      <Navbar variant="page" />
+      <main className="flex-1 px-[calc(96*min(100vw,1728px)/1728_+_max(0px,(100vw_-_1728px)/2))] pb-16 pt-[76px]">
+        {children}
+      </main>
+    </div>
   );
 }

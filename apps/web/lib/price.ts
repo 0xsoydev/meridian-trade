@@ -1,4 +1,4 @@
-import type { Micro, MicroPerMTok, Pricing, Rail, RailId } from "./types";
+import type { BookAsk, Micro, MicroPerMTok, Pricing, Rail, RailId } from "./types";
 
 const MICRO_PER_MTOK = 1_000_000n;
 const PRICE_SCALE = 12;
@@ -37,6 +37,22 @@ export function formatMicroPerMtok(value: MicroPerMTok): string {
   return `${negative ? "-" : ""}${whole}${fraction ? `.${fraction}` : ""}`;
 }
 
+export const formatUsd = (micro: Micro): string => `$${formatMicroPerMtok(micro)}`;
+
+const group = (whole: bigint) => whole.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+
+export function formatMtok(tokens: bigint): string {
+  const whole = tokens / MICRO_PER_MTOK;
+  const fraction = ((tokens % MICRO_PER_MTOK) / 1_000n).toString().padStart(3, "0").replace(/0+$/, "");
+  return fraction ? `${group(whole)}.${fraction}` : group(whole);
+}
+
+export function parseMtok(input: string): bigint {
+  const match = /^(\d{1,13})(?:\.(\d{1,6}))?$/.exec(input.trim().replace(/[,_\s]/g, ""));
+  if (!match) return 0n;
+  return BigInt(match[1] ?? "0") * MICRO_PER_MTOK + BigInt((match[2] ?? "").padEnd(6, "0"));
+}
+
 export function blended(p: Pricing): MicroPerMTok {
   return (3n * p.prompt + p.completion) / 4n;
 }
@@ -66,6 +82,38 @@ export function charge(tokens: bigint, ask: MicroPerMTok): Micro {
 
 export function sellerEarning(chargeMicro: Micro, takeBps: bigint): Micro {
   return (chargeMicro * (10_000n - takeBps)) / 10_000n;
+}
+
+export type FillPreview = {
+  fillable: bigint;
+  cost: bigint;
+  avg: bigint;
+  fee: bigint;
+  net: bigint;
+  partial: boolean;
+};
+
+export function previewFill(asks: ReadonlyArray<BookAsk>, wanted: bigint, takeBps: bigint): FillPreview {
+  let left = wanted;
+  let cost = 0n;
+  let fillable = 0n;
+  for (const ask of asks) {
+    if (left === 0n) break;
+    const price = BigInt(ask.price_micro_per_mtok);
+    const depth = BigInt(ask.tokens_left);
+    const take = depth < left ? depth : left;
+    cost += charge(take, price);
+    fillable += take;
+    left -= take;
+  }
+  return {
+    fillable,
+    cost,
+    avg: fillable === 0n ? 0n : (cost * 1_000_000n) / fillable,
+    fee: cost - sellerEarning(cost, takeBps),
+    net: sellerEarning(cost, takeBps),
+    partial: fillable < wanted,
+  };
 }
 
 export function railCost(p: Pricing, promptTokens: bigint, completionTokens: bigint): Micro {
