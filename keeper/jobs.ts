@@ -46,7 +46,7 @@ export async function publishRollups(): Promise<boolean> {
   const closed = minuteOf(Date.now() - SETTLE_GRACE_MS) - 1;
   if (lastMinute === null) {
     const published = await readRollups({ ...mirror(), sinceMinute: closed - windowMinutes() });
-    lastMinute = published.reduce((max, p) => Math.max(max, p.rollup.minute), closed - 1);
+    lastMinute = published.reduce((max, p) => Math.max(max, p.rollup.minute), closed - windowMinutes() - 1);
   }
   let filled = false;
   for (let minute = lastMinute + 1; minute <= closed; minute++) {
@@ -117,14 +117,14 @@ export async function liquidateUnderwater(): Promise<void> {
   }
   const wallet = keeperWallet();
   for (const { account, model } of tracked.values()) {
-    if (!(await needsLiquidation(account, model))) continue;
     try {
+      if (!(await needsLiquidation(account, model))) continue;
       const hash = await liquidate(wallet, account, model);
       await confirmed(hash);
       console.log(`[liquidate] ${account} on ${model} tx ${hash}`);
     } catch (error) {
-      if (!isExpectedRevert(error)) throw error;
-      console.log(`[liquidate] ${account} on ${model}: skipped this tick (stale price or recovered)`);
+      if (isExpectedRevert(error)) console.log(`[liquidate] ${account} on ${model}: skipped this tick (stale price or recovered)`);
+      else console.error(`[liquidate] ${account} on ${model}:`, error instanceof Error ? error.message : error);
     }
   }
 }

@@ -64,8 +64,7 @@ export function merkleRoot(fills: ReadonlyArray<Fill>): string {
 }
 
 export function buildRollups(minute: number, fills: ReadonlyArray<Fill>): Rollup[] {
-  const byModel = new Map<string, Fill[]>();
-  for (const fill of fills) byModel.set(fill.model, [...(byModel.get(fill.model) ?? []), fill]);
+  const byModel = Map.groupBy(fills, (f) => f.model);
   return [...byModel].map(([model, group]) => {
     const charge = group.reduce((sum, f) => sum + f.charge, 0n);
     const tokens = group.reduce((sum, f) => sum + f.tokens, 0n);
