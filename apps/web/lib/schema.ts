@@ -28,10 +28,18 @@ export const sellers = pgTable("sellers", {
   createdAt: createdAt(),
 });
 
+export const accounts = pgTable("accounts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  address: text("address").notNull().unique(),
+  worldNullifier: numeric("world_nullifier", { precision: 78, scale: 0 }).unique(),
+  createdAt: createdAt(),
+});
+
 export const keys = pgTable(
   "keys",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    accountId: uuid("account_id").references(() => accounts.id),
     hash: bytea("hash").notNull().unique(),
     balanceUsdMicro: bigint("balance_usd_micro", { mode: "bigint" }).notNull(),
     reservedUsdMicro: bigint("reserved_usd_micro", { mode: "bigint" }).notNull().default(sql`0`),

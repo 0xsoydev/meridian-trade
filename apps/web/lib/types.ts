@@ -88,6 +88,16 @@ export type TopupResult = {
   tx_id: string;
 };
 
+export type CreateKeyResult = { key: string; key_id: string };
+
+export type KeySummary = { key_id: string; balance_usd_micro: string; created_at: string };
+
+export type DepositResult = {
+  tx_id: string;
+  amount_usd_micro: string;
+  balance_usd_micro: string;
+};
+
 export type Balance = {
   balance_usd_micro: string;
   reserved_usd_micro: string;

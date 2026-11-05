@@ -245,9 +245,10 @@ Missing usage (client abort, upstream break, deadline abort): `mixedTokens(estim
 
 | Table | Columns | Constraints |
 |---|---|---|
+| `accounts` | `id uuid pk`, `address text`, `world_nullifier numeric(78,0) null`, `created_at` | `address` unique (lowercase), `world_nullifier` unique |
 | `sellers` | `id uuid pk`, `address text`, `world_nullifier numeric(78,0)`, `hedera_account text null`, `created_at timestamptz` | `address` unique (lowercase), `world_nullifier` unique |
 | `listings` | `id uuid pk`, `seller_id fk`, `rail text`, `model text`, `auth_kind text`, `credential_ciphertext text`, `account_ref text null`, `price_micro_per_mtok bigint null`, `capacity_tokens bigint`, `used_tokens bigint default 0`, `reserved_tokens bigint default 0`, `throttled_until timestamptz null`, `status text`, `client_nonce text`, `created_at` | `capacity_tokens > 0`; `used_tokens + reserved_tokens <= capacity_tokens`; `auth_kind in ('key','oauth')`; `status in ('active','exhausted','invalid','cancelled','pending_auth')`; `client_nonce` unique; index `(model, status, price_micro_per_mtok)` |
-| `keys` | `id uuid pk`, `hash bytea`, `balance_usd_micro bigint`, `reserved_usd_micro bigint default 0`, `auto_topup_usd_micro bigint default 0`, `daily_topup_cap_usd_micro bigint default 5000000`, `default_model text null`, `world_sub text null`, `created_at` | `hash` unique; `balance_usd_micro >= 0`; `reserved_usd_micro >= 0` |
+| `keys` | `id uuid pk`, `account_id fk null`, `hash bytea`, `balance_usd_micro bigint`, `reserved_usd_micro bigint default 0`, `auto_topup_usd_micro bigint default 0`, `daily_topup_cap_usd_micro bigint default 5000000`, `default_model text null`, `world_sub text null`, `created_at` | `hash` unique; `balance_usd_micro >= 0`; `reserved_usd_micro >= 0` |
 | `topups` | `tx_id text pk`, `key_id fk`, `amount_usd_micro bigint`, `payer text`, `created_at` | index `(key_id, created_at)` |
 | `usage` | `id uuid pk`, `status text`, `rail text`, `upstream_request_id text null`, `key_id fk`, `listing_id fk`, `prepaid_id fk null` (set when the request spends prepaid MTokens), `price_micro_per_mtok bigint`, `reserved_tokens bigint`, `reserved_usd_micro bigint`, `prompt_tokens int default 0`, `completion_tokens int default 0`, `list_cost_usd_micro bigint default 0`, `mixed_tokens bigint default 0`, `charge_usd_micro bigint default 0`, `seller_earning_usd_micro bigint default 0`, `payout_id uuid null`, `hcs_minute bigint null`, `created_at`, `settled_at timestamptz null` | `status in ('open','settled','released')`; `upstream_request_id` unique when not null; index `(status, created_at)`, `(settled_at)`, `(listing_id, payout_id)` |
 | `trades` | `id uuid pk`, `key_id fk`, `listing_id fk`, `model text`, `tokens bigint`, `price_micro_per_mtok bigint`, `charge_usd_micro bigint`, `seller_earning_usd_micro bigint`, `payout_id uuid null`, `created_at` | `tokens > 0`; index `(created_at)`, `(listing_id, payout_id)`, `(key_id, created_at)` |
@@ -341,6 +342,9 @@ export type ApprovalStatus = { status: "pending" | "approved" | "denied" | "expi
 | GET | `/api/oauth/:rail/callback` | `state` | `code` | 302 to `/sell` | 400 bad state |
 | PATCH | `/api/listings/:id` | `Signed<AmendIntent>` | `{ price_micro_per_mtok, capacity_mtok }` | 200 listing | 400/404/409 |
 | DELETE | `/api/listings/:id` | `Signed<CancelIntent>` | — | 200 | 404/409 |
+| POST | `/api/v1/keys` | wallet signature | `{ address, message, signature, world? }` | `CreateKeyResult` | 401, 409 |
+| GET | `/api/v1/keys` | wallet signature (query) | — | `{ keys: KeySummary[] }` | 401 |
+| POST | `/api/v1/keys/deposit` | `Bearer rk_` | `{ tx_id }` | `DepositResult` | 400, 409 |
 
 `export const maxDuration = 300` on the chat route (Vercel Fluid compute ceiling on Hobby). `topup` amount bounds: 0.10–20.00 USD.
 
@@ -527,6 +531,21 @@ export function buy(keyId: string, intent: TradeIntent): Promise<{ fills: Trade[
 
 `GET /api/v1/book?model=` returns the asks (`listing_id`, rail, price, tokens left, verifiable) and the last 50 `trades`, which is what `/trade` renders and what its live series reads.
 
+### 10.11 Human signup and deposit (`/api/v1/keys`)
+
+```ts
+export type CreateKeyResult = { key: string; key_id: string };
+export type KeySummary = { key_id: string; balance_usd_micro: string; created_at: string };
+export type DepositResult = { tx_id: string; amount_usd_micro: string; balance_usd_micro: string };
+```
+
+1. `POST /api/v1/keys` `{ address, message, signature, world? }`. The message is JSON `{ domain, action: "create_key", issued_at }`; `domain` must equal `PUBLIC_HOST` or the request `Host`; `issued_at` must be within 5 minutes; viem `verifyMessage`. A malformed signature is a 401, never a 500.
+2. If `world` is present, `verifyWorld` posts it to `${WORLD_VERIFY_URL}/${WORLD_RP_ID}` and requires `success: true` and a numeric nullifier. Without `WORLD_RP_ID` a supplied proof is rejected; accounts created without one stay unverified.
+3. `ensureAccount` upserts on the lowercase address; a second address presenting the same nullifier is a 409.
+4. A key is created with zero balance and `account_id`; the plaintext is returned once.
+5. `GET /api/v1/keys?address&message&signature` with `action: "list_keys"` returns that account's keys, balances and creation times.
+6. `POST /api/v1/keys/deposit` `{ tx_id }` with a bearer key: normalise the id to `0.0.x-seconds-nanos`, fetch the mirror transaction, require `result: SUCCESS`, a memo (base64) equal to the key id, and a positive USDC transfer to the treasury. Credit exactly what arrived, at most `TOPUP_MAX_MICRO`; `topups.tx_id` makes a replay a 409.
+
 ---
 
 ## 11. Contracts (Galileo, `contracts/`)
@@ -656,7 +675,7 @@ type AgentEnv = {
 | `/trade` | spot buyers and sellers | Model picker (`?model=`). **Buy**: the ask book with price, MTokens left, rail and verifiability; size input; fee and total; recent fills. **Sell**: your own asks with amend price, add capacity and cancel, plus a link to `/sell` when you have no source for that model yet | `GET /api/v1/book`, `POST /api/v1/trades`, `PATCH`/`DELETE /api/listings/:id` |
 | `/perps` | traders | Model picker (`?model=`). Index chart and mark price, current funding rate, long/short with size, leverage and margin, previewed liquidation price, Positions tab across all models, MockUSDC balance and faucet, connect-wallet state | `IndexPosted` logs (viem `getLogs`), `PerpMarket` reads, wagmi |
 | `/sell` | sellers, once | Wallet → World verify → source picker (API key or Connect Claude Code / Codex) → new listing → earnings and payouts (HashScan). Setup and accounting, not trading | API, DB |
-| `/keys` | the human behind an agent | Paste the key your agent already has (localStorage) → balance, reserved, auto top-up, daily cap, default model, link human (QR via `qrcode`). Not a login: the key is the credential | `/api/v1/*` |
+| `/keys` | a human buyer | Connect a wallet → sign once to create a router key → list keys, deposit panel (treasury, memo = key id, amount, tx id), balance, auto top-up, daily cap, default model, link human (QR via `qrcode`). Pasting an agent's key still works | `/api/v1/keys`, `/api/v1/keys/deposit`, `/api/v1/*` |
 | `/receipts` | judges | HCS rollups, top-ups (HashScan), index posts (chainscan), "recompute index" from mirror in the browser | mirror node, Galileo |
 
 Charts use Lightweight Charts **v5**: series come from `chart.addSeries(LineSeries, …)` with the series types imported from the package, times are `UTCTimestamp` in seconds, new points go through `series.update()` (never `setData` on a tick — it resets the visible range), teardown is `chart.remove()`, and the chart renders client-only under Next.js. The v4 names (`addLineSeries`, `series.setMarkers`, the chart-level watermark option) do not exist in v5, and most examples online are v4. `/perps` plots two series: the on-chain index from `IndexPosted`, and the venue's per-minute VWAP from Hedera, polled every 15 s.
@@ -695,6 +714,8 @@ shadcn components: `table`, `card`, `button`, `input`, `select`, `dialog`, `tabs
 | `NEXT_PUBLIC_PRIVY_APP_ID` | web | own app (deploy), 0G's (localhost demo) |
 | `NEXT_PUBLIC_GALILEO_RPC`, `NEXT_PUBLIC_PERP_MARKET`, `NEXT_PUBLIC_INDEX_ORACLE`, `NEXT_PUBLIC_MOCK_USDC` | web | deploy output |
 | `KEEPER_PRIVATE_KEY` | keeper | Galileo EOA |
+| `MIRROR_NODE_URL` | web | `https://testnet.mirrornode.hedera.com` (a stub in tests) |
+| `WORLD_VERIFY_URL` | web | `https://developer.world.org/api/v4/verify` (a stub in tests) |
 | `ENABLE_OAUTH_RAILS` | web | `0`; `1` activates §10.9 |
 | `OAUTH_REDIRECT_BASE` | web | deployed host, used for the callback URL |
 | `CLAUDE_CODE_CLIENT_ID`, `OPENAI_OAUTH_CLIENT_ID` | web | the vendors' published CLI client ids, read at implementation time |
@@ -713,6 +734,9 @@ shadcn components: `table`, `card`, `button`, `input`, `select`, `dialog`, `tabs
 - IDKit proofs bound to the seller wallet via `signal`; nullifier unique.
 - Signed mutations: domain, 5-minute freshness, unique nonces.
 - No prompts or completions persisted or logged.
+- Human key creation needs a fresh wallet signature over `{domain, action, issued_at}`; a malformed signature is rejected, not thrown.
+- Deposits are checked on the mirror: treasury credit, USDC asset, memo equal to the key id, successful result; `topups` turns a replay into a 409.
+- A World nullifier is unique across accounts, and a proof is accepted only when `WORLD_RP_ID` is configured.
 - Treasury and keeper keys only in server and keeper env.
 
 ---
@@ -724,6 +748,7 @@ shadcn components: `table`, `card`, `button`, `input`, `select`, `dialog`, `tabs
 | M0 | Bootstrap | `apps/web` deploys to Vercel; Neon migrated; forge builds; preflight suite green |
 | M1 | Router core | `rk_` key with manual balance streams GLM/0gm through a seeded listing; `usage` row matches the upstream token counts; balance and capacity exact; a client abort mid-stream leaves no `open` usage row |
 | M2 | x402 top-up | `/topup` creates and credits keys on Hedera; replayed tx id credits nothing |
+| M2b | Human signup | Wallet-signed key creation, key listing, and a USDC deposit credited from the mirror once; a replayed or mismatched transfer credits nothing |
 | M3 | Auto top-up | Agent with $0 balance completes a streamed request via 402 → pay → retry; HashScan link printed |
 | M4 | Sellers | IDKit verify, signed listing, key probe, market and limit pricing, failover on 401/402/429 |
 | M4b | Spot fills | `POST /api/v1/trades` fills across two asks, debits the balance, writes `prepaid`, and a later request is served at charge 0; the fill enters the rollup and moves the index |
@@ -806,6 +831,9 @@ Video (2:30–2:55, human voice):
 - Command Code sells no API access on its Go plan: sellers need GOAT, Pro, Max, Team or Provider, or every request returns `upgrade_required`.
 - OpenCode Go is a single-member workspace with a monthly per-model dollar allowance (5h 20%, weekly 50%, monthly 100%) and monitored traffic; a listing there is rate-limited by allowance, not by the capacity the seller declared.
 - The `maxTokensField` choice for the Command Code and Zen rails is unverified without a seller key; a wrong field shows up as a 400 on the first real request.
+- A human deposit needs the transaction id pasted by hand; there is no automatic detection, and a transfer without the key id as memo cannot be credited.
+- One signature creates one key; there is no rotation or export after the plaintext is shown.
+- A single deposit is capped at the same 20 USD ceiling as one x402 payment.
 - OAuth rails are refused by the providers for third-party clients: Anthropic blocks subscription tokens outside its own CLI, and Codex's endpoint accepts first-party originators only. Expect 401/403 on the first request, which marks the listing `invalid`; a seller who connects one risks a ban on their personal account.
 - OAuth capacity is advisory: the provider's window is the real limit, `429` sets `throttled_until`, and nothing reads remaining quota.
 - OAuth refresh is deduped in-process only; a cross-instance race costs one request to failover.

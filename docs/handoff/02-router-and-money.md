@@ -116,6 +116,9 @@ Constraints that do real work: `used_tokens + reserved_tokens <= capacity_tokens
 | GET | `/api/v1/models` | none | `{ object: "list", data: ModelRow[] }` with `rails`, `verifiability`, reference, best ask, index |
 | GET | `/api/v1/balance` | bearer | balance, reserved, topped up today, cap, auto top-up, default model, `human_linked` |
 | PATCH | `/api/v1/keys/settings` | bearer | auto top-up, daily cap (403 when raising it needs approval), default model |
+| POST | `/api/v1/keys` | wallet signature | creates a key bound to the account, optionally with a World proof |
+| GET | `/api/v1/keys` | wallet signature (query) | that account's keys and balances |
+| POST | `/api/v1/keys/deposit` | bearer | verifies a USDC transfer on the mirror and credits the key once |
 
 Error shape, always:
 
