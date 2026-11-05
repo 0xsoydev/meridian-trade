@@ -1,5 +1,5 @@
+import { hashSignal } from "@worldcoin/idkit/hashing";
 import { signRequest } from "@worldcoin/idkit-core/signing";
-import { keccak256, toHex } from "viem";
 import { z } from "zod";
 
 const requestSchema = z
@@ -41,7 +41,7 @@ export function worldEnvironment(): string {
 }
 
 export function signalHash(signal: string): `0x${string}` {
-  return keccak256(toHex(signal));
+  return hashSignal(signal) as `0x${string}`;
 }
 
 export function nullifierToDecimal(value: string): string | null {

@@ -6,6 +6,7 @@ import { ExactHederaScheme } from "@x402/hedera/exact/server";
 import { z } from "zod";
 import { db } from "./db.ts";
 import { fail } from "./errors.ts";
+import { startApproval } from "./approvals.ts";
 import { credit, toppedUpToday, type Payment } from "./ledger.ts";
 import { keys, type KeyRow } from "./schema.ts";
 import type { RouterError } from "./types";
@@ -148,11 +149,15 @@ export async function paymentDue(request: Request, keyId: string, neededMicro: b
   if (amount > TOPUP_MAX_MICRO) {
     return fail(402, "insufficient_balance", `${short} micro USD is more than one top-up can carry`);
   }
-  if ((await toppedUpToday(keyId)) + amount > row.dailyTopupCapUsdMicro) {
+  const topped = await toppedUpToday(keyId);
+  if (topped + amount > row.dailyTopupCapUsdMicro) {
+    const approval = await startApproval(keyId, "raise_cap", topped + amount);
     return fail(
       403,
       "approval_required",
       `an auto top-up of ${amount} micro USD would pass the daily cap of ${row.dailyTopupCapUsdMicro} micro USD`,
+      {},
+      approval,
     );
   }
   return paymentRequired(amount, request.url, `auto top-up of ${amount} micro USD`);

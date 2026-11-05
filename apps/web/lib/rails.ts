@@ -40,6 +40,7 @@ function configs(): RailConfig[] {
       resetPeriod: "daily",
       models: [
         { canonical: "glm-5.3", upstream: "glm-5.3" },
+        { canonical: "0gm-1.0-35b-a3b", upstream: "0gm-1.0-35b-a3b" },
         { canonical: "deepseek-v4.1-flash", upstream: "deepseek-v4.1-flash" },
         { canonical: "claude-opus-5.5", upstream: "claude-opus-5.5" },
       ],

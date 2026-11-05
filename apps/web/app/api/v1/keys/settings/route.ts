@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { z } from "zod";
+import { startApproval } from "../../../../../lib/approvals.ts";
 import { routerKey } from "../../../../../lib/auth.ts";
 import { db } from "../../../../../lib/db.ts";
 import { fail } from "../../../../../lib/errors.ts";
@@ -37,7 +38,8 @@ export async function PATCH(request: Request): Promise<Response> {
   if (input.daily_topup_cap_usd_micro !== undefined) {
     const value = BigInt(input.daily_topup_cap_usd_micro);
     if (value > key.dailyTopupCapUsdMicro) {
-      return fail(403, "approval_required", "raising the daily cap needs World approval");
+      const approval = await startApproval(key.id, "raise_cap", value);
+      return fail(403, "approval_required", "raising the daily cap needs World approval", {}, approval);
     }
     changes.dailyTopupCapUsdMicro = value;
   }
