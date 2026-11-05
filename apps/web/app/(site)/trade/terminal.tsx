@@ -17,6 +17,7 @@ import { FillsChart, fillsToPoints, type ScaleMode } from "./chart";
 
 const KEY_STORAGE = "router_key";
 const TAKE_BPS = 1000n;
+const MAX_TOKENS = 1_000_000_000n;
 const POLL_MS = 15_000;
 
 const WINDOWS = [
@@ -86,6 +87,8 @@ const MUTED = "text-[#757575]";
 
 type Stat = { label: string; value: string; tone?: "up" | "down" | undefined };
 
+type SessionFill = Trade & { at: string };
+
 export function Trade({ initialModel }: { initialModel: string }) {
   const router = useRouter();
   const [model, setModel] = useState(initialModel);
@@ -102,7 +105,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
   const [balance, setBalance] = useState<bigint | null>(null);
   const [account, setAccount] = useState<Balance | null>(null);
   const [pending, setPending] = useState(false);
-  const [fills, setFills] = useState<Trade[]>([]);
+  const [fills, setFills] = useState<SessionFill[]>([]);
   const [problem, setProblem] = useState<{ message: string; shortfall: bigint | null } | null>(null);
   const [copied, setCopied] = useState(false);
   const [clock, setClock] = useState<string | null>(null);
@@ -160,7 +163,10 @@ export function Trade({ initialModel }: { initialModel: string }) {
       return;
     }
     try {
-      const res = await fetch("/api/v1/balance", { headers: { authorization: `Bearer ${token}` } });
+      const res = await fetch("/api/v1/balance", {
+        cache: "no-store",
+        headers: { authorization: `Bearer ${token}` },
+      });
       if (!res.ok) {
         setBalance(null);
         setAccount(null);
@@ -217,6 +223,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
     affordable > 0n
       ? Math.max(0, Math.min(100, Math.round((Number(wanted) / Number(affordable)) * 100)))
       : 0;
+  const overCap = wanted > MAX_TOKENS;
 
   const pick = (id: string) => {
     setModel(id);
@@ -252,7 +259,8 @@ export function Trade({ initialModel }: { initialModel: string }) {
         return;
       }
       const result = (await res.json()) as TradeResult;
-      setFills(result.fills);
+      const at = new Date().toISOString();
+      setFills(result.fills.map((fill) => ({ ...fill, at })));
       setDock("mine");
       void refreshBook();
       void refreshBalance();
@@ -546,7 +554,6 @@ export function Trade({ initialModel }: { initialModel: string }) {
               <button
                 type="button"
                 onClick={() => setPane("book")}
-                aria-pressed
                 className="w-1/2 bg-black py-2 text-[14px] font-semibold text-white"
               >
                 Buy
@@ -633,9 +640,15 @@ export function Trade({ initialModel }: { initialModel: string }) {
                 </div>
               </dl>
 
-              {preview.partial && wanted > 0n ? (
+              {preview.partial && wanted > 0n && !overCap ? (
                 <p className="text-[13px] leading-5 text-[#F6465D]">
                   The book covers {tokensText(preview.fillable)} of {tokensText(wanted)} MTok. The rest stays unfilled.
+                </p>
+              ) : null}
+
+              {overCap ? (
+                <p className="text-[13px] leading-5 text-[#F6465D]">
+                  One trade caps at 1,000,000,000 MTok.
                 </p>
               ) : null}
 
@@ -659,7 +672,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
                 <button
                   type="button"
                   onClick={() => void buy()}
-                  disabled={pending || wanted === 0n || preview.cost === 0n}
+                  disabled={pending || wanted === 0n || preview.cost === 0n || overCap}
                   className="h-[34px] w-full bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4] disabled:text-white"
                 >
                   {pending ? "Buying…" : wanted > 0n ? `Buy ${tokensText(wanted)} MTok` : "Enter a size"}
@@ -748,7 +761,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
             ) : (
               fills.map((fill) => (
                 <div key={fill.listing_id} className="flex flex-wrap items-baseline justify-between gap-4 border-t border-[#CECECE] py-4">
-                  <span className={`text-[13px] tabular-nums ${MUTED}`}>{timeShort(new Date().toISOString())} UTC</span>
+                  <span className={`text-[13px] tabular-nums ${MUTED}`}>{timeShort(fill.at)} UTC</span>
                   <span className="text-[14px] tabular-nums text-[#1E1E1E]">
                     {formatMicroPerMtok(BigInt(fill.price_micro_per_mtok))}
                     <span className={`ml-1.5 text-[12px] ${MUTED}`}>USD / MTok</span>
