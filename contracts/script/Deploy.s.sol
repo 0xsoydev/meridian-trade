@@ -27,5 +27,6 @@ contract Deploy is Script {
         console.log("NEXT_PUBLIC_MOCK_USDC=%s", address(usdc));
         console.log("NEXT_PUBLIC_INDEX_ORACLE=%s", address(oracle));
         console.log("NEXT_PUBLIC_PERP_MARKET=%s", address(market));
+        console.log("PERP_DEPLOY_BLOCK=%s", block.number);
     }
 }
