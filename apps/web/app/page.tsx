@@ -3,6 +3,7 @@ import { Hero } from "../components/landing/hero";
 import { HowItWorks } from "../components/landing/how-it-works";
 import { Panorama } from "../components/landing/panorama";
 import { Proof } from "../components/landing/proof";
+import { SiteFooter } from "../components/landing/site-footer";
 import { WhatWeDo } from "../components/landing/what-we-do";
 import { Navbar, NavLinks } from "../components/site-nav";
 
@@ -24,25 +25,7 @@ export default function Home() {
 
         <HowItWorks variant="page" />
 
-        <footer className="border-t border-[#CECECE] bg-[#EBEBEB] px-6 pb-10 pt-12">
-          <div className="flex gap-16 text-[16px] text-[#1E1E1E]">
-            <div className="flex flex-col gap-1.5">
-              <p>Socials</p>
-              <p>Twitter X</p>
-              <p>Telegram</p>
-              <p>HashScan</p>
-            </div>
-          </div>
-          <div className="mt-10 flex flex-wrap gap-x-8 gap-y-3 text-[15px] leading-[22px] text-[#757575]">
-            <a href="https://github.com/0xsoydev/celestial-trade/blob/develop/docs/plan.md">Plan</a>
-            <a href="https://github.com/0xsoydev/celestial-trade">README</a>
-            <Link href="/receipts">Receipts</Link>
-          </div>
-          <div
-            className="mt-8 h-[220px] w-full bg-contain bg-center bg-no-repeat"
-            style={{ backgroundImage: "url(/images/goddess.png)" }}
-          />
-        </footer>
+        <SiteFooter variant="page" />
       </div>
 
       <div className="desktop-wrap hidden lg:block">
