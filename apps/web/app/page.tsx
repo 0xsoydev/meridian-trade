@@ -12,24 +12,27 @@ const NAV_LINKS = [
 const DEMO_HREF = "/trade?model=glm-5.3";
 
 const CARDS = [
-  { card: 589, label: 613, body: 613, sphere: 631, sphereTop: 1052, title: "01/ converstional", art: { src: "/images/1st.svg", w: 252, h: 248 } },
-  { card: 947, label: 970, body: 972, sphere: 987, sphereTop: 1052, title: "02/ connected", art: { src: "/images/2nd.svg", w: 257, h: 247 } },
-  { card: 1305, label: 1324, body: 1324, sphere: 1349, sphereTop: 1078, title: "03/ compliant", art: { src: "/images/3rd.svg", w: 249, h: 210 } },
+  { card: 589, label: 613, body: 613, sphere: 631, sphereTop: 1052, title: "01/ expiring supply", bodyText: "0G credits reset at midnight, Claude Max monthly. Sell what expires — always under list price, by rule.", art: { src: "/images/1st.svg", w: 252, h: 248 } },
+  { card: 947, label: 970, body: 972, sphere: 987, sphereTop: 1052, title: "02/ agents pay", bodyText: "No account, no card. A request that can't be covered answers with a price; the agent pays USDC on Hedera and streams on.", art: { src: "/images/2nd.svg", w: 257, h: 247 } },
+  { card: 1305, label: 1324, body: 1324, sphere: 1349, sphereTop: 1078, title: "03/ one human", bodyText: "World ID keeps supply human: one seller per person, and a person approves an agent's spending cap.", art: { src: "/images/3rd.svg", w: 249, h: 210 } },
 ];
-
-const CARD_BODY =
-  "Natural conversations that understand context and move customers forward.";
 
 const DIVIDER_X = [138, 428, 718, 1008, 1298, 1588];
 const TICKS = Array.from({ length: 24 }, (_, k) => 196 + 58 * k).filter(
   (x) => !DIVIDER_X.includes(x),
 );
-const COLUMNS = [171, 461, 757, 1047, 1344];
+const COLUMN_COPY = [
+  { x: 171, head: "Every fill names its rail", bodyText: "0G runs the demo rail, with request ids in the receipts." },
+  { x: 461, head: "Every payment is public", bodyText: "Top-ups settle as USDC transfers on Hedera with a HashScan link." },
+  { x: 757, head: "Supply stays human", bodyText: "One seller per World-verified person; denials are shown too." },
+  { x: 1047, head: "The index recomputes", bodyText: "Ten-minute public rollups; rebuild them on /receipts yourself." },
+  { x: 1344, head: "The curve is settled", bodyText: "Perps clear against the house vault at 5x, funding on skew." },
+];
 
-const LOREM = `Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.
-Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.
-Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.`;
+const HOW_IT_WORKS = `01 A seller lists capacity: World-verified, key capped, ask below list.
+02 An agent with $0 asks for a completion; the venue answers with what it needs; the agent pays USDC; it streams.
+03 Traders clear the book — fills print to the public log, the index moves.
+04 The index becomes a market: short to lock tomorrow's revenue, or long to cap cost.`;
 
 const LINE = "bg-[#CECECE]";
 
@@ -53,17 +56,18 @@ export default function Home() {
             style={{ backgroundImage: "url(/images/colosseum.svg)", filter: COLOSSEUM_FILTER }}
           />
           <h1 className="mt-9 font-serif text-[44px] leading-[1.06] text-[#1E1E1E]">
-            Build lasting relationships
+            Compute expires. Markets don't.
           </h1>
           <p className="mt-5 text-[16px] leading-[24px] text-black">
-            conversational AI platform for modern financial institution agents
-            that handle the full borrows lifecycle across mail, SMS, and voice
+            A spot market and a perp curve for spare LLM capacity. Sellers list
+            what they can't cash out; agents pay in USDC and stream on, without
+            a human in the loop.
           </p>
           <Link
             href={DEMO_HREF}
             className="mt-7 inline-flex h-[46px] items-center rounded-[6px] bg-black px-9 text-[16px] text-white"
           >
-            Book a demo
+            Enter the market
           </Link>
         </section>
 
@@ -83,7 +87,7 @@ export default function Home() {
                   height={c.art.h}
                   className="mx-auto my-7 h-auto w-[62%] max-w-[230px]"
                 />
-                <p className="text-[16px] leading-[24px] text-black">{CARD_BODY}</p>
+                <p className="text-[16px] leading-[24px] text-black">{c.bodyText}</p>
               </article>
             ))}
           </div>
@@ -91,16 +95,13 @@ export default function Home() {
 
         <section className="mt-16 border-t border-[#CECECE] px-6 pt-10">
           <h2 className="font-serif text-[32px] leading-[1.12] text-black">
-            Built like infrastructure. Query it, extend it, and trust what it
-            returns.
+            Proof over marketing. Recompute our index in your browser.
           </h2>
           <div className="mt-8 border-b border-[#CECECE]">
-            {COLUMNS.map((x) => (
-              <div key={x} className="border-t border-[#CECECE] py-5">
-                <p className="text-[15px] leading-[22px] text-[#1E1E1E]">Read your own writes</p>
-                <p className="mt-1 text-[15px] leading-[22px] text-black">
-                  The first CRM with external consistency.
-                </p>
+            {COLUMN_COPY.map((c) => (
+              <div key={c.x} className="border-t border-[#CECECE] py-5">
+                <p className="text-[15px] leading-[22px] text-[#1E1E1E]">{c.head}</p>
+                <p className="mt-1 text-[15px] leading-[22px] text-black">{c.bodyText}</p>
               </div>
             ))}
           </div>
@@ -121,7 +122,7 @@ export default function Home() {
         <section className="mt-16 border-t border-[#CECECE] px-6 pb-14 pt-10">
           <h2 className="font-serif text-[34px] leading-[1.1] text-black">How it works</h2>
           <p className="mt-6 whitespace-pre-wrap text-[16px] leading-[26px] text-[#757575]">
-            {LOREM}
+            {HOW_IT_WORKS}
           </p>
         </section>
 
@@ -130,8 +131,8 @@ export default function Home() {
             <div className="flex flex-col gap-1.5">
               <p>Socials</p>
               <p>Twitter X</p>
-              <p>Instagram</p>
-              <p>Linkedin</p>
+              <p>Telegram</p>
+              <p>HashScan</p>
             </div>
             <div className="flex flex-col gap-1.5">
               <p>About Us</p>
@@ -140,9 +141,9 @@ export default function Home() {
             </div>
           </div>
           <div className="mt-10 flex flex-wrap gap-x-8 gap-y-3 text-[15px] leading-[22px] text-[#757575]">
-            <span>Privacy Policy</span>
-            <span>Cookie Policy</span>
-            <span>Terms of Use</span>
+            <a href="https://github.com/0xsoydev/celestial-trade/blob/develop/docs/plan.md">Plan</a>
+            <a href="https://github.com/0xsoydev/celestial-trade">README</a>
+            <Link href="/receipts">Receipts</Link>
           </div>
           <div
             className="mt-8 h-[220px] w-full bg-contain bg-center bg-no-repeat"
@@ -168,16 +169,16 @@ export default function Home() {
           <div className={`absolute left-[1671px] top-[90px] h-[3991px] w-px ${LINE}`} />
 
           <h1 className="absolute left-[641px] top-[175px] whitespace-pre font-serif text-[100px] font-normal leading-[100px] text-[#1E1E1E]">
-            {"Build lasting\nrelationships"}
+            {"Compute expires.\nMarkets don't."}
           </h1>
           <p className="absolute left-[641px] top-[384px] w-[494px] whitespace-pre-wrap text-[20px] leading-[24px] text-black">
-            {"conversational AI platform for modern  financial institution agents that handle the full borrows lifecycle across mail , SMS , and voice"}
+            {"A spot market and a perp curve for spare LLM capacity. Sellers list what they can't cash out; agents pay in USDC and stream on, without a human in the loop."}
           </p>
           <Link
             href={DEMO_HREF}
             className="absolute left-[717px] top-[488px] flex h-[43px] w-[294px] items-center justify-center rounded-[6px] bg-black"
           >
-            <span className="text-[20px] leading-[24px] text-white">Book a demo</span>
+            <span className="text-[20px] leading-[24px] text-white">Enter the market</span>
           </Link>
 
           <div className="absolute left-[575px] top-[726px] h-[821px] w-[1080px] bg-white" />
@@ -224,12 +225,12 @@ export default function Home() {
               className="absolute w-[244px] whitespace-pre-wrap text-[20px] leading-[24px] text-black"
               style={{ left: c.body, top: 1375 }}
             >
-              {CARD_BODY}
+              {c.bodyText}
             </p>
           ))}
 
           <p className="absolute left-[96px] top-[1575px] w-[876px] whitespace-pre-wrap font-serif text-[60px] font-normal leading-[60px] text-black">
-            Built like infrastructure. Query it, extend it, and trust what it returns.
+            Proof over marketing. Recompute our index in your browser.
           </p>
 
           <div className={`absolute left-[55px] top-[2078px] h-px w-[1618px] ${LINE}`} />
@@ -239,22 +240,22 @@ export default function Home() {
           {TICKS.map((x) => (
             <div key={x} className={`absolute top-[2039px] h-[40px] w-px ${LINE}`} style={{ left: x - 1 }} />
           ))}
-          {COLUMNS.map((x) => (
+          {COLUMN_COPY.map((c) => (
             <p
-              key={`h-${x}`}
+              key={`h-${c.x}`}
               className="absolute whitespace-pre text-[20px] leading-[24px] text-[#1E1E1E]"
-              style={{ left: x, top: 1816 }}
+              style={{ left: c.x, top: 1816 }}
             >
-              Read your own writes
+              {c.head}
             </p>
           ))}
-          {COLUMNS.map((x) => (
+          {COLUMN_COPY.map((c) => (
             <p
-              key={`b-${x}`}
+              key={`b-${c.x}`}
               className="absolute w-[199px] whitespace-pre-wrap text-[20px] leading-[24px] text-black"
-              style={{ left: x, top: 1850 }}
+              style={{ left: c.x, top: 1850 }}
             >
-              The first CRM with external consistency.
+              {c.bodyText}
             </p>
           ))}
 
@@ -275,7 +276,7 @@ export default function Home() {
             How it works
           </h2>
           <p className="absolute left-[103px] top-[2952px] w-[1449px] whitespace-pre-wrap text-[25px] font-medium leading-[30px] text-[#757575]">
-            {LOREM}
+            {HOW_IT_WORKS}
           </p>
 
           <nav className="absolute right-[56px] top-[37px] flex h-[24px] items-center gap-[39px] text-[20px] leading-[24px] text-[#1E1E1E]">
@@ -292,8 +293,8 @@ export default function Home() {
           <div className="absolute left-[138px] top-[3384px] flex w-[119px] flex-col gap-[5px] text-[20px] text-[#1E1E1E]">
             <p className="leading-[36px]">Socials</p>
             <p className="leading-[30px]">Twitter X</p>
-            <p className="leading-[30px]">Instagram</p>
-            <p className="leading-[30px]">Linkedin</p>
+            <p className="leading-[30px]">Telegram</p>
+            <p className="leading-[30px]">HashScan</p>
           </div>
           <div className="absolute left-[341px] top-[3384px] flex w-[139px] flex-col gap-[6px] text-[20px] text-[#1E1E1E]">
             <p className="leading-[36px]">About Us</p>
@@ -301,9 +302,9 @@ export default function Home() {
             <p className="leading-[30px]">Services</p>
           </div>
           <div className="absolute left-[138px] top-[3576px] flex gap-[50px] text-[20px] leading-[24px] text-[#757575]">
-            <span>Privacy Policy</span>
-            <span>Cookie Policy</span>
-            <span>Terms of Use</span>
+            <a href="https://github.com/0xsoydev/celestial-trade/blob/develop/docs/plan.md">Plan</a>
+            <a href="https://github.com/0xsoydev/celestial-trade">README</a>
+            <Link href="/receipts">Receipts</Link>
           </div>
         </div>
       </div>
