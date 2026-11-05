@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { liquidationPrice } from "../../../lib/perp";
-import { formatMicroPerMtok } from "../../../lib/price";
+import { liquidationPrice, notional } from "../../../lib/perp";
+import { formatMicroPerMtok, formatMtok, formatUsd, parseMtok } from "../../../lib/price";
 import type { Book, ModelRow } from "../../../lib/types";
 import { FillsChart, fillsToPoints, type ScaleMode } from "../trade/chart";
 
@@ -21,10 +21,10 @@ const WINDOWS = [
 type WindowId = (typeof WINDOWS)[number]["id"];
 
 const PRESETS = [
-  { label: "100K", value: "100000" },
-  { label: "1M", value: "1000000" },
-  { label: "10M", value: "10000000" },
-  { label: "100M", value: "100000000" },
+  { label: "1", value: "1" },
+  { label: "10", value: "10" },
+  { label: "100", value: "100" },
+  { label: "1K", value: "1000" },
 ];
 
 const FUNDING_FORMULAS = [
@@ -50,21 +50,6 @@ const PARAMS = "MAX_LEVERAGE 5 · MM_BPS 500 · FEE_BPS 10 · LIQ_BPS 50 · fund
 
 const MUTED = "text-[#757575]";
 
-const usd = (micro: bigint) => `$${formatMicroPerMtok(micro)}`;
-
-function tokensText(value: bigint): string {
-  const n = Number(value);
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return `${n}`;
-}
-
-function parseTokens(input: string): bigint {
-  const digits = input.trim().replace(/[,_\s]/g, "");
-  if (!/^\d{1,13}$/.test(digits)) return 0n;
-  return BigInt(digits);
-}
-
 const clockFormat = new Intl.DateTimeFormat("en-GB", {
   timeZone: "UTC",
   hour12: false,
@@ -88,8 +73,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
   const [bookTab, setBookTab] = useState<(typeof BOOK_TABS)[number]>("Order Book");
   const [stripTab, setStripTab] = useState<(typeof STRIP_TABS)[number]>("Positions");
   const [side, setSide] = useState<"long" | "short">("long");
-  const [orderType, setOrderType] = useState<"market" | "limit">("market");
-  const [size, setSize] = useState("1000000");
+  const [size, setSize] = useState("10");
   const [key, setKey] = useState<string | null>(null);
   const [balance, setBalance] = useState<bigint | null>(null);
   const [clock, setClock] = useState<string | null>(null);
@@ -132,6 +116,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
       setBook((await res.json()) as Book);
       setBookFailed(null);
     } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") return;
       setBookFailed(error instanceof Error && error.message === "404" ? "unknown" : "down");
     }
   }, [model]);
@@ -140,7 +125,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
     const controller = new AbortController();
     setBook(null);
     void refreshBook(controller.signal);
-    const id = window.setInterval(() => void refreshBook(), POLL_MS);
+    const id = window.setInterval(() => void refreshBook(controller.signal), POLL_MS);
     return () => {
       controller.abort();
       window.clearInterval(id);
@@ -164,7 +149,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
 
   const selected = models.find((row) => row.id === model);
   const asks = book?.asks ?? [];
-  const wanted = parseTokens(size);
+  const wanted = parseMtok(size);
   const depth = asks.reduce((total, ask) => total + BigInt(ask.tokens_left), 0n);
 
   const ladderRows = useMemo(() => {
@@ -200,12 +185,12 @@ export function Perps({ initialModel }: { initialModel: string }) {
   const volume24 = points24.reduce((total, point) => total + point.volume, 0);
   const index = selected?.index_micro_per_mtok ? BigInt(selected.index_micro_per_mtok) : null;
   const mark = index ?? lastPrice ?? bestAsk;
-  const notional = wanted > 0n && mark !== null ? wanted * mark : 0n;
-  const margin = notional / MAX_LEVERAGE;
+  const orderValue = wanted > 0n && mark !== null ? notional(wanted, mark) : 0n;
+  const margin = orderValue / MAX_LEVERAGE;
   const liqPreview =
     wanted > 0n && mark !== null
       ? liquidationPrice({
-          size: (side === "long" ? 1n : -1n) * wanted * 1_000_000n,
+          size: (side === "long" ? 1n : -1n) * wanted,
           margin,
           entryPrice: mark,
           fundingOwed: 0n,
@@ -233,7 +218,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
       value: delta !== null ? `${delta >= 0 ? "+" : ""}${(delta * 100).toFixed(2)}%` : "—",
       tone: delta === null ? undefined : delta >= 0 ? "up" : "down",
     },
-    { label: "volume, 24h", value: volume24 > 0 ? `${volume24.toFixed(2)}M MTok` : "—" },
+    { label: "volume, 24h", value: volume24 > 0 ? `${volume24.toFixed(2)} MTok` : "—" },
     { label: "open interest", value: "—" },
     { label: "funding / countdown", value: "—" },
   ];
@@ -289,7 +274,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
         <div className="flex items-center gap-5 text-[14px]">
           {key && balance !== null ? (
             <span className="tabular-nums text-[#1E1E1E]">
-              balance <span className="font-semibold">{usd(balance)}</span>
+              balance <span className="font-semibold">{formatUsd(balance)}</span>
             </span>
           ) : null}
           <Link href="/keys" className="text-[#1743FF] hover:underline">
@@ -368,7 +353,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
             <>
               <div className={`flex flex-wrap gap-x-4 gap-y-0.5 pt-3 text-[13px] ${MUTED}`}>
                 <span className="text-[#1E1E1E]">
-                  {model} · perp fills
+                  {model} · spot fills
                   <span
                     aria-hidden
                     className={`ml-2 inline-block h-[7px] w-[7px] rounded-full ${bookFailed === null ? "bg-[#2EBD85]" : "bg-[#C9C9C9]"}`}
@@ -488,8 +473,8 @@ export function Perps({ initialModel }: { initialModel: string }) {
                             {formatMicroPerMtok(BigInt(ask.price_micro_per_mtok))}
                             <span className={`ml-1.5 text-[12px] ${MUTED}`}>USD / MTok</span>
                           </span>
-                          <span className="text-right tabular-nums text-[#757575]">{tokensText(BigInt(ask.tokens_left))}</span>
-                          <span className="text-right tabular-nums text-[#757575]">{tokensText(total)}</span>
+                          <span className="text-right tabular-nums text-[#757575]">{formatMtok(BigInt(ask.tokens_left))}</span>
+                          <span className="text-right tabular-nums text-[#757575]">{formatMtok(total)}</span>
                           <span className={`truncate text-right text-[13px] ${ask.verifiable ? "text-[#1743FF]" : MUTED}`}>
                             {ask.rail}
                           </span>
@@ -500,7 +485,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
                 </div>
                 <p className={`border-t border-[#D9D9D9] pt-3 text-[13px] ${MUTED}`}>
                   asks only — buy side clears the ladder. best ask {bestAsk !== null ? formatMicroPerMtok(bestAsk) : "—"} ·
-                  depth {tokensText(depth)} MTok
+                  depth {formatMtok(depth)} MTok
                 </p>
               </>
             ) : (
@@ -520,7 +505,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
                         {formatMicroPerMtok(BigInt(fill.price_micro_per_mtok))}
                         <span className={`ml-1.5 text-[12px] ${MUTED}`}>USD / MTok</span>
                       </span>
-                      <span className={`text-[13px] tabular-nums ${MUTED}`}>{tokensText(BigInt(fill.tokens))} MTok</span>
+                      <span className={`text-[13px] tabular-nums ${MUTED}`}>{formatMtok(BigInt(fill.tokens))} MTok</span>
                     </div>
                   ))
                 )}
@@ -557,29 +542,10 @@ export function Perps({ initialModel }: { initialModel: string }) {
             </button>
           </div>
 
-          <div className="mt-3 flex items-center gap-5 text-[14px]">
-            {(["market", "limit"] as const).map((item) => (
-              <button
-                key={item}
-                type="button"
-                onClick={() => setOrderType(item)}
-                aria-pressed={orderType === item}
-                className={`${
-                  orderType === item
-                    ? "text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
-                    : "text-[#757575] hover:text-[#1E1E1E]"
-                }`}
-              >
-                {item === "market" ? "Market" : "Limit"}
-              </button>
-            ))}
-            <span className="ml-auto text-[13px] text-[#C9C9C9]">Pro</span>
-          </div>
-
           <div className="mt-4 space-y-4">
             <div className="flex justify-between text-[14px]">
               <span className={MUTED}>Available to trade</span>
-              <span className="tabular-nums text-[#1E1E1E]">{balance !== null ? usd(balance) : "—"}</span>
+              <span className="tabular-nums text-[#1E1E1E]">{balance !== null ? formatUsd(balance) : "—"}</span>
             </div>
             <div className="flex justify-between text-[14px]">
               <span className={MUTED}>Current position</span>
@@ -593,7 +559,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
                   value={size}
                   onChange={(event) => setSize(event.target.value)}
                   inputMode="numeric"
-                  placeholder="1000000"
+                  placeholder="10"
                   className="h-[34px] w-full bg-transparent text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9]"
                 />
                 <span className={`text-[12px] ${MUTED}`}>MTok</span>
@@ -607,7 +573,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
                 max={100}
                 step={1}
                 value={sliderPct}
-                onChange={(event) => setSize(((BigInt(event.target.value) * usableDepth) / 100n).toString())}
+                onChange={(event) => setSize(formatMtok((BigInt(event.target.value) * usableDepth) / 100n))}
                 aria-label="size as a percent of displayed depth"
                 className="h-1 w-full accent-[#1743FF]"
               />
@@ -633,11 +599,6 @@ export function Perps({ initialModel }: { initialModel: string }) {
               ))}
             </div>
 
-            <div className={`flex items-center gap-5 text-[13px] ${MUTED}`} title="live with PerpMarket">
-              <span>☐ Reduce only</span>
-              <span>☐ Take profit / stop loss</span>
-            </div>
-
             <dl className="border-t border-[#D9D9D9]">
               <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
                 <dt className={MUTED}>Liquidation price, est</dt>
@@ -645,11 +606,11 @@ export function Perps({ initialModel }: { initialModel: string }) {
               </div>
               <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
                 <dt className={MUTED}>Order value</dt>
-                <dd className="tabular-nums text-[#1E1E1E]">{notional > 0n ? usd(notional) : "—"}</dd>
+                <dd className="tabular-nums text-[#1E1E1E]">{orderValue > 0n ? formatUsd(orderValue) : "—"}</dd>
               </div>
               <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
                 <dt className={MUTED}>Margin required · {MAX_LEVERAGE.toString()}x</dt>
-                <dd className="tabular-nums text-[#1E1E1E]">{margin > 0n ? usd(margin) : "—"}</dd>
+                <dd className="tabular-nums text-[#1E1E1E]">{margin > 0n ? formatUsd(margin) : "—"}</dd>
               </div>
               <div className="flex justify-between py-3">
                 <dt className="text-[15px] font-semibold text-[#1E1E1E]">Venue fee</dt>
@@ -678,10 +639,10 @@ export function Perps({ initialModel }: { initialModel: string }) {
                 <button
                   type="button"
                   disabled
-                  title="PerpMarket modify lands with the keeper — until then buy at the ask on /trade"
+                  title="waits on the wallet provider — providers.tsx (Privy + wagmi) lands next"
                   className="h-[34px] w-full bg-black text-[14px] font-semibold text-white disabled:bg-[#D4D4D4] disabled:text-white"
                 >
-                  {side === "long" ? "Long" : "Short"} {wanted > 0n ? `${tokensText(wanted)} MTok` : ""}
+                  {side === "long" ? "Long" : "Short"} {wanted > 0n ? `${formatMtok(wanted)} MTok` : ""}
                 </button>
                 <p className={`text-center text-[13px] ${MUTED}`}>
                   orders settle after the keeper posts the index
@@ -689,23 +650,18 @@ export function Perps({ initialModel }: { initialModel: string }) {
               </>
             )}
 
-            <div className="flex gap-2">
-              <Link
-                href="/keys"
-                className="flex-1 border border-[#CECECE] bg-white py-1.5 text-center text-[13px] text-[#1E1E1E] hover:border-[#1743FF]"
-              >
-                Deposit
-              </Link>
-              <span className={`flex-1 cursor-not-allowed border border-[#CECECE] bg-white py-1.5 text-center text-[13px] ${MUTED}`}>
-                Withdraw
-              </span>
-            </div>
+            <Link
+              href="/keys"
+              className="flex h-[34px] items-center justify-center border border-[#CECECE] bg-white text-[13px] text-[#1E1E1E] hover:border-[#1743FF]"
+            >
+              Deposit
+            </Link>
 
             <div className="border-t border-[#D9D9D9] pt-4">
               <p className="text-[13px] text-[#1E1E1E]">[ account summary ]</p>
               <dl className="mt-2">
                 {[
-                  ["Portfolio value", balance !== null ? usd(balance) : "$0.00"],
+                  ["Portfolio value", balance !== null ? formatUsd(balance) : "$0.00"],
                   ["Unrealized PNL", "—"],
                   ["Account ratio", "—"],
                 ].map(([label, value]) => (
@@ -789,7 +745,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
                     {formatMicroPerMtok(BigInt(fill.price_micro_per_mtok))}
                     <span className={`ml-1.5 text-[12px] ${MUTED}`}>USD / MTok</span>
                   </span>
-                  <span className={`text-[13px] tabular-nums ${MUTED}`}>{tokensText(BigInt(fill.tokens))} MTok</span>
+                  <span className={`text-[13px] tabular-nums ${MUTED}`}>{formatMtok(BigInt(fill.tokens))} MTok</span>
                 </div>
               ))
             )

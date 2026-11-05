@@ -1,21 +1,21 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { charge, formatMicroPerMtok, parseUsd, sellerEarning } from "../../../lib/price";
+import { charge, formatMicroPerMtok, formatMtok, formatUsd, parseMtok, parseUsd, sellerEarning } from "../../../lib/price";
 import type { ModelRow } from "../../../lib/types";
 
 const TAKE_BPS = 1000n;
 const MUTED = "text-[#757575]";
 
 const PRESETS = [
-  { label: "1M", value: "1000000" },
-  { label: "10M", value: "10000000" },
-  { label: "100M", value: "100000000" },
+  { label: "10", value: "10" },
+  { label: "100", value: "100" },
+  { label: "1K", value: "1000" },
 ];
 
 const RAILS = [
   { id: "0g", label: "0G iAI", story: "daily credits reset at 00:00 UTC", market: true },
-  { id: "anthropic", label: "Anthropic", story: "Console workspace, or Max / Team monthly credits", market: false },
+  { id: "anthropic", label: "Anthropic", story: "Console workspace key with a spend limit", market: false },
   { id: "openai", label: "OpenAI", story: "project key with a budget", market: false },
   { id: "openrouter", label: "OpenRouter", story: "the gateway's own spend limit — the probe shows credits left", market: false },
   { id: "commandcode", label: "Command Code", story: "the gateway's own spend limit · OpenAI chat, max_completion_tokens", market: false },
@@ -25,28 +25,13 @@ const RAILS = [
 
 type RailId = (typeof RAILS)[number]["id"];
 
-function tokensText(value: bigint): string {
-  const n = Number(value);
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return `${n}`;
-}
-
-function parseTokens(input: string): bigint {
-  const digits = input.trim().replace(/[,_\s]/g, "");
-  if (!/^\d{1,13}$/.test(digits)) return 0n;
-  return BigInt(digits);
-}
-
-const usd = (micro: bigint) => `$${formatMicroPerMtok(micro)}`;
-
 export function Sell({ privyReady }: { privyReady: boolean }) {
   const [models, setModels] = useState<ModelRow[]>([]);
   const [model, setModel] = useState<string | null>(null);
   const [rail, setRail] = useState<RailId>("0g");
   const [price, setPrice] = useState("");
   const [marketWanted, setMarketWanted] = useState(false);
-  const [capacity, setCapacity] = useState("1000000");
+  const [capacity, setCapacity] = useState("100");
   const [tab, setTab] = useState<"listings" | "payouts">("listings");
   const picker = useRef<HTMLDetailsElement | null>(null);
 
@@ -70,8 +55,7 @@ export function Sell({ privyReady }: { privyReady: boolean }) {
   const blended = selected ? BigInt(selected.reference_blended_micro_per_mtok) : null;
   const marketAnchor = blended !== null ? (blended * 9n) / 10n : null;
   const priceMicro = atMarket ? marketAnchor : typed;
-  const capacityMtok = parseTokens(capacity);
-  const capacityTokens = capacityMtok * 1_000_000n;
+  const capacityTokens = parseMtok(capacity);
   const notional =
     priceMicro !== null && priceMicro > 0n && capacityTokens > 0n ? charge(capacityTokens, priceMicro) : 0n;
   const earning = sellerEarning(notional, TAKE_BPS);
@@ -111,7 +95,7 @@ export function Sell({ privyReady }: { privyReady: boolean }) {
         <dl className="mt-3 flex flex-wrap gap-x-[26px] gap-y-3">
           {[
             ["fee", "10 percent of every fill"],
-            ["payouts", "daily, 00:00 UTC"],
+            ["payouts", "daily, paid at 01:00 UTC"],
             ["credentials", "sealed AES-256-GCM, opened per request"],
             ["rule", "one human, one seller"],
           ].map(([label, value]) => (
@@ -352,16 +336,16 @@ export function Sell({ privyReady }: { privyReady: boolean }) {
             <dl className="border-t border-[#D9D9D9]">
               <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
                 <dt className={MUTED}>Sell value</dt>
-                <dd className="tabular-nums text-[#1E1E1E]">{notional > 0n ? usd(notional) : "—"}</dd>
+                <dd className="tabular-nums text-[#1E1E1E]">{notional > 0n ? formatUsd(notional) : "—"}</dd>
               </div>
               <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
                 <dt className={MUTED}>Venue keeps, 10 percent</dt>
-                <dd className="tabular-nums text-[#1E1E1E]">{fee > 0n ? usd(fee) : "—"}</dd>
+                <dd className="tabular-nums text-[#1E1E1E]">{fee > 0n ? formatUsd(fee) : "—"}</dd>
               </div>
               <div className="flex justify-between py-3">
                 <dt className="text-[15px] font-semibold text-[#1E1E1E]">You receive</dt>
                 <dd className="text-[16px] font-semibold tabular-nums text-[#1E1E1E]">
-                  {earning > 0n ? usd(earning) : "—"}
+                  {earning > 0n ? formatUsd(earning) : "—"}
                 </dd>
               </div>
             </dl>
@@ -369,7 +353,7 @@ export function Sell({ privyReady }: { privyReady: boolean }) {
             <p className={`text-[13px] leading-5 ${MUTED}`}>
               {atMarket && marketAnchor !== null
                 ? `at market: ${formatMicroPerMtok(marketAnchor)} USD / MTok, 90% of the ${formatMicroPerMtok(blended ?? 0n)} reference`
-                : `capacity ${tokensText(capacityMtok)} MTok · paid daily at 00:00 UTC`}
+                : `capacity ${formatMtok(capacityTokens)} MTok · paid daily at 01:00 UTC`}
             </p>
 
             <button
@@ -415,7 +399,7 @@ export function Sell({ privyReady }: { privyReady: boolean }) {
             </button>
           ))}
           <span className={`text-[13px] ${MUTED}`}>
-            {tab === "listings" ? "0 listed" : "paid daily, 00:00 UTC"}
+            {tab === "listings" ? "0 listed" : "paid daily, 01:00 UTC"}
           </span>
         </div>
 

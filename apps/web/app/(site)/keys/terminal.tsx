@@ -1,14 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { formatMicroPerMtok, parseUsd } from "../../../lib/price";
+import { formatMicroPerMtok, formatUsd, parseUsd } from "../../../lib/price";
 import type { Balance, DepositResult, ModelRow, RouterError } from "../../../lib/types";
 
 const KEY_STORAGE = "router_key";
 const MUTED = "text-[#757575]";
 const TOPUP_PRESETS = ["0.50", "1.00", "5.00"];
-
-const usd = (micro: bigint) => `$${formatMicroPerMtok(micro)}`;
 
 const maskKey = (key: string) => `${key.slice(0, 7)}…${key.slice(-4)}`;
 
@@ -208,11 +206,11 @@ export function Keys({ privyReady }: { privyReady: boolean }) {
   };
 
   const stats = [
-    { label: "balance", value: balance ? usd(BigInt(balance.balance_usd_micro)) : "—" },
-    { label: "reserved", value: balance ? usd(BigInt(balance.reserved_usd_micro)) : "—" },
-    { label: "topped up today", value: balance ? usd(BigInt(balance.topped_up_today_usd_micro)) : "—" },
-    { label: "daily cap", value: balance ? usd(BigInt(balance.daily_topup_cap_usd_micro)) : "—" },
-    { label: "auto top-up", value: balance ? usd(BigInt(balance.auto_topup_usd_micro)) : "—" },
+    { label: "balance", value: balance ? formatUsd(BigInt(balance.balance_usd_micro)) : "—" },
+    { label: "reserved", value: balance ? formatUsd(BigInt(balance.reserved_usd_micro)) : "—" },
+    { label: "topped up today", value: balance ? formatUsd(BigInt(balance.topped_up_today_usd_micro)) : "—" },
+    { label: "daily cap", value: balance ? formatUsd(BigInt(balance.daily_topup_cap_usd_micro)) : "—" },
+    { label: "auto top-up", value: balance ? formatUsd(BigInt(balance.auto_topup_usd_micro)) : "—" },
   ];
 
   const snippets = [
@@ -295,11 +293,11 @@ export function Keys({ privyReady }: { privyReady: boolean }) {
 
           <dl className="mt-5 border-t border-[#D9D9D9]">
             {[
-              ["Balance", balance ? usd(BigInt(balance.balance_usd_micro)) : "—"],
-              ["Reserved", balance ? usd(BigInt(balance.reserved_usd_micro)) : "—"],
-              ["Topped up today", balance ? usd(BigInt(balance.topped_up_today_usd_micro)) : "—"],
-              ["Daily cap", balance ? usd(BigInt(balance.daily_topup_cap_usd_micro)) : "—"],
-              ["Auto top-up", balance ? usd(BigInt(balance.auto_topup_usd_micro)) : "—"],
+              ["Balance", balance ? formatUsd(BigInt(balance.balance_usd_micro)) : "—"],
+              ["Reserved", balance ? formatUsd(BigInt(balance.reserved_usd_micro)) : "—"],
+              ["Topped up today", balance ? formatUsd(BigInt(balance.topped_up_today_usd_micro)) : "—"],
+              ["Daily cap", balance ? formatUsd(BigInt(balance.daily_topup_cap_usd_micro)) : "—"],
+              ["Auto top-up", balance ? formatUsd(BigInt(balance.auto_topup_usd_micro)) : "—"],
             ].map(([label, value]) => (
               <div key={label} className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
                 <dt className={MUTED}>{label}</dt>
@@ -321,9 +319,34 @@ export function Keys({ privyReady }: { privyReady: boolean }) {
           <div className="mt-5 border-t border-[#D9D9D9] pt-4">
             <p className="text-[13px] text-[#1E1E1E]">[ deposit ]</p>
             <p className={`mt-2 text-[13px] leading-5 ${MUTED}`}>
-              Send USDC to the venue treasury on Hedera, then paste the transaction id. The mirror
-              verifies the transfer before it credits.
+              Send USDC to the venue treasury on Hedera with this memo, then paste the transaction
+              id. The mirror verifies the transfer before it credits.
             </p>
+            {balance ? (
+              <div className="mt-3 border-t border-[#CECECE]">
+                {[
+                  { id: "treasury", label: "treasury", value: balance.treasury ?? "—" },
+                  { id: "memo", label: "memo", value: balance.memo },
+                ].map((row) => (
+                  <div
+                    key={row.id}
+                    className="flex flex-wrap items-baseline justify-between gap-4 border-b border-[#CECECE] py-3"
+                  >
+                    <span className={`text-[13px] ${MUTED}`}>{row.label}</span>
+                    <code className="min-w-0 flex-1 truncate text-[13px] tabular-nums text-[#1E1E1E]">{row.value}</code>
+                    {row.value !== "—" ? (
+                      <button
+                        type="button"
+                        onClick={() => void copy(row.id, row.value)}
+                        className="text-[14px] text-[#1743FF] hover:underline"
+                      >
+                        {copied === row.id ? "copied" : "copy"}
+                      </button>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : null}
             <label className="mt-3 block">
               <span className={`mb-1 block text-[13px] ${MUTED}`}>Hedera transaction id</span>
               <input
@@ -344,8 +367,8 @@ export function Keys({ privyReady }: { privyReady: boolean }) {
             {depositResult ? (
               depositResult.ok ? (
                 <p className="mt-2 text-[13px] leading-5 text-[#2EBD85]">
-                  credited {usd(BigInt(depositResult.result.amount_usd_micro))} — balance{" "}
-                  {usd(BigInt(depositResult.result.balance_usd_micro))}
+                  credited {formatUsd(BigInt(depositResult.result.amount_usd_micro))} — balance{" "}
+                  {formatUsd(BigInt(depositResult.result.balance_usd_micro))}
                 </p>
               ) : (
                 <p className="mt-2 text-[13px] leading-5 text-[#F6465D]">{depositResult.message}</p>
@@ -390,7 +413,7 @@ export function Keys({ privyReady }: { privyReady: boolean }) {
               Raise the daily cap with World
             </button>
             <p className={`mt-1.5 text-[13px] leading-5 ${MUTED}`}>
-              waits on /api/v1/approvals — the device-code flow is written, the route is not.
+              waits on the approvals API — the route is not.
             </p>
           </div>
         </div>
@@ -534,7 +557,7 @@ export function Keys({ privyReady }: { privyReady: boolean }) {
             >
               <span className={`text-[13px] ${MUTED}`}>{snippet.label}</span>
               <code className="min-w-0 flex-1 truncate text-[13px] tabular-nums text-[#1E1E1E]">
-                {snippet.text}
+                {snippet.id === "auth" && key ? `Authorization: Bearer ${maskKey(key)}` : snippet.text}
               </code>
               <button
                 type="button"

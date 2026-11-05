@@ -3,11 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { charge, formatMicroPerMtok, sellerEarning } from "../../../lib/price.ts";
+import { charge, formatMicroPerMtok, formatMtok, formatUsd, parseMtok, previewFill } from "../../../lib/price.ts";
 import type {
   Balance,
   Book,
-  BookAsk,
   ModelRow,
   RouterError,
   Trade,
@@ -29,51 +28,11 @@ const WINDOWS = [
 type WindowId = (typeof WINDOWS)[number]["id"];
 
 const PRESETS = [
-  { label: "100K", value: "100000" },
-  { label: "1M", value: "1000000" },
-  { label: "10M", value: "10000000" },
-  { label: "100M", value: "100000000" },
+  { label: "1", value: "1" },
+  { label: "10", value: "10" },
+  { label: "100", value: "100" },
+  { label: "1K", value: "1000" },
 ];
-
-const usd = (micro: bigint) => `$${formatMicroPerMtok(micro)}`;
-
-function tokensText(value: bigint): string {
-  const n = Number(value);
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return `${n}`;
-}
-
-function parseTokens(input: string): bigint {
-  const digits = input.trim().replace(/[,_\s]/g, "");
-  if (!/^\d{1,13}$/.test(digits)) return 0n;
-  return BigInt(digits);
-}
-
-type Preview = { fillable: bigint; cost: bigint; avg: bigint; fee: bigint; net: bigint; partial: boolean };
-
-function previewFill(asks: BookAsk[], wanted: bigint): Preview {
-  let left = wanted;
-  let cost = 0n;
-  let fillable = 0n;
-  for (const ask of asks) {
-    if (left === 0n) break;
-    const price = BigInt(ask.price_micro_per_mtok);
-    const depth = BigInt(ask.tokens_left);
-    const take = depth < left ? depth : left;
-    cost += charge(take, price);
-    fillable += take;
-    left -= take;
-  }
-  return {
-    fillable,
-    cost,
-    avg: fillable === 0n ? 0n : (cost * 1_000_000n) / fillable,
-    fee: cost - sellerEarning(cost, TAKE_BPS),
-    net: sellerEarning(cost, TAKE_BPS),
-    partial: fillable < wanted,
-  };
-}
 
 const clockFormat = new Intl.DateTimeFormat("en-GB", {
   timeZone: "UTC",
@@ -100,7 +59,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
   const [windowId, setWindowId] = useState<WindowId>("all");
   const [scale, setScale] = useState<ScaleMode>("linear");
   const [expanded, setExpanded] = useState(false);
-  const [size, setSize] = useState("1000000");
+  const [size, setSize] = useState("10");
   const [key, setKey] = useState<string | null>(null);
   const [balance, setBalance] = useState<bigint | null>(null);
   const [account, setAccount] = useState<Balance | null>(null);
@@ -149,6 +108,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
         setBook((await res.json()) as Book);
         setBookFailed(null);
       } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") return;
         setBookFailed(error instanceof Error && error.message === "404" ? "unknown" : "down");
       }
     },
@@ -185,7 +145,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
     const controller = new AbortController();
     setBook(null);
     void refreshBook(controller.signal);
-    const id = window.setInterval(() => void refreshBook(), POLL_MS);
+    const id = window.setInterval(() => void refreshBook(controller.signal), POLL_MS);
     return () => {
       controller.abort();
       window.clearInterval(id);
@@ -201,8 +161,8 @@ export function Trade({ initialModel }: { initialModel: string }) {
   const selected = models.find((row) => row.id === model);
   const asks = book?.asks ?? [];
   const venueFills = book?.fills ?? [];
-  const wanted = parseTokens(size);
-  const preview = useMemo(() => previewFill(asks, wanted), [asks, wanted]);
+  const wanted = parseMtok(size);
+  const preview = useMemo(() => previewFill(asks, wanted, TAKE_BPS), [asks, wanted]);
   const points = useMemo(
     () => fillsToPoints(venueFills, WINDOWS.find((w) => w.id === windowId)?.ms ?? null, nowRef.current),
     [venueFills, windowId],
@@ -293,7 +253,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
       label: "under list",
       value:
         bestAsk !== null && listPrice !== null && listPrice > 0n
-          ? `${formatMicroPerMtok(((listPrice - bestAsk) * 10_000n) / listPrice)}%`
+          ? `${formatMicroPerMtok(((listPrice - bestAsk) * 100_000_000n) / listPrice)}%`
           : "—",
       tone: "down",
     },
@@ -302,8 +262,8 @@ export function Trade({ initialModel }: { initialModel: string }) {
       value: delta !== null ? `${delta >= 0 ? "+" : ""}${(delta * 100).toFixed(2)}%` : "—",
       tone: delta === null ? undefined : delta >= 0 ? "up" : "down",
     },
-    { label: "volume", value: `${tokensText(volume)} MTok` },
-    { label: "depth", value: `${tokensText(depth)} MTok` },
+    { label: "volume", value: `${formatMtok(volume)} MTok` },
+    { label: "depth", value: `${formatMtok(depth)} MTok` },
   ];
 
   return (
@@ -353,7 +313,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
         <div className="flex items-center gap-5 text-[14px]">
           {key && balance !== null ? (
             <span className="tabular-nums text-[#1E1E1E]">
-              balance <span className="font-semibold">{usd(balance)}</span>
+              balance <span className="font-semibold">{formatUsd(balance)}</span>
             </span>
           ) : null}
           <Link href="/keys" className="text-[#1743FF] hover:underline">
@@ -505,7 +465,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
                         <span className={`ml-1.5 text-[12px] ${MUTED}`}>USD / MTok</span>
                       </span>
                       <span className="text-[13px] tabular-nums text-[#757575]">
-                        {tokensText(BigInt(ask.tokens_left))} MTok
+                        {formatMtok(BigInt(ask.tokens_left))} MTok
                       </span>
                       <span className={`text-[13px] ${ask.verifiable ? "text-[#1743FF]" : MUTED}`}>
                         {ask.rail}
@@ -520,7 +480,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
                   ) : null}
                 </div>
                 <p className="border-t border-[#D9D9D9] pt-3 text-[13px] text-[#757575]">
-                  no bids — asks supply this venue. book depth: {tokensText(depth)} MTok
+                  no bids — asks supply this venue. book depth: {formatMtok(depth)} MTok
                 </p>
               </>
             ) : (
@@ -534,7 +494,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
                       <span className={`text-[14px] tabular-nums ${up ? "text-[#2EBD85]" : "text-[#F6465D]"}`}>
                         {formatMicroPerMtok(BigInt(fill.price_micro_per_mtok))}
                       </span>
-                      <span className={`text-[13px] tabular-nums ${MUTED}`}>{tokensText(BigInt(fill.tokens))} MTok</span>
+                      <span className={`text-[13px] tabular-nums ${MUTED}`}>{formatMtok(BigInt(fill.tokens))} MTok</span>
                     </div>
                   );
                 })}
@@ -569,7 +529,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
             <div className="mt-4 space-y-4">
               <div className="flex justify-between text-[14px]">
                 <span className={MUTED}>Available to trade</span>
-                <span className="tabular-nums text-[#1E1E1E]">{balance !== null ? usd(balance) : "—"}</span>
+                <span className="tabular-nums text-[#1E1E1E]">{balance !== null ? formatUsd(balance) : "—"}</span>
               </div>
 
               <label className="block">
@@ -579,7 +539,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
                     value={size}
                     onChange={(event) => setSize(event.target.value)}
                     inputMode="numeric"
-                    placeholder="1000000"
+                    placeholder="10"
                     className="h-[34px] w-full bg-transparent text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9]"
                   />
                   <span className={`text-[12px] ${MUTED}`}>MTok</span>
@@ -593,7 +553,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
                   max={100}
                   value={affordPct}
                   disabled={affordable === 0n}
-                  onChange={(event) => setSize(((affordable * BigInt(event.target.value)) / 100n).toString())}
+                  onChange={(event) => setSize(formatMtok((affordable * BigInt(event.target.value)) / 100n))}
                   aria-label="share of what the balance affords"
                   className="h-1 w-full accent-[#1743FF] disabled:opacity-40"
                 />
@@ -626,29 +586,29 @@ export function Trade({ initialModel }: { initialModel: string }) {
                 </div>
                 <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
                   <dt className={MUTED}>Venue fee, 10 percent</dt>
-                  <dd className="tabular-nums text-[#1E1E1E]">{preview.fee > 0n ? usd(preview.fee) : "—"}</dd>
+                  <dd className="tabular-nums text-[#1E1E1E]">{preview.fee > 0n ? formatUsd(preview.fee) : "—"}</dd>
                 </div>
                 <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
                   <dt className={MUTED}>Seller receives</dt>
-                  <dd className="tabular-nums text-[#1E1E1E]">{preview.net > 0n ? usd(preview.net) : "—"}</dd>
+                  <dd className="tabular-nums text-[#1E1E1E]">{preview.net > 0n ? formatUsd(preview.net) : "—"}</dd>
                 </div>
                 <div className="flex justify-between py-3">
                   <dt className="text-[15px] font-semibold text-[#1E1E1E]">You pay</dt>
                   <dd className="text-[16px] font-semibold tabular-nums text-[#1E1E1E]">
-                    {preview.cost > 0n ? usd(preview.cost) : "—"}
+                    {preview.cost > 0n ? formatUsd(preview.cost) : "—"}
                   </dd>
                 </div>
               </dl>
 
               {preview.partial && wanted > 0n && !overCap ? (
                 <p className="text-[13px] leading-5 text-[#F6465D]">
-                  The book covers {tokensText(preview.fillable)} of {tokensText(wanted)} MTok. The rest stays unfilled.
+                  The book covers {formatMtok(preview.fillable)} of {formatMtok(wanted)} MTok. The rest stays unfilled.
                 </p>
               ) : null}
 
               {overCap ? (
                 <p className="text-[13px] leading-5 text-[#F6465D]">
-                  One trade caps at 1,000,000,000 MTok.
+                  One trade caps at {formatMtok(MAX_TOKENS)} MTok.
                 </p>
               ) : null}
 
@@ -675,13 +635,13 @@ export function Trade({ initialModel }: { initialModel: string }) {
                   disabled={pending || wanted === 0n || preview.cost === 0n || overCap}
                   className="h-[34px] w-full bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4] disabled:text-white"
                 >
-                  {pending ? "Buying…" : wanted > 0n ? `Buy ${tokensText(wanted)} MTok` : "Enter a size"}
+                  {pending ? "Buying…" : wanted > 0n ? `Buy ${formatMtok(wanted)} MTok` : "Enter a size"}
                 </button>
               )}
 
               {balance !== null && balance < preview.cost ? (
                 <p className="text-center text-[13px] text-[#F6465D]">
-                  Short by {usd(preview.cost - balance)} — top up the agent.
+                  Short by {formatUsd(preview.cost - balance)} — top up the agent.
                 </p>
               ) : null}
 
@@ -706,11 +666,11 @@ export function Trade({ initialModel }: { initialModel: string }) {
                   <p className="text-[13px] text-[#1E1E1E]">[ account summary ]</p>
                   <dl className="mt-2">
                     {[
-                      ["Balance", usd(BigInt(account.balance_usd_micro))],
-                      ["Reserved", usd(BigInt(account.reserved_usd_micro))],
-                      ["Topped up today", usd(BigInt(account.topped_up_today_usd_micro))],
-                      ["Daily cap", usd(BigInt(account.daily_topup_cap_usd_micro))],
-                      ["Auto top-up", usd(BigInt(account.auto_topup_usd_micro))],
+                      ["Balance", formatUsd(BigInt(account.balance_usd_micro))],
+                      ["Reserved", formatUsd(BigInt(account.reserved_usd_micro))],
+                      ["Topped up today", formatUsd(BigInt(account.topped_up_today_usd_micro))],
+                      ["Daily cap", formatUsd(BigInt(account.daily_topup_cap_usd_micro))],
+                      ["Auto top-up", formatUsd(BigInt(account.auto_topup_usd_micro))],
                     ].map(([label, value]) => (
                       <div key={label} className="flex justify-between py-1 text-[13px]">
                         <dt className={MUTED}>{label}</dt>
@@ -766,8 +726,8 @@ export function Trade({ initialModel }: { initialModel: string }) {
                     {formatMicroPerMtok(BigInt(fill.price_micro_per_mtok))}
                     <span className={`ml-1.5 text-[12px] ${MUTED}`}>USD / MTok</span>
                   </span>
-                  <span className={`text-[13px] tabular-nums ${MUTED}`}>{tokensText(BigInt(fill.tokens))} MTok</span>
-                  <span className="text-[14px] font-semibold tabular-nums text-[#1E1E1E]">{usd(BigInt(fill.charge_usd_micro))}</span>
+                  <span className={`text-[13px] tabular-nums ${MUTED}`}>{formatMtok(BigInt(fill.tokens))} MTok</span>
+                  <span className="text-[14px] font-semibold tabular-nums text-[#1E1E1E]">{formatUsd(BigInt(fill.charge_usd_micro))}</span>
                   <Link href="/receipts" className="text-[14px] text-[#1743FF] hover:underline">
                     its rollup →
                   </Link>
@@ -786,9 +746,9 @@ export function Trade({ initialModel }: { initialModel: string }) {
                   {formatMicroPerMtok(BigInt(fill.price_micro_per_mtok))}
                   <span className={`ml-1.5 text-[12px] ${MUTED}`}>USD / MTok</span>
                 </span>
-                <span className={`text-[13px] tabular-nums ${MUTED}`}>{tokensText(BigInt(fill.tokens))} MTok</span>
+                <span className={`text-[13px] tabular-nums ${MUTED}`}>{formatMtok(BigInt(fill.tokens))} MTok</span>
                 <span className="text-[14px] font-semibold tabular-nums text-[#1E1E1E]">
-                  {usd((BigInt(fill.tokens) * BigInt(fill.price_micro_per_mtok) + 999_999n) / 1_000_000n)}
+                  {formatUsd(charge(BigInt(fill.tokens), BigInt(fill.price_micro_per_mtok)))}
                 </span>
               </div>
             ))

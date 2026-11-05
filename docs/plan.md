@@ -112,11 +112,12 @@ export type Rail = {
 ```
 apps/web/
   app/page.tsx
-  app/trade/page.tsx
-  app/perps/page.tsx
-  app/sell/page.tsx
-  app/keys/page.tsx
-  app/receipts/page.tsx
+  app/(site)/layout.tsx
+  app/(site)/trade/page.tsx
+  app/(site)/perps/page.tsx
+  app/(site)/sell/page.tsx
+  app/(site)/keys/page.tsx
+  app/(site)/receipts/page.tsx
   app/providers.tsx
   app/api/v1/chat/completions/route.ts
   app/api/v1/topup/route.ts
