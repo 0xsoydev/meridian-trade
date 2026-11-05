@@ -115,6 +115,13 @@ Click **Deny this request** instead to record an explicit refusal: the page call
 
 The first approval links the human to the agent's router key. The second raises the daily cap. A cap raise on a key with no linked human answers 403 with a `link_human` approval, so the client links first rather than waiting out a `raise_cap` that can never succeed.
 
+To test without a World App, set `NEXT_PUBLIC_WORLD_BYPASS=true` in both env copies and restart `pnpm dev`:
+
+- Seller verification and approvals then skip the World proof. Each wallet counts as its own test human for `/sell`, and each key has one test human for its approvals.
+- Every bypassed button says "test bypass".
+- Production builds ignore the flag.
+- Set it back to `false` before recording the demo.
+
 ## 6. Troubleshooting
 
 | Symptom | Cause | Fix |

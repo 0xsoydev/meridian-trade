@@ -1,5 +1,6 @@
 import { hashSignal } from "@worldcoin/idkit/hashing";
 import { signRequest } from "@worldcoin/idkit-core/signing";
+import { keccak256, toBytes } from "viem";
 import { z } from "zod";
 
 const requestSchema = z
@@ -61,7 +62,16 @@ export function rpSignature(action: string): RpSignature {
   return { sig, nonce, created_at: createdAt, expires_at: expiresAt };
 }
 
+export function worldBypassed(): boolean {
+  return process.env.NEXT_PUBLIC_WORLD_BYPASS === "true" && process.env.NODE_ENV !== "production";
+}
+
+export function testNullifier(seed: string): string {
+  return BigInt(keccak256(toBytes(`world-bypass:${seed}`))).toString();
+}
+
 export async function verifyWorld(payload: unknown, options: WorldOptions = {}): Promise<WorldCheck> {
+  if (worldBypassed()) return { worldNullifier: testNullifier(options.signal ?? "") };
   const rpId = process.env.WORLD_RP_ID;
   if (!rpId) return { error: "world verification is not configured" };
 

@@ -3,6 +3,7 @@ import { once } from "node:events";
 import { createServer } from "node:http";
 import { after, before, test } from "node:test";
 import { eq, inArray } from "drizzle-orm";
+import { z } from "zod";
 import { GET as getApproval } from "../app/api/v1/approvals/[id]/route.ts";
 import { POST as denyApprovalRoute } from "../app/api/v1/approvals/[id]/deny/route.ts";
 import { POST as verifyApproval } from "../app/api/v1/approvals/[id]/verify/route.ts";
@@ -133,6 +134,25 @@ test("the linked human can approve a cap raise", { skip }, async () => {
 
   const polled = await getCall(key.raw, body.approval.approval_id);
   assert.deepEqual((await polled.json()) as ApprovalStatus, { status: "approved" });
+});
+
+test("with the World bypass on, a key links and raises its cap without a World proof", { skip }, async () => {
+  process.env.NEXT_PUBLIC_WORLD_BYPASS = "true";
+  try {
+    const key = await newKey();
+    await link(key, "unused");
+
+    const denied = await patchCall(key.raw, "10000000");
+    assert.equal(denied.status, 403);
+    const body = z.object({ approval: z.object({ approval_id: z.string() }) }).parse(await denied.json());
+
+    const verified = await verifyCall(key.raw, body.approval.approval_id, {});
+    assert.equal(verified.status, 200);
+    const [row] = await db().select().from(keys).where(eq(keys.id, key.id)).limit(1);
+    assert.equal(row?.dailyTopupCapUsdMicro, 10_000_000n);
+  } finally {
+    process.env.NEXT_PUBLIC_WORLD_BYPASS = "false";
+  }
 });
 
 test("a cap raise without a linked human starts a link approval, not a raise", { skip }, async () => {

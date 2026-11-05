@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { z } from "zod";
 import { POST as sellerRpSignature } from "../app/api/sellers/rp-signature/route.ts";
-import { nullifierToDecimal, signalHash, worldEnvironment } from "./world.ts";
+import { nullifierToDecimal, signalHash, verifyWorld, worldEnvironment } from "./world.ts";
 
 test("nullifierToDecimal accepts hex and decimal", () => {
   assert.equal(nullifierToDecimal("0x01"), "1");
@@ -32,6 +32,28 @@ test("worldEnvironment defaults to production", () => {
   assert.equal(worldEnvironment(), "production");
   if (previous === undefined) delete process.env.WORLD_ENV;
   else process.env.WORLD_ENV = previous;
+});
+
+test("the World bypass answers a stable test nullifier and never runs in production", async () => {
+  const bypass = process.env.NEXT_PUBLIC_WORLD_BYPASS;
+  const nodeEnv = process.env.NODE_ENV;
+  process.env.NEXT_PUBLIC_WORLD_BYPASS = "true";
+  try {
+    const first = await verifyWorld({}, { action: "seller", signal: "0xabc" });
+    assert.ok("worldNullifier" in first);
+    assert.deepEqual(await verifyWorld({}, { action: "seller", signal: "0xabc" }), first);
+    assert.notDeepEqual(await verifyWorld({}, { action: "seller", signal: "0xabd" }), first);
+    process.env.NEXT_PUBLIC_WORLD_BYPASS = "TRUE";
+    assert.ok("error" in (await verifyWorld({}, { action: "seller", signal: "0xabc" })));
+    process.env.NEXT_PUBLIC_WORLD_BYPASS = "true";
+    Object.assign(process.env, { NODE_ENV: "production" });
+    assert.ok("error" in (await verifyWorld({}, { action: "seller", signal: "0xabc" })));
+  } finally {
+    if (bypass === undefined) delete process.env.NEXT_PUBLIC_WORLD_BYPASS;
+    else process.env.NEXT_PUBLIC_WORLD_BYPASS = bypass;
+    if (nodeEnv === undefined) Reflect.deleteProperty(process.env, "NODE_ENV");
+    else Object.assign(process.env, { NODE_ENV: nodeEnv });
+  }
 });
 
 test("the seller rp-signature carries what IDKit needs", async () => {
