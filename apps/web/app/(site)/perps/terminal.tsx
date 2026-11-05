@@ -532,3 +532,278 @@ export function Perps({ initialModel }: { initialModel: string }) {
             </p>
           </div>
         </div>
+
+        <div className="border border-[#CECECE] bg-[#EBEBEB] p-4">
+          <div className="flex border border-[#CECECE] bg-white">
+            <button
+              type="button"
+              onClick={() => setSide("long")}
+              aria-pressed={side === "long"}
+              className={`w-1/2 py-2 text-[14px] font-semibold ${
+                side === "long" ? "bg-black text-white" : "text-[#757575] hover:text-[#1E1E1E]"
+              }`}
+            >
+              Long
+            </button>
+            <button
+              type="button"
+              onClick={() => setSide("short")}
+              aria-pressed={side === "short"}
+              className={`w-1/2 border-l border-[#CECECE] py-2 text-[14px] font-semibold ${
+                side === "short" ? "bg-black text-white" : "text-[#757575] hover:text-[#1E1E1E]"
+              }`}
+            >
+              Short
+            </button>
+          </div>
+
+          <div className="mt-3 flex items-center gap-5 text-[14px]">
+            {(["market", "limit"] as const).map((item) => (
+              <button
+                key={item}
+                type="button"
+                onClick={() => setOrderType(item)}
+                aria-pressed={orderType === item}
+                className={`${
+                  orderType === item
+                    ? "text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
+                    : "text-[#757575] hover:text-[#1E1E1E]"
+                }`}
+              >
+                {item === "market" ? "Market" : "Limit"}
+              </button>
+            ))}
+            <span className="ml-auto text-[13px] text-[#C9C9C9]">Pro</span>
+          </div>
+
+          <div className="mt-4 space-y-4">
+            <div className="flex justify-between text-[14px]">
+              <span className={MUTED}>Available to trade</span>
+              <span className="tabular-nums text-[#1E1E1E]">{balance !== null ? usd(balance) : "—"}</span>
+            </div>
+            <div className="flex justify-between text-[14px]">
+              <span className={MUTED}>Current position</span>
+              <span className="tabular-nums text-[#1E1E1E]">0.00 MTok</span>
+            </div>
+
+            <label className="block">
+              <span className={`mb-1 block text-[13px] ${MUTED}`}>Size, in MTokens</span>
+              <span className="flex items-center gap-2 border border-[#CECECE] bg-white px-2.5 focus-within:border-[#1743FF]">
+                <input
+                  value={size}
+                  onChange={(event) => setSize(event.target.value)}
+                  inputMode="numeric"
+                  placeholder="1000000"
+                  className="h-[34px] w-full bg-transparent text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9]"
+                />
+                <span className={`text-[12px] ${MUTED}`}>MTok</span>
+              </span>
+            </label>
+
+            <div className="flex items-center gap-3">
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={sliderPct}
+                onChange={(event) => setSize(((BigInt(event.target.value) * usableDepth) / 100n).toString())}
+                aria-label="size as a percent of displayed depth"
+                className="h-1 w-full accent-[#1743FF]"
+              />
+              <span className={`w-14 text-right text-[12px] leading-4 tabular-nums ${MUTED}`}>
+                {sliderPct}% of depth
+              </span>
+            </div>
+
+            <div className="flex gap-5">
+              {PRESETS.map((preset) => (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onClick={() => setSize(preset.value)}
+                  className={`text-[14px] ${
+                    size === preset.value
+                      ? "text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
+                      : "text-[#757575] hover:text-[#1E1E1E]"
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+
+            <div className={`flex items-center gap-5 text-[13px] ${MUTED}`} title="live with PerpMarket">
+              <span>☐ Reduce only</span>
+              <span>☐ Take profit / stop loss</span>
+            </div>
+
+            <dl className="border-t border-[#D9D9D9]">
+              <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
+                <dt className={MUTED}>Liquidation price, est</dt>
+                <dd className="tabular-nums text-[#1E1E1E]">{liqPreview > 0n ? formatMicroPerMtok(liqPreview) : "—"}</dd>
+              </div>
+              <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
+                <dt className={MUTED}>Order value</dt>
+                <dd className="tabular-nums text-[#1E1E1E]">{notional > 0n ? usd(notional) : "—"}</dd>
+              </div>
+              <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
+                <dt className={MUTED}>Margin required · {MAX_LEVERAGE.toString()}x</dt>
+                <dd className="tabular-nums text-[#1E1E1E]">{margin > 0n ? usd(margin) : "—"}</dd>
+              </div>
+              <div className="flex justify-between py-3">
+                <dt className="text-[15px] font-semibold text-[#1E1E1E]">Venue fee</dt>
+                <dd className="text-[15px] font-semibold tabular-nums text-[#1E1E1E]">10 bps of notional</dd>
+              </div>
+            </dl>
+
+            {key === null ? (
+              <div className="border border-[#CECECE] bg-white px-3 py-3">
+                <p className="text-[14px] text-[#1E1E1E]">Trading needs a router key.</p>
+                <p className="mt-1 text-[13px] leading-5 text-[#757575]">
+                  Paste your agent&apos;s key once. It stays in this browser, never in a URL.
+                </p>
+              </div>
+            ) : null}
+
+            {key === null ? (
+              <Link
+                href="/keys"
+                className="flex h-[34px] items-center justify-center bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E]"
+              >
+                Connect your agent
+              </Link>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  disabled
+                  title="PerpMarket modify lands with the keeper — until then buy at the ask on /trade"
+                  className="h-[34px] w-full bg-black text-[14px] font-semibold text-white disabled:bg-[#D4D4D4] disabled:text-white"
+                >
+                  {side === "long" ? "Long" : "Short"} {wanted > 0n ? `${tokensText(wanted)} MTok` : ""}
+                </button>
+                <p className={`text-center text-[13px] ${MUTED}`}>
+                  orders settle after the keeper posts the index
+                </p>
+              </>
+            )}
+
+            <div className="flex gap-2">
+              <Link
+                href="/keys"
+                className="flex-1 border border-[#CECECE] bg-white py-1.5 text-center text-[13px] text-[#1E1E1E] hover:border-[#1743FF]"
+              >
+                Deposit
+              </Link>
+              <span className={`flex-1 cursor-not-allowed border border-[#CECECE] bg-white py-1.5 text-center text-[13px] ${MUTED}`}>
+                Withdraw
+              </span>
+            </div>
+
+            <div className="border-t border-[#D9D9D9] pt-4">
+              <p className="text-[13px] text-[#1E1E1E]">[ account summary ]</p>
+              <dl className="mt-2">
+                {[
+                  ["Portfolio value", balance !== null ? usd(balance) : "$0.00"],
+                  ["Unrealized PNL", "—"],
+                  ["Account ratio", "—"],
+                ].map(([label, value]) => (
+                  <div key={label} className="flex justify-between py-1 text-[13px]">
+                    <dt className={MUTED}>{label}</dt>
+                    <dd className="tabular-nums text-[#1E1E1E]">{value}</dd>
+                  </div>
+                ))}
+              </dl>
+              <p className={`mt-2 text-[13px] leading-5 ${MUTED}`}>
+                longs cap tomorrow&apos;s compute cost · shorts lock revenue on expiring credits — settled
+                against the house vault at {MAX_LEVERAGE.toString()}x
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-10 border-t border-[#CECECE] pt-8">
+        <p className="text-[13px] text-[#1E1E1E]">[ positions ]</p>
+        <h2 className="mt-3 font-serif text-[32px] leading-[1.1] text-[#1E1E1E]">
+          Positions, fills, funding.
+        </h2>
+
+        <div className="mt-4 flex items-center gap-5">
+          {STRIP_TABS.map((item) => (
+            <button
+              key={item}
+              type="button"
+              onClick={() => setStripTab(item)}
+              aria-pressed={stripTab === item}
+              className={`text-[14px] ${
+                stripTab === item
+                  ? "text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
+                  : "text-[#757575] hover:text-[#1E1E1E]"
+              }`}
+            >
+              {item}
+            </button>
+          ))}
+          <span className={`text-[13px] ${MUTED}`}>
+            {stripTab === "Positions"
+              ? "nothing open"
+              : stripTab === "Fills"
+                ? `${book?.fills.length ?? 0} on ${model}`
+                : "nothing accrued"}
+          </span>
+        </div>
+
+        <div className="mt-4">
+          {stripTab === "Positions" ? (
+            <>
+              <div className={`hidden border-y border-[#CECECE] py-2 text-[12px] md:grid md:grid-cols-9 ${MUTED}`}>
+                {["Market", "Size", "Position value", "Entry price", "Mark price", "PNL / ROE %", "Liq. price", "Margin", "Funding"].map(
+                  (head, i) => (
+                    <span key={head} className={i === 0 ? "pr-2" : "text-right"}>
+                      {head}
+                    </span>
+                  ),
+                )}
+              </div>
+              <p className="border-t border-[#CECECE] py-5 text-[14px] text-[#757575] md:border-t-0">
+                No open positions yet.
+              </p>
+            </>
+          ) : null}
+
+          {stripTab === "Fills" ? (
+            (book?.fills.length ?? 0) === 0 ? (
+              <p className="border-t border-[#CECECE] py-5 text-[14px] text-[#757575]">
+                The venue has not printed a fill for {model} yet.
+              </p>
+            ) : (
+              book?.fills.map((fill) => (
+                <div
+                  key={`${fill.listing_id}-${fill.created_at}`}
+                  className="flex flex-wrap items-baseline justify-between gap-4 border-t border-[#CECECE] py-4"
+                >
+                  <span className={`text-[13px] tabular-nums ${MUTED}`}>{clockFormat.format(new Date(fill.created_at))} UTC</span>
+                  <span className="text-[14px] tabular-nums text-[#1E1E1E]">
+                    {formatMicroPerMtok(BigInt(fill.price_micro_per_mtok))}
+                    <span className={`ml-1.5 text-[12px] ${MUTED}`}>USD / MTok</span>
+                  </span>
+                  <span className={`text-[13px] tabular-nums ${MUTED}`}>{tokensText(BigInt(fill.tokens))} MTok</span>
+                </div>
+              ))
+            )
+          ) : null}
+
+          {stripTab === "Funding History" ? (
+            <p className="border-t border-[#CECECE] py-5 text-[14px] text-[#757575]">
+              No funding payments yet — accrual starts with the first PerpMarket modify.
+            </p>
+          ) : null}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+type Stat = { label: string; value: string; tone?: "up" | "down" | undefined };
