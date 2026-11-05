@@ -3,11 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { charge, formatMicroPerMtok, sellerEarning } from "../../../lib/price.ts";
+import { formatMicroPerMtok, previewFill } from "../../../lib/price.ts";
 import type {
   Balance,
   Book,
-  BookAsk,
   ModelRow,
   RouterError,
   Trade,
@@ -48,31 +47,6 @@ function parseTokens(input: string): bigint {
   const digits = input.trim().replace(/[,_\s]/g, "");
   if (!/^\d{1,13}$/.test(digits)) return 0n;
   return BigInt(digits);
-}
-
-type Preview = { fillable: bigint; cost: bigint; avg: bigint; fee: bigint; net: bigint; partial: boolean };
-
-function previewFill(asks: BookAsk[], wanted: bigint): Preview {
-  let left = wanted;
-  let cost = 0n;
-  let fillable = 0n;
-  for (const ask of asks) {
-    if (left === 0n) break;
-    const price = BigInt(ask.price_micro_per_mtok);
-    const depth = BigInt(ask.tokens_left);
-    const take = depth < left ? depth : left;
-    cost += charge(take, price);
-    fillable += take;
-    left -= take;
-  }
-  return {
-    fillable,
-    cost,
-    avg: fillable === 0n ? 0n : (cost * 1_000_000n) / fillable,
-    fee: cost - sellerEarning(cost, TAKE_BPS),
-    net: sellerEarning(cost, TAKE_BPS),
-    partial: fillable < wanted,
-  };
 }
 
 const clockFormat = new Intl.DateTimeFormat("en-GB", {
@@ -202,7 +176,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
   const asks = book?.asks ?? [];
   const venueFills = book?.fills ?? [];
   const wanted = parseTokens(size);
-  const preview = useMemo(() => previewFill(asks, wanted), [asks, wanted]);
+  const preview = useMemo(() => previewFill(asks, wanted, TAKE_BPS), [asks, wanted]);
   const points = useMemo(
     () => fillsToPoints(venueFills, WINDOWS.find((w) => w.id === windowId)?.ms ?? null, nowRef.current),
     [venueFills, windowId],

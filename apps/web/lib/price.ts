@@ -1,4 +1,4 @@
-import type { Micro, MicroPerMTok, Pricing, Rail, RailId } from "./types";
+import type { BookAsk, Micro, MicroPerMTok, Pricing, Rail, RailId } from "./types";
 
 const MICRO_PER_MTOK = 1_000_000n;
 const PRICE_SCALE = 12;
@@ -66,6 +66,38 @@ export function charge(tokens: bigint, ask: MicroPerMTok): Micro {
 
 export function sellerEarning(chargeMicro: Micro, takeBps: bigint): Micro {
   return (chargeMicro * (10_000n - takeBps)) / 10_000n;
+}
+
+export type FillPreview = {
+  fillable: bigint;
+  cost: bigint;
+  avg: bigint;
+  fee: bigint;
+  net: bigint;
+  partial: boolean;
+};
+
+export function previewFill(asks: ReadonlyArray<BookAsk>, wanted: bigint, takeBps: bigint): FillPreview {
+  let left = wanted;
+  let cost = 0n;
+  let fillable = 0n;
+  for (const ask of asks) {
+    if (left === 0n) break;
+    const price = BigInt(ask.price_micro_per_mtok);
+    const depth = BigInt(ask.tokens_left);
+    const take = depth < left ? depth : left;
+    cost += charge(take, price);
+    fillable += take;
+    left -= take;
+  }
+  return {
+    fillable,
+    cost,
+    avg: fillable === 0n ? 0n : (cost * 1_000_000n) / fillable,
+    fee: cost - sellerEarning(cost, takeBps),
+    net: sellerEarning(cost, takeBps),
+    partial: fillable < wanted,
+  };
 }
 
 export function railCost(p: Pricing, promptTokens: bigint, completionTokens: bigint): Micro {

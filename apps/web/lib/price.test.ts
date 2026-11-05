@@ -9,11 +9,12 @@ import {
   mixedTokens,
   parseUsd,
   parseUsdPerToken,
+  previewFill,
   referenceFor,
   reservation,
   sellerEarning,
 } from "./price.ts";
-import type { Pricing, Rail } from "./types.ts";
+import type { BookAsk, Pricing, Rail } from "./types.ts";
 
 const glm: Pricing = { prompt: 1_400_000n, completion: 4_400_000n };
 
@@ -114,4 +115,32 @@ test("reservation covers the actual charge for a fixed sample", () => {
   const actualTokens = mixedTokens(estimatePromptTokens(3000), 400n);
   assert.ok(hold.tokens >= actualTokens);
   assert.equal(hold.micro, charge(hold.tokens, 1_500_000n));
+});
+
+const previewAsks: BookAsk[] = [
+  { listing_id: "cheap", rail: "0g", price_micro_per_mtok: "1400000", tokens_left: "500", verifiable: false },
+  { listing_id: "dear", rail: "0g", price_micro_per_mtok: "1500000", tokens_left: "1000", verifiable: false },
+];
+
+test("the fill preview walks the sorted book and splits the fee", () => {
+  const inside = previewFill(previewAsks, 1200n, 1000n);
+  assert.equal(inside.fillable, 1200n);
+  assert.equal(inside.cost, 1750n);
+  assert.equal(inside.avg, 1_458_333n);
+  assert.equal(inside.fee, 175n);
+  assert.equal(inside.net, 1575n);
+  assert.equal(inside.partial, false);
+
+  const beyond = previewFill(previewAsks, 2000n, 1000n);
+  assert.equal(beyond.fillable, 1500n);
+  assert.equal(beyond.cost, 2200n);
+  assert.equal(beyond.partial, true);
+});
+
+test("a 1M MTok listing at $1.40 produces the expected notional and seller net", () => {
+  const price = parseUsd("1.40");
+  assert.ok(price !== null);
+  const notional = charge(1_000_000n * 1_000_000n, price);
+  assert.equal(notional, 1_400_000_000_000n);
+  assert.equal(sellerEarning(notional, 1000n), 1_260_000_000_000n);
 });
