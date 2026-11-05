@@ -100,6 +100,8 @@ pnpm --filter demo-agent start
 
 The agent prints a HashScan link for the top-up, then two approval URLs.
 
+`pnpm --filter web e2e` runs the human money path against the dev server: wallet signup, a 0.10 USDC memo deposit from the agent account, the replay refused, a spot buy, one inference paid from prepaid tokens.
+
 ## 5. Approvals
 
 Approval is a World ID QR scan, not a code typed anywhere. The six-character code in the log is only a reference.
