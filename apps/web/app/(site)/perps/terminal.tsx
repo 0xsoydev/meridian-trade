@@ -237,3 +237,88 @@ export function Perps({ initialModel }: { initialModel: string }) {
     { label: "open interest", value: "—" },
     { label: "funding / countdown", value: "—" },
   ];
+
+  return (
+    <section>
+      <h1 className="font-serif text-[50px] leading-[1.05] text-[#1E1E1E]">
+        Pressure what <span className="text-[#A3A3A3]">expires</span>
+      </h1>
+      <p className="mt-4 max-w-[425px] text-[14px] leading-[18px] text-black">
+        Long the compute you will need, or short the credits you will not. Positions settle against
+        the house vault at five times, funded off the same venue fills the spot book prints.
+      </p>
+
+      <div className="mt-7 flex flex-wrap items-center justify-between gap-4">
+        <details ref={picker} className="relative">
+          <summary className="flex cursor-pointer list-none items-baseline gap-3 [&::-webkit-details-marker]:hidden">
+            <span>
+              <span className="block text-[15px] font-semibold text-[#1E1E1E]">{model} / USDC</span>
+              <span className={`block text-[11px] ${MUTED}`}>
+                perp · index · {selected?.verifiability ? "TEE · " : ""}
+                {selected ? `${selected.rails.length} rail${selected.rails.length === 1 ? "" : "s"}` : "loading"}
+              </span>
+            </span>
+            <span className="border border-[#CECECE] bg-white px-1.5 py-0.5 text-[11px] tabular-nums text-[#1743FF]">
+              {MAX_LEVERAGE.toString()}x
+            </span>
+            <span aria-hidden className="text-[#757575]">⌄</span>
+          </summary>
+          <ul className="absolute left-0 top-full z-20 mt-1 max-h-80 w-72 overflow-auto border border-[#CECECE] bg-white py-1">
+            {models.map((row) => (
+              <li key={row.id}>
+                <button
+                  type="button"
+                  onClick={() => pick(row.id)}
+                  className={`flex w-full items-center justify-between gap-4 px-3 py-2 text-left text-[14px] hover:bg-[#F5F5F5] ${
+                    row.id === model ? "text-[#1E1E1E]" : "text-[#757575]"
+                  }`}
+                >
+                  <span>{row.id}</span>
+                  <span className="tabular-nums text-[13px] text-[#757575]">
+                    {row.best_ask_micro_per_mtok ? `ask ${formatMicroPerMtok(BigInt(row.best_ask_micro_per_mtok))}` : "no asks"}
+                  </span>
+                </button>
+              </li>
+            ))}
+            {models.length === 0 ? (
+              <li className="px-3 py-2 text-[13px] text-[#757575]">loading models…</li>
+            ) : null}
+          </ul>
+        </details>
+
+        <div className="flex items-center gap-5 text-[14px]">
+          {key && balance !== null ? (
+            <span className="tabular-nums text-[#1E1E1E]">
+              balance <span className="font-semibold">{usd(balance)}</span>
+            </span>
+          ) : null}
+          <Link href="/keys" className="text-[#1743FF] hover:underline">
+            {key ? "manage keys" : "connect your agent"}
+          </Link>
+        </div>
+      </div>
+
+      <div className="mt-6 border-t border-[#CECECE] pt-5">
+        <p className="text-[13px] text-[#1E1E1E]">[ live perp book ]</p>
+        <dl className="mt-3 flex flex-wrap gap-x-[26px] gap-y-3">
+          {stats.map((stat) => (
+            <div key={stat.label}>
+              <dt className={`text-[13px] ${MUTED}`}>{stat.label}</dt>
+              <dd
+                className={`text-[13px] tabular-nums ${
+                  stat.tone === "up" ? "text-[#2EBD85]" : stat.tone === "down" ? "text-[#F6465D]" : "text-[#1E1E1E]"
+                }`}
+              >
+                {stat.value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+        {bookFailed ? (
+          <p className="mt-2 text-[13px] text-[#F6465D]">
+            {bookFailed === "unknown"
+              ? `the venue does not know ${model} — pick another model above`
+              : "the book feed is unreachable; retrying every 15 seconds"}
+          </p>
+        ) : null}
+      </div>
