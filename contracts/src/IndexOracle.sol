@@ -12,7 +12,7 @@ contract IndexOracle is Ownable {
     }
 
     address public keeper;
-    mapping(bytes32 => Price) private prices;
+    mapping(bytes32 => Price) public latest;
 
     event IndexPosted(bytes32 indexed market, uint256 priceMicroPerMTok, uint64 hcsSeqFrom, uint64 hcsSeqTo);
 
@@ -31,17 +31,12 @@ contract IndexOracle is Ownable {
     function post(bytes32 market, uint256 priceMicroPerMTok, uint64 hcsSeqFrom, uint64 hcsSeqTo) external {
         if (msg.sender != keeper) revert NotKeeper();
         if (priceMicroPerMTok == 0) revert ZeroPrice();
-        uint256 last = prices[market].priceMicroPerMTok;
+        uint256 last = latest[market].priceMicroPerMTok;
         if (last != 0) {
             uint256 move = priceMicroPerMTok > last ? priceMicroPerMTok - last : last - priceMicroPerMTok;
             if (move * 10_000 > last * MAX_MOVE_BPS) revert PriceMoveTooLarge();
         }
-        prices[market] = Price(priceMicroPerMTok, uint64(block.timestamp));
+        latest[market] = Price(priceMicroPerMTok, uint64(block.timestamp));
         emit IndexPosted(market, priceMicroPerMTok, hcsSeqFrom, hcsSeqTo);
-    }
-
-    function latest(bytes32 market) external view returns (uint256 priceMicroPerMTok, uint64 updatedAt) {
-        Price memory p = prices[market];
-        return (p.priceMicroPerMTok, p.updatedAt);
     }
 }

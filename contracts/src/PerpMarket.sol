@@ -111,10 +111,8 @@ contract PerpMarket is Ownable, ReentrancyGuardTransient {
         uint256 fee = Math.ceilDiv(SignedMath.abs(sizeDelta) * price * FEE_BPS, 1e6 * 10_000);
         margin = margin - int256(fee) + marginDelta;
 
-        if (oldSize > 0) m.longOi -= uint256(oldSize);
-        else m.shortOi -= uint256(-oldSize);
-        if (newSize > 0) m.longOi += uint256(newSize);
-        else m.shortOi += uint256(-newSize);
+        if (oldSize > 0 || newSize > 0) m.longOi = m.longOi + newAbs - oldAbs;
+        else m.shortOi = m.shortOi + newAbs - oldAbs;
         if (newAbs > oldAbs && (newSize > 0 ? m.longOi : m.shortOi) > m.maxOiTokens) revert OiCapExceeded();
 
         uint256 payout;

@@ -2,7 +2,6 @@
 pragma solidity 0.8.30;
 
 import {Test} from "forge-std/Test.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {MockUSDC} from "../src/MockUSDC.sol";
 import {IndexOracle} from "../src/IndexOracle.sol";
 import {PerpMarket} from "../src/PerpMarket.sol";
@@ -31,7 +30,7 @@ contract PerpMarketTest is Test {
     }
 
     function deployMarket(uint256 vaultAmount) internal returns (PerpMarket market) {
-        market = new PerpMarket(IERC20(address(usdc)), oracle, treasury);
+        market = new PerpMarket(usdc, oracle, treasury);
         market.listMarket(M, 5, 1_000e6, FUNDING_K);
         usdc.approve(address(market), vaultAmount);
         if (vaultAmount > 0) market.fundVault(vaultAmount);
@@ -200,7 +199,7 @@ contract PerpMarketTest is Test {
     }
 
     function test_UnpostedMarketIsStale() public {
-        bytes32 other = keccak256(bytes("deepseek-v4-flash"));
+        bytes32 other = keccak256(bytes("deepseek-v4.1-flash"));
         pm.listMarket(other, 5, 1_000e6, FUNDING_K);
         vm.prank(alice);
         vm.expectRevert(PerpMarket.StalePrice.selector);
@@ -267,7 +266,7 @@ contract PerpMarketTest is Test {
     }
 
     function test_OracleMoveGuardAndFirstPost() public {
-        bytes32 fresh = keccak256(bytes("0gm-1.0-35b-a3b"));
+        bytes32 fresh = keccak256(bytes("claude-opus-5.5"));
         post(fresh, 123_456_789);
         post(M, 5_500_000);
         vm.prank(keeper);

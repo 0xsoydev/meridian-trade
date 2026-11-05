@@ -2,7 +2,6 @@
 pragma solidity 0.8.30;
 
 import {Script, console} from "forge-std/Script.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {MockUSDC} from "../src/MockUSDC.sol";
 import {IndexOracle} from "../src/IndexOracle.sol";
 import {PerpMarket} from "../src/PerpMarket.sol";
@@ -19,10 +18,9 @@ contract Deploy is Script {
         vm.startBroadcast(key);
         MockUSDC usdc = new MockUSDC(VAULT);
         IndexOracle oracle = new IndexOracle(keeper);
-        PerpMarket market = new PerpMarket(IERC20(address(usdc)), oracle, keeper);
+        PerpMarket market = new PerpMarket(usdc, oracle, keeper);
         market.listMarket(keccak256(bytes("glm-5.3")), MAX_LEVERAGE, MAX_OI_TOKENS, FUNDING_K);
-        market.listMarket(keccak256(bytes("deepseek-v4-flash")), MAX_LEVERAGE, MAX_OI_TOKENS, FUNDING_K);
-        market.listMarket(keccak256(bytes("0gm-1.0-35b-a3b")), MAX_LEVERAGE, MAX_OI_TOKENS, FUNDING_K);
+        market.listMarket(keccak256(bytes("deepseek-v4.1-flash")), MAX_LEVERAGE, MAX_OI_TOKENS, FUNDING_K);
         usdc.approve(address(market), VAULT);
         market.fundVault(VAULT);
         vm.stopBroadcast();
