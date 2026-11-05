@@ -1,5 +1,5 @@
 import { parseUsdPerToken, referenceFor } from "./price.ts";
-import type { Pricing, Rail, RailId, RailProtocol } from "./types";
+import type { Pricing, Rail, RailId, RailModel, RailProtocol, Verifiability } from "./types";
 
 type ModelSpec = { canonical: string; upstream: string };
 
@@ -10,13 +10,14 @@ type RailConfig = {
   auth: "key" | "oauth";
   extraHeaders: Record<string, string>;
   resetPeriod: "daily" | "monthly" | null;
-  models: ReadonlyArray<ModelSpec>;
+  models: ReadonlyArray<ModelSpec> | "all";
 };
 
 type RawModel = {
   id: string;
   pricing_usd?: { prompt: string; completion: string };
   pricing?: { prompt: string; completion: string };
+  verifiability?: unknown;
 };
 
 const CACHE_MS = 300_000;
@@ -61,12 +62,7 @@ function configs(): RailConfig[] {
       auth: "key",
       extraHeaders: {},
       resetPeriod: null,
-      models: [
-        { canonical: "glm-5.3", upstream: "glm-5.3" },
-        { canonical: "deepseek-v4.1-flash", upstream: "deepseek-v4.1-flash" },
-        { canonical: "claude-opus-5.5", upstream: "claude-opus-5.5" },
-        { canonical: "gpt-6-sol", upstream: "gpt-6-sol" },
-      ],
+      models: "all",
     });
   }
   return list;
@@ -81,18 +77,30 @@ function pricingOf(raw: RawModel): Pricing | null {
   return { prompt, completion };
 }
 
+function verifiabilityOf(raw: RawModel): Verifiability {
+  return raw.verifiability === "TeeML" || raw.verifiability === "TeeTLS" ? raw.verifiability : null;
+}
+
 async function loadRail(config: RailConfig): Promise<Rail | null> {
   const response = await fetch(`${config.baseUrl}/models`, { signal: AbortSignal.timeout(8000) });
   if (!response.ok) return null;
   const body = (await response.json()) as { data?: RawModel[] };
-  const byId = new Map((body.data ?? []).map((entry) => [entry.id, entry]));
-  const models = [];
-  for (const spec of config.models) {
+  const data = body.data ?? [];
+  const byId = new Map(data.map((entry) => [entry.id, entry]));
+  const specs = config.models === "all" ? data.map((entry) => ({ canonical: entry.id, upstream: entry.id })) : config.models;
+  const models: RailModel[] = [];
+  for (const spec of specs) {
     const raw = byId.get(spec.upstream);
     if (!raw) continue;
     const pricing = pricingOf(raw);
     if (!pricing) continue;
-    models.push({ canonical: spec.canonical, upstream: spec.upstream, listPrompt: pricing.prompt, listCompletion: pricing.completion });
+    models.push({
+      canonical: spec.canonical,
+      upstream: spec.upstream,
+      listPrompt: pricing.prompt,
+      listCompletion: pricing.completion,
+      verifiability: verifiabilityOf(raw),
+    });
   }
   if (models.length === 0) return null;
   return { ...config, models, enabled: true };
@@ -108,10 +116,4 @@ export async function catalog(): Promise<Rail[]> {
 
 export async function reference(model: string): Promise<{ railId: RailId; pricing: Pricing } | null> {
   return referenceFor(model, await catalog());
-}
-
-export async function railPricing(railId: RailId, model: string): Promise<Pricing | null> {
-  const rail = (await catalog()).find((entry) => entry.id === railId);
-  const match = rail?.models.find((entry) => entry.canonical === model);
-  return match ? { prompt: match.listPrompt, completion: match.listCompletion } : null;
 }

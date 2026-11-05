@@ -1,4 +1,4 @@
-import { createServer } from "node:http";
+import { createServer, type ServerResponse } from "node:http";
 
 const port = Number(process.env.STUB_PORT ?? "4010");
 const pricing = { prompt: "0.0000014", completion: "0.0000044" };
@@ -12,16 +12,30 @@ const models = [
   "anthropic/claude-opus-5.5",
   "openai/gpt-6-sol",
 ];
+const usage = { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 };
+
+function wantsStream(raw: string): boolean {
+  const parsed: unknown = raw ? JSON.parse(raw) : null;
+  return typeof parsed === "object" && parsed !== null && "stream" in parsed && parsed.stream === true;
+}
+
+async function stream(response: ServerResponse, id: string, slow: boolean): Promise<void> {
+  response.writeHead(200, { "content-type": "text/event-stream" });
+  const words = slow ? ["one ", "two ", "three ", "four ", "five ", "six "] : ["po", "ng"];
+  for (const word of words) {
+    if (response.destroyed) return;
+    response.write(`data: ${JSON.stringify({ id, object: "chat.completion.chunk", choices: [{ index: 0, delta: { content: word } }] })}\n\n`);
+    if (slow) await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  if (response.destroyed) return;
+  response.write(`data: ${JSON.stringify({ id, object: "chat.completion.chunk", choices: [], usage })}\n\n`);
+  response.end("data: [DONE]\n\n");
+}
 
 const server = createServer((request, response) => {
   if (request.url?.endsWith("/models")) {
     response.writeHead(200, { "content-type": "application/json" });
-    response.end(
-      JSON.stringify({
-        object: "list",
-        data: models.map((id) => ({ id, pricing_usd: pricing, pricing })),
-      }),
-    );
+    response.end(JSON.stringify({ object: "list", data: models.map((id) => ({ id, pricing_usd: pricing, pricing })) }));
     return;
   }
   if (request.url?.endsWith("/chat/completions")) {
@@ -30,15 +44,18 @@ const server = createServer((request, response) => {
       raw += String(chunk);
     });
     request.on("end", () => {
-      const parsed = raw ? (JSON.parse(raw) as { model?: string }) : {};
+      const id = `chatcmpl-stub-${Date.now()}`;
+      if (wantsStream(raw)) {
+        void stream(response, id, request.headers.authorization === "Bearer sk-slow");
+        return;
+      }
       response.writeHead(200, { "content-type": "application/json" });
       response.end(
         JSON.stringify({
-          id: `chatcmpl-stub-${Date.now()}`,
+          id,
           object: "chat.completion",
-          model: parsed.model,
           choices: [{ index: 0, message: { role: "assistant", content: "pong" }, finish_reason: "stop" }],
-          usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+          usage,
         }),
       );
     });

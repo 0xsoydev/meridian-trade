@@ -23,6 +23,12 @@ export function parseUsdPerToken(decimal: string): MicroPerMTok {
   return negative ? -value : value;
 }
 
+export function parseUsd(decimal: string): Micro | null {
+  const match = /^(\d{1,6})(?:\.(\d{1,6}))?$/.exec(decimal.trim());
+  if (!match) return null;
+  return BigInt(match[1] ?? "0") * MICRO_PER_MTOK + BigInt((match[2] ?? "").padEnd(6, "0"));
+}
+
 export function formatMicroPerMtok(value: MicroPerMTok): string {
   const negative = value < 0n;
   const abs = negative ? -value : value;

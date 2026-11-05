@@ -7,6 +7,7 @@ import {
   formatMicroPerMtok,
   marketPrice,
   mixedTokens,
+  parseUsd,
   parseUsdPerToken,
   referenceFor,
   reservation,
@@ -66,7 +67,9 @@ test("reference picks the cheapest enabled rail", () => {
       baseUrl: "https://example.invalid",
       auth: "key",
       extraHeaders: {},
-      models: [{ canonical: "glm-5.3", upstream: "glm-5.3", listPrompt: 1_400_000n, listCompletion: 4_400_000n }],
+      models: [
+        { canonical: "glm-5.3", upstream: "glm-5.3", listPrompt: 1_400_000n, listCompletion: 4_400_000n, verifiability: "TeeML" },
+      ],
       resetPeriod: "daily",
       enabled: true,
     },
@@ -76,7 +79,9 @@ test("reference picks the cheapest enabled rail", () => {
       baseUrl: "https://example.invalid",
       auth: "key",
       extraHeaders: {},
-      models: [{ canonical: "glm-5.3", upstream: "z-ai/glm", listPrompt: 2_000_000n, listCompletion: 6_000_000n }],
+      models: [
+        { canonical: "glm-5.3", upstream: "z-ai/glm", listPrompt: 2_000_000n, listCompletion: 6_000_000n, verifiability: null },
+      ],
       resetPeriod: null,
       enabled: true,
     },
@@ -86,13 +91,22 @@ test("reference picks the cheapest enabled rail", () => {
       baseUrl: "https://example.invalid",
       auth: "key",
       extraHeaders: {},
-      models: [{ canonical: "glm-5.3", upstream: "gpt", listPrompt: 1n, listCompletion: 1n }],
+      models: [{ canonical: "glm-5.3", upstream: "gpt", listPrompt: 1n, listCompletion: 1n, verifiability: null }],
       resetPeriod: null,
       enabled: false,
     },
   ];
   assert.equal(referenceFor("glm-5.3", rails)?.railId, "0g");
   assert.equal(referenceFor("missing", rails), null);
+});
+
+test("parseUsd converts dollars to micro exactly and rejects junk", () => {
+  assert.equal(parseUsd("0.50"), 500_000n);
+  assert.equal(parseUsd("20"), 20_000_000n);
+  assert.equal(parseUsd("0.000001"), 1n);
+  assert.equal(parseUsd("1.0000001"), null);
+  assert.equal(parseUsd("-1"), null);
+  assert.equal(parseUsd("1e3"), null);
 });
 
 test("reservation covers the actual charge for a fixed sample", () => {

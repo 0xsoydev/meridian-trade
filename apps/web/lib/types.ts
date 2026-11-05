@@ -11,11 +11,14 @@ export type RailId =
 
 export type RailProtocol = "openai-chat" | "anthropic-messages" | "openai-responses";
 
+export type Verifiability = "TeeML" | "TeeTLS" | null;
+
 export type RailModel = {
   canonical: string;
   upstream: string;
   listPrompt: bigint;
   listCompletion: bigint;
+  verifiability: Verifiability;
 };
 
 export type Rail = {
@@ -65,8 +68,9 @@ export type RouterError = {
 
 export type ModelRow = {
   id: string;
+  object: "model";
   rails: RailId[];
-  verifiability: "TeeML" | "TeeTLS" | null;
+  verifiability: Verifiability;
   list_prompt_micro_per_mtok: string;
   list_completion_micro_per_mtok: string;
   reference_blended_micro_per_mtok: string;
@@ -119,6 +123,25 @@ export type Trade = {
   price_micro_per_mtok: string;
   charge_usd_micro: string;
 };
+
+export type TradeResult = { fills: Trade[]; prepaid_tokens: string };
+
+export type BookAsk = {
+  listing_id: string;
+  rail: RailId;
+  price_micro_per_mtok: string;
+  tokens_left: string;
+  verifiable: boolean;
+};
+
+export type BookFill = {
+  listing_id: string;
+  tokens: string;
+  price_micro_per_mtok: string;
+  created_at: string;
+};
+
+export type Book = { model: string; asks: BookAsk[]; fills: BookFill[] };
 
 export type Rollup = {
   v: 1;

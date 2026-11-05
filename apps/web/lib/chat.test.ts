@@ -1,207 +1,212 @@
 import assert from "node:assert/strict";
-import { randomBytes } from "node:crypto";
-import { createServer, type Server } from "node:http";
 import { after, before, test } from "node:test";
 import { eq } from "drizzle-orm";
 import { POST } from "../app/api/v1/chat/completions/route.ts";
-import { hashKey } from "./auth.ts";
 import { db } from "./db.ts";
-import { keys, listings, sellers, usage } from "./schema.ts";
-import { seal } from "./secrets.ts";
+import { keys, listings, usage } from "./schema.ts";
+import { estimatePromptTokens } from "./price.ts";
+import {
+  chunks,
+  cleanup,
+  first,
+  hasDb,
+  jsonRequest,
+  makeKey,
+  makeListing,
+  makeSeller,
+  reply,
+  skip,
+  sse,
+  status,
+  stubRail,
+  suffix,
+  type ChatCall,
+} from "./testkit.ts";
 
-const hasDb = Boolean(process.env.DATABASE_URL && process.env.SECRETS_KEY);
-const skip = hasDb ? false : "DATABASE_URL and SECRETS_KEY required";
-const suffix = randomBytes(4).toString("hex");
+const name = (label: string) => `t-${suffix}-${label}`;
+const MODEL = {
+  basic: name("basic"),
+  poor: name("poor"),
+  fail: name("fail"),
+  stream: name("stream"),
+  cancel: name("cancel"),
+  failover: name("failover"),
+  throttle: name("throttle"),
+};
+const CHAT_URL = "http://localhost/api/v1/chat/completions";
+const ping = [{ role: "user", content: "ping" }];
 
-function first<T>(rows: T[]): T {
-  const row = rows[0];
-  if (!row) throw new Error("expected a row");
-  return row;
-}
-
-const models = [
-  "glm-5.3",
-  "deepseek-v4.1-flash",
-  "claude-opus-5.5",
-  "gpt-6-sol",
-  "z-ai/glm-5.3",
-  "deepseek/deepseek-v4.1-flash",
-  "anthropic/claude-opus-5.5",
-  "openai/gpt-6-sol",
-];
-const pricing = { prompt: "0.0000014", completion: "0.0000044" };
-
-let server: Server;
-let mode: "ok" | "fail" = "ok";
-let sequence = 0;
+let rail: { calls: ChatCall[]; close: () => void } | null = null;
 let sellerId = "";
-let listingId = "";
-const keyIds: string[] = [];
-let goodKey = "";
-let poorKey = "";
-let failKey = "";
+let sequence = 0;
 
 before(async () => {
   if (!hasDb) return;
-  server = createServer((request, response) => {
-    if (request.url?.endsWith("/models")) {
-      response.writeHead(200, { "content-type": "application/json" });
-      response.end(JSON.stringify({ object: "list", data: models.map((id) => ({ id, pricing_usd: pricing, pricing })) }));
-      return;
+  rail = await stubRail(Object.values(MODEL), (call, response) => {
+    sequence += 1;
+    const id = `chatcmpl-${suffix}-${sequence}`;
+    if (call.auth === "Bearer sk-500") return status(response, 500);
+    if (call.auth === "Bearer sk-429") return status(response, 429, { "retry-after": "120" });
+    if (call.body.stream !== true) return reply(response, id);
+    if (call.auth === "Bearer sk-slow") {
+      return void sse(response, chunks(id, ["one ", "two ", "three ", "four "], { prompt_tokens: 10, completion_tokens: 40 }), 400);
     }
-    if (request.url?.endsWith("/chat/completions")) {
-      request.resume();
-      request.on("end", () => {
-        if (mode === "fail") {
-          response.writeHead(500, { "content-type": "application/json" });
-          response.end(JSON.stringify({ error: { message: "boom" } }));
-          return;
-        }
-        sequence += 1;
-        response.writeHead(200, { "content-type": "application/json" });
-        response.end(
-          JSON.stringify({
-            id: `chatcmpl-${suffix}-${sequence}`,
-            object: "chat.completion",
-            choices: [{ index: 0, message: { role: "assistant", content: "pong" }, finish_reason: "stop" }],
-            usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
-          }),
-        );
-      });
-      return;
-    }
-    response.writeHead(404).end();
+    void sse(response, chunks(id, ["po", "ng"], { prompt_tokens: 10, completion_tokens: 5 }));
   });
-
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const address = server.address();
-  const port = typeof address === "object" && address ? address.port : 0;
-  const base = `http://127.0.0.1:${port}`;
-  process.env.STUB_RAIL_URL = base;
-  process.env.OG_ROUTER_URL = base;
-  process.env.OPENROUTER_BASE_URL = base;
-
-  const d = db();
-  const seller = first(
-    await d
-      .insert(sellers)
-      .values({ address: `0x${suffix}`, worldNullifier: `${Date.now()}` })
-      .returning(),
-  );
-  sellerId = seller.id;
-
-  const listing = first(
-    await d
-      .insert(listings)
-      .values({
-        sellerId,
-        rail: "stub",
-        model: "glm-5.3",
-        authKind: "key",
-        credentialCiphertext: seal("sk-stub"),
-        priceMicroPerMtok: 1_500_000n,
-        capacityTokens: 1_000_000n,
-        status: "active",
-        clientNonce: `probe-${suffix}`,
-      })
-      .returning(),
-  );
-  listingId = listing.id;
-
-  goodKey = `rk_${randomBytes(24).toString("base64url")}`;
-  poorKey = `rk_${randomBytes(24).toString("base64url")}`;
-  failKey = `rk_${randomBytes(24).toString("base64url")}`;
-  const inserted = await d
-    .insert(keys)
-    .values([
-      { hash: hashKey(goodKey), balanceUsdMicro: 1_000_000n },
-      { hash: hashKey(poorKey), balanceUsdMicro: 1n },
-      { hash: hashKey(failKey), balanceUsdMicro: 1_000_000n },
-    ])
-    .returning();
-  keyIds.push(...inserted.map((row) => row.id));
+  sellerId = await makeSeller();
 });
 
 after(async () => {
   if (!hasDb) return;
-  server?.close();
-  if (!listingId) return;
-  const d = db();
-  await d.delete(usage).where(eq(usage.listingId, listingId));
-  await d.delete(listings).where(eq(listings.id, listingId));
-  await d.delete(keys).where(eq(keys.id, keyIds[0] ?? ""));
-  await d.delete(keys).where(eq(keys.id, keyIds[1] ?? ""));
-  await d.delete(keys).where(eq(keys.id, keyIds[2] ?? ""));
-  await d.delete(sellers).where(eq(sellers.id, sellerId));
+  rail?.close();
+  await cleanup();
 });
 
-function call(key: string, body: unknown): Promise<Response> {
-  return POST(
-    new Request("http://localhost/api/v1/chat/completions", {
-      method: "POST",
-      headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
-      body: JSON.stringify(body),
-    }),
-  );
-}
+const chat = (key: string, body: Record<string, unknown>) => POST(jsonRequest(CHAT_URL, key, body));
+const usageOf = (keyId: string) => db().select().from(usage).where(eq(usage.keyId, keyId));
+const keyRow = async (id: string) => first(await db().select().from(keys).where(eq(keys.id, id)));
+const listingRow = async (id: string) => first(await db().select().from(listings).where(eq(listings.id, id)));
+const lastCall = () => {
+  const call = rail?.calls.at(-1);
+  if (!call) throw new Error("the stub saw no call");
+  return call;
+};
 
-const message = { model: "glm-5.3", messages: [{ role: "user", content: "ping" }], max_tokens: 16 };
+test("non-stream settles once and charges the mixed-token price", { skip }, async () => {
+  const listingId = await makeListing({ sellerId, model: MODEL.basic, credential: "sk-ok", price: 1_500_000n, capacity: 1_000_000n });
+  const key = await makeKey(1_000_000n);
 
-test("settles exactly once and charges the mixed-token price", { skip }, async () => {
-  mode = "ok";
-  const response = await call(goodKey, message);
+  const response = await chat(key.raw, { model: MODEL.basic, messages: ping, max_tokens: 16 });
   assert.equal(response.status, 200);
   const payload = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
   assert.equal(payload.choices?.[0]?.message?.content, "pong");
 
-  const d = db();
-  const row = first(await d.select().from(usage).where(eq(usage.keyId, keyIds[0] ?? "")).limit(1));
+  const forwarded = lastCall().body;
+  assert.equal(forwarded.max_tokens, 16);
+  assert.equal(forwarded.stream, false);
+  assert.equal(forwarded.stream_options, undefined);
+  assert.equal(forwarded.model, MODEL.basic);
+
+  const row = first(await usageOf(key.id));
   assert.equal(row.status, "settled");
   assert.equal(row.promptTokens, 10);
   assert.equal(row.completionTokens, 5);
   assert.equal(row.mixedTokens, 9n);
   assert.equal(row.chargeUsdMicro, 14n);
+  assert.equal(row.sellerEarningUsdMicro, 12n);
+  assert.match(row.upstreamRequestId ?? "", /^stub:chatcmpl-/);
 
-  const key = first(await d.select().from(keys).where(eq(keys.id, keyIds[0] ?? "")).limit(1));
-  assert.equal(key.balanceUsdMicro, 1_000_000n - 14n);
-  assert.equal(key.reservedUsdMicro, 0n);
-
-  const settledListing = first(await d.select().from(listings).where(eq(listings.id, listingId)).limit(1));
-  assert.equal(settledListing.usedTokens, 9n);
-  assert.equal(settledListing.reservedTokens, 0n);
+  const after = await keyRow(key.id);
+  assert.equal(after.balanceUsdMicro, 1_000_000n - 14n);
+  assert.equal(after.reservedUsdMicro, 0n);
+  const listing = await listingRow(listingId);
+  assert.equal(listing.usedTokens, 9n);
+  assert.equal(listing.reservedTokens, 0n);
 });
 
-test("rejects an unknown key without writing a row", { skip }, async () => {
-  const before = await db().select().from(usage).where(eq(usage.listingId, listingId));
-  const response = await call("rk_unknown", message);
+test("an unknown key is refused without writing a row", { skip }, async () => {
+  const response = await chat("rk_unknown", { model: MODEL.basic, messages: ping });
   assert.equal(response.status, 401);
-  const after = await db().select().from(usage).where(eq(usage.listingId, listingId));
-  assert.equal(after.length, before.length);
 });
 
-test("refuses when the balance cannot cover the hold", { skip }, async () => {
-  const response = await call(poorKey, { ...message, max_tokens: undefined });
+test("a balance that cannot cover the hold gets a plain 402", { skip }, async () => {
+  const listingId = await makeListing({ sellerId, model: MODEL.poor, credential: "sk-ok", price: 1_500_000n, capacity: 1_000_000n });
+  const key = await makeKey(1n);
+
+  const response = await chat(key.raw, { model: MODEL.poor, messages: ping });
   assert.equal(response.status, 402);
+  assert.equal(response.headers.get("payment-required"), null);
   const payload = (await response.json()) as { error?: { code?: string } };
   assert.equal(payload.error?.code, "insufficient_balance");
-  const afterHold = first(await db().select().from(listings).where(eq(listings.id, listingId)).limit(1));
-  assert.equal(afterHold.reservedTokens, 0n);
+  assert.equal((await listingRow(listingId)).reservedTokens, 0n);
+  assert.equal((await usageOf(key.id)).length, 0);
 });
 
-test("releases the hold when the upstream fails", { skip }, async () => {
-  mode = "fail";
-  const response = await call(failKey, message);
+test("when every candidate fails the holds are released", { skip }, async () => {
+  const listingId = await makeListing({ sellerId, model: MODEL.fail, credential: "sk-500", price: 1_500_000n, capacity: 1_000_000n });
+  const key = await makeKey(1_000_000n);
+
+  const response = await chat(key.raw, { model: MODEL.fail, messages: ping, max_tokens: 16 });
   assert.equal(response.status, 502);
+  assert.equal(first(await usageOf(key.id)).status, "released");
+  const after = await keyRow(key.id);
+  assert.equal(after.balanceUsdMicro, 1_000_000n);
+  assert.equal(after.reservedUsdMicro, 0n);
+  assert.equal((await listingRow(listingId)).reservedTokens, 0n);
+});
 
-  const d = db();
-  const row = first(await d.select().from(usage).where(eq(usage.keyId, keyIds[2] ?? "")).limit(1));
-  assert.equal(row.status, "released");
+test("a stream is forwarded and settled from the usage chunk", { skip }, async () => {
+  const listingId = await makeListing({ sellerId, model: MODEL.stream, credential: "sk-ok", price: 1_500_000n, capacity: 1_000_000n });
+  const key = await makeKey(1_000_000n);
 
-  const key = first(await d.select().from(keys).where(eq(keys.id, keyIds[2] ?? "")).limit(1));
-  assert.equal(key.balanceUsdMicro, 1_000_000n);
-  assert.equal(key.reservedUsdMicro, 0n);
+  const response = await chat(key.raw, { model: MODEL.stream, messages: ping, max_tokens: 16, stream: true });
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type") ?? "", /text\/event-stream/);
+  const text = await response.text();
+  assert.match(text, /"content":"po"/);
+  assert.match(text, /"content":"ng"/);
+  assert.match(text, /data: \[DONE\]/);
 
-  const releasedListing = first(await d.select().from(listings).where(eq(listings.id, listingId)).limit(1));
-  assert.equal(releasedListing.reservedTokens, 0n);
-  mode = "ok";
+  const forwarded = lastCall().body;
+  assert.equal(forwarded.stream, true);
+  assert.deepEqual(forwarded.stream_options, { include_usage: true });
+  assert.equal(forwarded.max_tokens, 16);
+
+  const row = first(await usageOf(key.id));
+  assert.equal(row.status, "settled");
+  assert.equal(row.promptTokens, 10);
+  assert.equal(row.completionTokens, 5);
+  assert.equal(row.chargeUsdMicro, 14n);
+  assert.equal((await keyRow(key.id)).balanceUsdMicro, 1_000_000n - 14n);
+  assert.equal((await listingRow(listingId)).reservedTokens, 0n);
+});
+
+test("a client that walks away mid-stream is settled from what it received", { skip }, async () => {
+  const listingId = await makeListing({ sellerId, model: MODEL.cancel, credential: "sk-slow", price: 1_500_000n, capacity: 1_000_000n });
+  const key = await makeKey(1_000_000n);
+
+  const response = await chat(key.raw, { model: MODEL.cancel, messages: ping, max_tokens: 64, stream: true });
+  assert.equal(response.status, 200);
+  const reader = response.body?.getReader();
+  assert.ok(reader);
+  assert.equal((await reader.read()).done, false);
+  await reader.cancel();
+
+  const row = first(await usageOf(key.id));
+  assert.equal(row.status, "settled");
+  assert.equal(BigInt(row.promptTokens), estimatePromptTokens(new TextEncoder().encode(JSON.stringify(ping)).length));
+  assert.ok(row.completionTokens >= 3 && row.completionTokens < 40);
+  assert.ok(row.chargeUsdMicro > 0n && row.chargeUsdMicro <= row.reservedUsdMicro);
+  const after = await keyRow(key.id);
+  assert.equal(after.reservedUsdMicro, 0n);
+  assert.equal(after.balanceUsdMicro, 1_000_000n - row.chargeUsdMicro);
+  assert.equal((await listingRow(listingId)).reservedTokens, 0n);
+});
+
+test("a failing cheapest ask fails over to the next one", { skip }, async () => {
+  const bad = await makeListing({ sellerId, model: MODEL.failover, credential: "sk-500", price: 1_000_000n, capacity: 1_000_000n });
+  const good = await makeListing({ sellerId, model: MODEL.failover, credential: "sk-ok", price: 1_500_000n, capacity: 1_000_000n });
+  const key = await makeKey(1_000_000n);
+
+  const response = await chat(key.raw, { model: MODEL.failover, messages: ping, max_tokens: 16 });
+  assert.equal(response.status, 200);
+
+  const rows = await usageOf(key.id);
+  assert.equal(rows.length, 2);
+  assert.equal(rows.find((row) => row.listingId === bad)?.status, "released");
+  assert.equal(rows.find((row) => row.listingId === good)?.status, "settled");
+  assert.equal((await keyRow(key.id)).balanceUsdMicro, 1_000_000n - 14n);
+  assert.equal((await listingRow(bad)).reservedTokens, 0n);
+  assert.equal((await listingRow(bad)).status, "active");
+});
+
+test("a 429 throttles the listing and the next ask serves", { skip }, async () => {
+  const limited = await makeListing({ sellerId, model: MODEL.throttle, credential: "sk-429", price: 1_000_000n, capacity: 1_000_000n });
+  await makeListing({ sellerId, model: MODEL.throttle, credential: "sk-ok", price: 1_500_000n, capacity: 1_000_000n });
+  const key = await makeKey(1_000_000n);
+
+  const response = await chat(key.raw, { model: MODEL.throttle, messages: ping, max_tokens: 16 });
+  assert.equal(response.status, 200);
+  const throttled = (await listingRow(limited)).throttledUntil;
+  assert.ok(throttled && throttled.getTime() > Date.now() + 100_000);
 });
