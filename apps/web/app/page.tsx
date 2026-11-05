@@ -64,18 +64,7 @@ export default function Home() {
 
           <Proof variant="canvas" />
 
-          <div
-            className="absolute left-[55px] top-[2151px] h-[539px] w-[1617px] bg-cover"
-            style={{
-              backgroundImage: "url(/images/panorama.png)",
-              filter: "contrast(98%) saturate(0%)",
-            }}
-          />
-          <div className="absolute left-[1199px] top-[2081px] h-[137px] w-[407px] bg-[#1743FF] opacity-30" />
-          <div className="absolute left-[137px] top-[2610px] h-[137px] w-[407px] bg-[#1743FF] opacity-30" />
-          <div className="absolute left-[55px] top-[2690px] h-[113px] w-[540px] border-2 border-[#A1A1A1]" />
-          <div className="absolute left-[593px] top-[2690px] h-[113px] w-[540px] border-2 border-[#A1A1A1]" />
-          <div className="absolute left-[1131px] top-[2690px] h-[113px] w-[543px] border-2 border-[#A1A1A1]" />
+          <Panorama variant="canvas" />
 
           <h2 className="absolute left-[103px] top-[2846px] whitespace-pre font-serif text-[60px] font-normal leading-[72px] text-black">
             How it works
