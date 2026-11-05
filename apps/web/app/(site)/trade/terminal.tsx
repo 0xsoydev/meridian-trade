@@ -26,6 +26,7 @@ import type {
 } from "../../../lib/types";
 import { useWalletDeposit } from "../wallet-deposit";
 import { FillsChart, INTERVALS, type ScaleMode } from "./chart";
+import { SellTicket } from "./sell-ticket";
 
 const KEY_STORAGE = "router_key";
 const TAKE_BPS = 1000n;
@@ -61,6 +62,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
   const [bookFailed, setBookFailed] = useState<"unknown" | "down" | null>(null);
   const [pane, setPane] = useState<"book" | "tape">("book");
   const [dock, setDock] = useState<"mine" | "venue">("venue");
+  const [side, setSide] = useState<"buy" | "sell">("buy");
   const [bucket, setBucket] = useState(60);
   const [scale, setScale] = useState<ScaleMode>("linear");
   const [expanded, setExpanded] = useState(false);
@@ -537,201 +539,205 @@ export function Trade({ initialModel }: { initialModel: string }) {
         {!expanded && (
           <div className="border border-[#CECECE] bg-[#EBEBEB] p-4">
             <div className="flex border border-[#CECECE] bg-white">
-              <button
-                type="button"
-                onClick={() => setPane("book")}
-                className="w-1/2 bg-black py-2 text-[14px] font-semibold text-white"
-              >
-                Buy
-              </button>
-              <Link
-                href="/sell"
-                className="flex w-1/2 items-center justify-center border-l border-[#CECECE] py-2 text-[14px] font-semibold text-[#757575] hover:text-[#1E1E1E]"
-              >
-                Sell →
-              </Link>
+              {(["buy", "sell"] as const).map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => setSide(item)}
+                  aria-pressed={side === item}
+                  className={`w-1/2 py-2 text-[14px] font-semibold ${item === "sell" ? "border-l border-[#CECECE]" : ""} ${
+                    side === item ? "bg-black text-white" : "text-[#757575] hover:text-[#1E1E1E]"
+                  }`}
+                >
+                  {item === "buy" ? "Buy" : "Sell"}
+                </button>
+              ))}
             </div>
 
-            <div className="mt-4 space-y-4">
-              <div className="flex justify-between text-[14px]">
-                <span className={MUTED}>Available to trade</span>
-                <span className="tabular-nums text-[#1E1E1E]">{balance !== null ? formatUsd(balance) : "—"}</span>
-              </div>
+            {side === "sell" ? (
+              <SellTicket key={model} model={model} rails={selected?.rails ?? []} onChange={() => void refreshBook()} />
+            ) : (
+              <div className="mt-4 space-y-4">
+                <div className="flex justify-between text-[14px]">
+                  <span className={MUTED}>Available to trade</span>
+                  <span className="tabular-nums text-[#1E1E1E]">{balance !== null ? formatUsd(balance) : "—"}</span>
+                </div>
 
-              <label className="block">
-                <span className={`mb-1 block text-[13px] ${MUTED}`}>Size, in MTokens</span>
-                <span className="flex items-center gap-2 border border-[#CECECE] bg-white px-2.5 focus-within:border-[#1743FF]">
+                <label className="block">
+                  <span className={`mb-1 block text-[13px] ${MUTED}`}>Size, in MTokens</span>
+                  <span className="flex items-center gap-2 border border-[#CECECE] bg-white px-2.5 focus-within:border-[#1743FF]">
+                    <input
+                      value={size}
+                      onChange={(event) => setSize(event.target.value)}
+                      inputMode="numeric"
+                      placeholder="10"
+                      className="h-[34px] w-full bg-transparent text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9]"
+                    />
+                    <span className={`text-[12px] ${MUTED}`}>MTok</span>
+                  </span>
+                </label>
+
+                <div className="flex items-center gap-3">
                   <input
-                    value={size}
-                    onChange={(event) => setSize(event.target.value)}
-                    inputMode="numeric"
-                    placeholder="10"
-                    className="h-[34px] w-full bg-transparent text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9]"
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={affordPct}
+                    disabled={affordable === 0n}
+                    onChange={(event) => setSize(formatMtok((affordable * BigInt(event.target.value)) / 100n))}
+                    aria-label="share of what the balance affords"
+                    className="h-1 w-full accent-[#1743FF] disabled:opacity-40"
                   />
-                  <span className={`text-[12px] ${MUTED}`}>MTok</span>
-                </span>
-              </label>
-
-              <div className="flex items-center gap-3">
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={affordPct}
-                  disabled={affordable === 0n}
-                  onChange={(event) => setSize(formatMtok((affordable * BigInt(event.target.value)) / 100n))}
-                  aria-label="share of what the balance affords"
-                  className="h-1 w-full accent-[#1743FF] disabled:opacity-40"
-                />
-                <span className={`w-12 text-right text-[12px] leading-4 tabular-nums ${MUTED}`}>
-                  {affordPct}% of balance
-                </span>
-              </div>
-
-              <div className="flex gap-5">
-                {PRESETS.map((preset) => (
-                  <button
-                    key={preset.label}
-                    type="button"
-                    onClick={() => setSize(preset.value)}
-                    className={`text-[14px] ${
-                      size === preset.value
-                        ? "text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
-                        : "text-[#757575] hover:text-[#1E1E1E]"
-                    }`}
-                  >
-                    {preset.label}
-                  </button>
-                ))}
-              </div>
-
-              <dl className="border-t border-[#D9D9D9]">
-                <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
-                  <dt className={MUTED}>Average ask</dt>
-                  <dd className="tabular-nums text-[#1E1E1E]">{preview.fillable > 0n ? formatMicroPerMtok(preview.avg) : "—"}</dd>
+                  <span className={`w-12 text-right text-[12px] leading-4 tabular-nums ${MUTED}`}>
+                    {affordPct}% of balance
+                  </span>
                 </div>
-                <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
-                  <dt className={MUTED}>Venue fee, 10 percent</dt>
-                  <dd className="tabular-nums text-[#1E1E1E]">{preview.fee > 0n ? formatUsd(preview.fee) : "—"}</dd>
-                </div>
-                <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
-                  <dt className={MUTED}>Seller receives</dt>
-                  <dd className="tabular-nums text-[#1E1E1E]">{preview.net > 0n ? formatUsd(preview.net) : "—"}</dd>
-                </div>
-                <div className="flex justify-between py-3">
-                  <dt className="text-[15px] font-semibold text-[#1E1E1E]">You pay</dt>
-                  <dd className="text-[16px] font-semibold tabular-nums text-[#1E1E1E]">
-                    {preview.cost > 0n ? formatUsd(preview.cost) : "—"}
-                  </dd>
-                </div>
-              </dl>
 
-              {preview.partial && wanted > 0n && !overCap ? (
-                <p className="text-[13px] leading-5 text-[#F6465D]">
-                  The book covers {formatMtok(preview.fillable)} of {formatMtok(wanted)} MTok. The rest stays unfilled.
-                </p>
-              ) : null}
-
-              {overCap ? (
-                <p className="text-[13px] leading-5 text-[#F6465D]">
-                  One trade caps at {formatMtok(MAX_TOKENS)} MTok.
-                </p>
-              ) : null}
-
-              {key === null ? (
-                <div className="border border-[#CECECE] bg-white px-3 py-3">
-                  <p className="text-[14px] text-[#1E1E1E]">Buying needs a router key.</p>
-                  <p className="mt-1 text-[13px] leading-5 text-[#757575]">
-                    Create one with your wallet on Keys, or paste an agent&apos;s key there. It stays in this
-                    browser, never in a URL.
-                  </p>
-                </div>
-              ) : null}
-
-              {key === null ? (
-                <Link
-                  href="/keys"
-                  className="flex h-[34px] items-center justify-center bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E]"
-                >
-                  Create a key on Keys
-                </Link>
-              ) : payFromWallet && !address ? (
-                <button
-                  type="button"
-                  disabled={!ready}
-                  onClick={() => login()}
-                  className="h-[34px] w-full bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4]"
-                >
-                  Connect wallet to pay
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => void buy()}
-                  disabled={pending || wanted === 0n || preview.cost === 0n || overCap || payBlocked !== null}
-                  className="h-[34px] w-full bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4] disabled:text-white"
-                >
-                  {paying
-                    ? "Paying from your wallet…"
-                    : pending
-                      ? "Buying…"
-                      : wanted === 0n
-                        ? "Enter a size"
-                        : payFromWallet
-                          ? `Pay ${formatUsd(shortfall)} and buy ${formatMtok(wanted)} MTok`
-                          : `Buy ${formatMtok(wanted)} MTok`}
-                </button>
-              )}
-
-              {shortfall > 0n ? (
-                <p
-                  className={`text-center text-[13px] leading-5 ${payFromWallet && payBlocked === null ? "text-[#757575]" : "text-[#F6465D]"}`}
-                >
-                  {!payFromWallet
-                    ? `Short by ${formatUsd(shortfall)} — top up the agent.`
-                    : payBlocked ??
-                      (address
-                        ? `The key is short ${formatUsd(shortfall)}; Buy sends it from your wallet in Hedera testnet USDC first.`
-                        : `The key is short ${formatUsd(shortfall)}; connect the wallet that created it to pay in Hedera testnet USDC.`)}
-                </p>
-              ) : null}
-
-              {problem ? (
-                <div className="border border-[#F6465D]/40 bg-white px-3 py-2">
-                  <p className="text-[13px] leading-5 text-[#F6465D]">{problem.message}</p>
-                  {problem.shortfall !== null ? (
+                <div className="flex gap-5">
+                  {PRESETS.map((preset) => (
                     <button
+                      key={preset.label}
                       type="button"
-                      onClick={() => void copyTopup()}
-                      className="mt-2 w-full border border-[#CECECE] bg-white px-2 py-1.5 text-left text-[13px] tabular-nums text-[#1E1E1E] hover:border-[#1743FF]"
+                      onClick={() => setSize(preset.value)}
+                      className={`text-[14px] ${
+                        size === preset.value
+                          ? "text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
+                          : "text-[#757575] hover:text-[#1E1E1E]"
+                      }`}
                     >
-                      {copied ? "Copied — run it from your agent. " : "Copy top-up, "}
-                      {`POST /api/v1/topup?usd=${formatMicroPerMtok(problem.shortfall)}`}
+                      {preset.label}
                     </button>
-                  ) : null}
+                  ))}
                 </div>
-              ) : null}
 
-              {account ? (
-                <div className="border-t border-[#D9D9D9] pt-4">
-                  <p className="text-[13px] text-[#1E1E1E]">[ account summary ]</p>
-                  <dl className="mt-2">
-                    {[
-                      ["Balance", formatUsd(BigInt(account.balance_usd_micro))],
-                      ["Reserved", formatUsd(BigInt(account.reserved_usd_micro))],
-                      ["Topped up today", formatUsd(BigInt(account.topped_up_today_usd_micro))],
-                      ["Daily cap", formatUsd(BigInt(account.daily_topup_cap_usd_micro))],
-                      ["Auto top-up", formatUsd(BigInt(account.auto_topup_usd_micro))],
-                    ].map(([label, value]) => (
-                      <div key={label} className="flex justify-between py-1 text-[13px]">
-                        <dt className={MUTED}>{label}</dt>
-                        <dd className="tabular-nums text-[#1E1E1E]">{value}</dd>
-                      </div>
-                    ))}
-                  </dl>
-                </div>
-              ) : null}
-            </div>
+                <dl className="border-t border-[#D9D9D9]">
+                  <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
+                    <dt className={MUTED}>Average ask</dt>
+                    <dd className="tabular-nums text-[#1E1E1E]">{preview.fillable > 0n ? formatMicroPerMtok(preview.avg) : "—"}</dd>
+                  </div>
+                  <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
+                    <dt className={MUTED}>Venue fee, 10 percent</dt>
+                    <dd className="tabular-nums text-[#1E1E1E]">{preview.fee > 0n ? formatUsd(preview.fee) : "—"}</dd>
+                  </div>
+                  <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
+                    <dt className={MUTED}>Seller receives</dt>
+                    <dd className="tabular-nums text-[#1E1E1E]">{preview.net > 0n ? formatUsd(preview.net) : "—"}</dd>
+                  </div>
+                  <div className="flex justify-between py-3">
+                    <dt className="text-[15px] font-semibold text-[#1E1E1E]">You pay</dt>
+                    <dd className="text-[16px] font-semibold tabular-nums text-[#1E1E1E]">
+                      {preview.cost > 0n ? formatUsd(preview.cost) : "—"}
+                    </dd>
+                  </div>
+                </dl>
+
+                {preview.partial && wanted > 0n && !overCap ? (
+                  <p className="text-[13px] leading-5 text-[#F6465D]">
+                    The book covers {formatMtok(preview.fillable)} of {formatMtok(wanted)} MTok. The rest stays unfilled.
+                  </p>
+                ) : null}
+
+                {overCap ? (
+                  <p className="text-[13px] leading-5 text-[#F6465D]">
+                    One trade caps at {formatMtok(MAX_TOKENS)} MTok.
+                  </p>
+                ) : null}
+
+                {key === null ? (
+                  <div className="border border-[#CECECE] bg-white px-3 py-3">
+                    <p className="text-[14px] text-[#1E1E1E]">Buying needs a router key.</p>
+                    <p className="mt-1 text-[13px] leading-5 text-[#757575]">
+                      Create one with your wallet on Keys, or paste an agent&apos;s key there. It stays in this
+                      browser, never in a URL.
+                    </p>
+                  </div>
+                ) : null}
+
+                {key === null ? (
+                  <Link
+                    href="/keys"
+                    className="flex h-[34px] items-center justify-center bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E]"
+                  >
+                    Create a key on Keys
+                  </Link>
+                ) : payFromWallet && !address ? (
+                  <button
+                    type="button"
+                    disabled={!ready}
+                    onClick={() => login()}
+                    className="h-[34px] w-full bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4]"
+                  >
+                    Connect wallet to pay
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void buy()}
+                    disabled={pending || wanted === 0n || preview.cost === 0n || overCap || payBlocked !== null}
+                    className="h-[34px] w-full bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4] disabled:text-white"
+                  >
+                    {paying
+                      ? "Paying from your wallet…"
+                      : pending
+                        ? "Buying…"
+                        : wanted === 0n
+                          ? "Enter a size"
+                          : payFromWallet
+                            ? `Pay ${formatUsd(shortfall)} and buy ${formatMtok(wanted)} MTok`
+                            : `Buy ${formatMtok(wanted)} MTok`}
+                  </button>
+                )}
+
+                {shortfall > 0n ? (
+                  <p
+                    className={`text-center text-[13px] leading-5 ${payFromWallet && payBlocked === null ? "text-[#757575]" : "text-[#F6465D]"}`}
+                  >
+                    {!payFromWallet
+                      ? `Short by ${formatUsd(shortfall)} — top up the agent.`
+                      : payBlocked ??
+                        (address
+                          ? `The key is short ${formatUsd(shortfall)}; Buy sends it from your wallet in Hedera testnet USDC first.`
+                          : `The key is short ${formatUsd(shortfall)}; connect the wallet that created it to pay in Hedera testnet USDC.`)}
+                  </p>
+                ) : null}
+
+                {problem ? (
+                  <div className="border border-[#F6465D]/40 bg-white px-3 py-2">
+                    <p className="text-[13px] leading-5 text-[#F6465D]">{problem.message}</p>
+                    {problem.shortfall !== null ? (
+                      <button
+                        type="button"
+                        onClick={() => void copyTopup()}
+                        className="mt-2 w-full border border-[#CECECE] bg-white px-2 py-1.5 text-left text-[13px] tabular-nums text-[#1E1E1E] hover:border-[#1743FF]"
+                      >
+                        {copied ? "Copied — run it from your agent. " : "Copy top-up, "}
+                        {`POST /api/v1/topup?usd=${formatMicroPerMtok(problem.shortfall)}`}
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {account ? (
+                  <div className="border-t border-[#D9D9D9] pt-4">
+                    <p className="text-[13px] text-[#1E1E1E]">[ account summary ]</p>
+                    <dl className="mt-2">
+                      {[
+                        ["Balance", formatUsd(BigInt(account.balance_usd_micro))],
+                        ["Reserved", formatUsd(BigInt(account.reserved_usd_micro))],
+                        ["Topped up today", formatUsd(BigInt(account.topped_up_today_usd_micro))],
+                        ["Daily cap", formatUsd(BigInt(account.daily_topup_cap_usd_micro))],
+                        ["Auto top-up", formatUsd(BigInt(account.auto_topup_usd_micro))],
+                      ].map(([label, value]) => (
+                        <div key={label} className="flex justify-between py-1 text-[13px]">
+                          <dt className={MUTED}>{label}</dt>
+                          <dd className="tabular-nums text-[#1E1E1E]">{value}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </div>
+                ) : null}
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -4,16 +4,18 @@ import { eq, inArray } from "drizzle-orm";
 import { generatePrivateKey, privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
 import { z } from "zod";
 import { DELETE, PATCH } from "../app/api/listings/[id]/route.ts";
-import { POST } from "../app/api/listings/route.ts";
+import { GET, POST } from "../app/api/listings/route.ts";
 import { POST as verifySeller } from "../app/api/sellers/verify/route.ts";
 import { db } from "./db.ts";
 import { listingPriceError, parseCapacityMtok } from "./listings.ts";
 import { listings, sellers } from "./schema.ts";
 import { open } from "./secrets.ts";
 import { cleanup, hasDb, makeSeller, reply, skip, status, stubRail, suffix, type ChatCall } from "./testkit.ts";
+import type { SellerListings } from "./types";
 
 const own = { prompt: 1_400_000n, completion: 4_400_000n };
 const MODEL = `t-${suffix}-listing`;
+const SECOND_MODEL = `t-${suffix}-second`;
 const PROBE_MODEL = "0gm-1.0-35b-a3b";
 const account: PrivateKeyAccount = privateKeyToAccount(generatePrivateKey());
 
@@ -52,7 +54,7 @@ const created: string[] = [];
 before(async () => {
   if (!hasDb) return;
   process.env.PUBLIC_HOST = "http://localhost";
-  rail = await stubRail([MODEL, PROBE_MODEL], (call, response) => {
+  rail = await stubRail([MODEL, PROBE_MODEL, SECOND_MODEL], (call, response) => {
     if (call.body.model === "__probe__") {
       status(response, call.auth === "Bearer sk-bad" ? 401 : 404);
       return;
@@ -75,9 +77,23 @@ after(async () => {
   await cleanup();
 });
 
-async function sign(fields: Record<string, unknown>): Promise<Envelope> {
+async function sign(fields: Record<string, unknown>, signer: PrivateKeyAccount = account): Promise<Envelope> {
   const message = JSON.stringify({ domain: "localhost", action: "list", issued_at: new Date().toISOString(), ...fields });
-  return { address: account.address, message, signature: await account.signMessage({ message }) };
+  return { address: signer.address, message, signature: await signer.signMessage({ message }) };
+}
+
+function reuseCall(envelope: Envelope, listingId: string): Promise<Response> {
+  return POST(
+    new Request("http://localhost/api/listings", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ signed: envelope, credential: { kind: "stored", listing_id: listingId } }),
+    }),
+  );
+}
+
+async function sellerListings(address: string): Promise<SellerListings> {
+  return (await (await GET(new Request(`http://localhost/api/listings?seller=${address}`))).json()) as SellerListings;
 }
 
 function createCall(envelope: Envelope, key = "sk-test"): Promise<Response> {
@@ -375,4 +391,39 @@ test("a chat-checked rail lists on a 1-token answer for the exact model and refu
 
   const rejected = await createCall(await listing("43"), "sk-bad");
   assert.equal(rejected.status, 401);
+});
+
+test("a seller lists another model with a key stored on their listing, and no one else can", { skip }, async () => {
+  const listed = z.object({ listing_id: z.string() });
+  const listing = (model: string, nonce: string, signer?: PrivateKeyAccount) =>
+    sign({ rail: "stub", model, capacity_mtok: "2", price_micro_per_mtok: "1000000", client_nonce: `n-${suffix}-${nonce}` }, signer);
+
+  const source = await createCall(await listing(MODEL, "stored-1"), "sk-stored");
+  assert.equal(source.status, 200);
+  const sourceId = listed.parse(await source.json()).listing_id;
+  created.push(sourceId);
+
+  const reused = await reuseCall(await listing(SECOND_MODEL, "stored-2"), sourceId);
+  assert.equal(reused.status, 200);
+  const reusedId = listed.parse(await reused.json()).listing_id;
+  created.push(reusedId);
+  const row = await listingRow(reusedId);
+  assert.equal(row?.model, SECOND_MODEL);
+  assert.equal(open(row?.credentialCiphertext ?? ""), "sk-stored");
+
+  const mine = await sellerListings(account.address);
+  assert.equal(mine.verified, true);
+  assert.deepEqual(
+    mine.listings.filter((entry) => entry.listing_id === sourceId || entry.listing_id === reusedId).map((entry) => entry.model).sort(),
+    [MODEL, SECOND_MODEL].sort(),
+  );
+  assert.ok(mine.listings.every((entry) => !("credential" in entry) && !("credential_ciphertext" in entry)));
+
+  const stranger = privateKeyToAccount(generatePrivateKey());
+  await db().update(sellers).set({ address: stranger.address.toLowerCase() }).where(eq(sellers.id, await makeSeller()));
+  const borrowed = await reuseCall(await listing(SECOND_MODEL, "stored-3", stranger), sourceId);
+  assert.equal(borrowed.status, 404);
+
+  const nobody = await sellerListings(`0x${"ab".repeat(20)}`);
+  assert.deepEqual(nobody, { verified: false, listings: [] });
 });

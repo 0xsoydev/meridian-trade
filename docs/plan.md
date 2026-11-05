@@ -343,6 +343,7 @@ export type ApprovalStatus = { status: "pending" | "approved" | "denied" | "expi
 | GET | `/api/v1/approvals/:id` | `Bearer rk_` | — | `ApprovalStatus` | 404 |
 | POST | `/api/oauth/:rail/start` | `Signed<ListingIntent>` | credential kind | `{ authorization_url }` | 400 rail disabled |
 | GET | `/api/oauth/:rail/callback` | `state` | `code` | 302 to `/sell` | 400 bad state |
+| GET | `/api/listings?seller=0x…` | — | — | `SellerListings` | 400 |
 | PATCH | `/api/listings/:id` | `Signed<AmendIntent>` | `{ price_micro_per_mtok, capacity_mtok }` | 200 listing | 400/404/409 |
 | DELETE | `/api/listings/:id` | `Signed<CancelIntent>` | — | 200 | 404/409 |
 | POST | `/api/v1/keys` | wallet signature | `{ address, message, signature, world? }` | `CreateKeyResult` | 401, 409 |
@@ -405,7 +406,7 @@ export type ListingIntent = {
   client_nonce: string;
 };
 
-export type Credential = { kind: "key"; key: string } | { kind: "oauth" };
+export type Credential = { kind: "key"; key: string } | { kind: "stored"; listing_id: string } | { kind: "oauth" };
 ```
 
 `POST /api/listings` `{ signed: Signed<ListingIntent>, credential: Credential }`:
@@ -414,6 +415,9 @@ export type Credential = { kind: "key"; key: string } | { kind: "oauth" };
 3. Probe by rail, free of charge: `0g` → `POST /chat/completions` `{ model: "__probe__" }`, expect 404 `model_not_found`; `anthropic` and `openai` → `GET /models`; `openrouter` → `GET /api/v1/key` (also returns `limit_remaining`, shown as a capacity hint); gateways → `GET /models`. 401/403 → reject.
 4. `kind: "key"` → insert with `status = 'active'`, `auth_kind = 'key'`, `credential_ciphertext = seal(key)`. `kind: "oauth"` → insert with `status = 'pending_auth'`, `auth_kind = 'oauth'`, and return `{ authorization_url }` from §10.9; the callback flips it to `active`.
 5. `capacity_tokens = capacity_mtok × 1e6`. On OAuth rails capacity is advisory: the provider's window is the real limit and `throttled_until` is the only brake we control (§21).
+6. `kind: "stored"` reuses the key sealed on one of the signer's own listings on the same rail: the server opens it, probes it for the new model like a pasted key, and seals it again on the new listing. Another seller's listing, another rail or an OAuth listing is a 404. The key never reaches the browser.
+
+`GET /api/listings?seller=0x…` returns `SellerListings`: `verified` (a `sellers` row exists for the address) and that seller's listings, newest first, without credentials. `/trade`'s Sell tab reads it to find a stored key on a rail that serves the model.
 
 `DELETE /api/listings/:id` with `Signed<{ action: "cancel"; listing_id: string; client_nonce: string }>` → `status = cancelled` when no reservation is open.
 
@@ -675,7 +679,7 @@ type AgentEnv = {
 | Page | Who | Contents | Data |
 |---|---|---|---|
 | `/` | everyone | Markets overview and the way in: model, rails, verifiability, best ask, index, discount, 24 h volume, links to `/trade?model=` and `/perps?model=` | DB + `IndexOracle.latest` |
-| `/trade` | spot buyers and sellers | Model picker (`?model=`). **Buy**: the ask book with price, MTokens left, rail and verifiability; size input; fee and total; recent fills, charted as 1m, 5m, 15m or 1h candles from the last 50 fills; a short balance on a wallet key is paid from that wallet in Hedera USDC, up to 20 USD, before the buy. **Sell**: your own asks with amend price, add capacity and cancel, plus a link to `/sell` when you have no source for that model yet | `GET /api/v1/book`, `POST /api/v1/trades`, `PATCH`/`DELETE /api/listings/:id` |
+| `/trade` | spot buyers and sellers | Model picker (`?model=`). **Buy**: the ask book with price, MTokens left, rail and verifiability; size input; fee and total; recent fills, charted as 1m, 5m, 15m or 1h candles from the last 50 fills; a short balance on a wallet key is paid from that wallet in Hedera USDC, up to 20 USD, before the buy. **Sell**: from the connected seller wallet, your own asks with amend price, capacity and cancel, and a limit sell (price, size) placed with a key already stored on one of your listings on a rail that serves the model; a link to `/sell` only when the wallet is not a verified seller or has no such key | `GET /api/v1/book`, `POST /api/v1/trades`, `PATCH`/`DELETE /api/listings/:id` |
 | `/perps` | traders | Model picker (`?model=`). Index chart and mark price, current funding rate, long/short with size, leverage and margin, previewed liquidation price, Positions tab across all models, MockUSDC balance and faucet, connect-wallet state | `IndexPosted` logs (viem `getLogs`), `PerpMarket` reads, wagmi |
 | `/sell` | sellers, once | Wallet → World verify → source picker (API key or Connect Claude Code / Codex) → new listing → earnings and payouts (HashScan). Setup and accounting, not trading | API, DB |
 | `/keys` | a human buyer | Connect a wallet → sign once to create a router key → list keys, deposit panel (deposit from the key's wallet, or treasury, memo = key id, amount, tx id), balance, auto top-up, daily cap, default model, link human (QR via `qrcode`). Pasting an agent's key still works | `/api/v1/keys`, `/api/v1/keys/deposit`, `/api/v1/*` |
