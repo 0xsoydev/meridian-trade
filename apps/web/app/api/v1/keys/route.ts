@@ -1,8 +1,12 @@
+import { z } from "zod";
 import { createKey, ensureAccount, listKeys } from "../../../../lib/accounts.ts";
+import { approvalAction } from "../../../../lib/approvals.ts";
 import { expectedHost, verifySigned } from "../../../../lib/auth.ts";
 import { fail } from "../../../../lib/errors.ts";
 import { verifyWorld } from "../../../../lib/world.ts";
 import type { CreateKeyResult } from "../../../../lib/types";
+
+const worldSchema = z.object({ world: z.unknown() });
 
 export async function POST(request: Request): Promise<Response> {
   const body: unknown = await request.json().catch(() => null);
@@ -10,10 +14,10 @@ export async function POST(request: Request): Promise<Response> {
   const signed = await verifySigned(body, host, "create_key");
   if (!signed) return fail(401, "invalid_api_key", "a fresh wallet signature is required");
 
-  const world = (body as { world?: unknown } | null)?.world;
+  const world = worldSchema.safeParse(body).data?.world;
   let worldNullifier: string | null = null;
   if (world !== undefined && world !== null) {
-    const checked = await verifyWorld(world);
+    const checked = await verifyWorld(world, { action: approvalAction(), signal: signed.address });
     if ("error" in checked) return fail(400, "invalid_request", checked.error);
     worldNullifier = checked.worldNullifier;
   }
