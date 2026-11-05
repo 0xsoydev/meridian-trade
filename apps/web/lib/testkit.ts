@@ -8,6 +8,8 @@ import { db } from "./db.ts";
 import { approvals, keys, listings, prepaid, sellers, topups, trades, usage } from "./schema.ts";
 import { seal } from "./secrets.ts";
 
+process.env.NEXT_PUBLIC_WORLD_BYPASS = "false";
+
 export const hasDb = Boolean(process.env.DATABASE_URL && process.env.SECRETS_KEY);
 export const skip = hasDb ? false : "DATABASE_URL and SECRETS_KEY required";
 export const suffix = randomBytes(4).toString("hex");

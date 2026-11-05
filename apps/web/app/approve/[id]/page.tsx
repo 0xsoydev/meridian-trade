@@ -22,6 +22,8 @@ type RpSignatureResponse = {
   action: string;
 };
 
+const WORLD_BYPASS = process.env.NEXT_PUBLIC_WORLD_BYPASS === "true" && process.env.NODE_ENV !== "production";
+
 function isAppId(value: string): value is `app_${string}` {
   return value.startsWith("app_");
 }
@@ -41,7 +43,7 @@ export default function ApprovePage() {
   const preset = useMemo(() => proofOfHuman({ signal: id ?? "" }), [id]);
 
   useEffect(() => {
-    if (!id) return;
+    if (!id || WORLD_BYPASS) return;
     let active = true;
     fetch(`/api/v1/approvals/${id}/rp-signature`, { method: "POST" })
       .then(async (response) => {
@@ -83,6 +85,20 @@ export default function ApprovePage() {
     [id],
   );
 
+  const approveWithoutWorld = useCallback(async (): Promise<void> => {
+    try {
+      const response = await fetch(`/api/v1/approvals/${id}/verify`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ idkit: {} }),
+      });
+      if (!response.ok) throw new Error(await response.text());
+      setApproved(true);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "could not approve this request");
+    }
+  }, [id]);
+
   const deny = useCallback(async (): Promise<void> => {
     try {
       const response = await fetch(`/api/v1/approvals/${id}/deny`, { method: "POST" });
@@ -103,7 +119,7 @@ export default function ApprovePage() {
     );
   }
 
-  if (!config) {
+  if (!config && !WORLD_BYPASS) {
     return (
       <main className="flex min-h-screen items-center justify-center p-6">
         <p className="text-sm text-zinc-400">Loading approval…</p>
@@ -122,15 +138,20 @@ export default function ApprovePage() {
             ? "The request may continue."
             : denied
               ? "The request was refused and cannot be reused."
-              : "This approval is bound to this request. Verify with the World App to continue."}
+              : WORLD_BYPASS
+                ? "Test bypass on: this approves without the World App."
+                : "This approval is bound to this request. Verify with the World App to continue."}
         </p>
         <button
           className="w-full rounded-full bg-emerald-400 px-4 py-3 text-sm font-semibold text-zinc-950 disabled:opacity-50"
           disabled={approved || denied}
-          onClick={() => setOpen(true)}
+          onClick={() => {
+            if (WORLD_BYPASS) void approveWithoutWorld();
+            else setOpen(true);
+          }}
           type="button"
         >
-          Verify with World ID
+          {WORLD_BYPASS ? "Approve (World ID test bypass)" : "Verify with World ID"}
         </button>
         <button
           className="w-full rounded-full border border-white/15 px-4 py-3 text-sm font-semibold text-zinc-300 disabled:opacity-50"
@@ -140,22 +161,24 @@ export default function ApprovePage() {
         >
           Deny this request
         </button>
-        <IDKitRequestWidget
-          open={open}
-          onOpenChange={setOpen}
-          app_id={config.app_id}
-          action={config.action}
-          environment={config.environment}
-          rp_context={config.rp_context}
-          allow_legacy_proofs
-          preset={preset}
-          handleVerify={verify}
-          onSuccess={() => {
-            setApproved(true);
-            setOpen(false);
-          }}
-          onError={(code) => setError(String(code))}
-        />
+        {config ? (
+          <IDKitRequestWidget
+            open={open}
+            onOpenChange={setOpen}
+            app_id={config.app_id}
+            action={config.action}
+            environment={config.environment}
+            rp_context={config.rp_context}
+            allow_legacy_proofs
+            preset={preset}
+            handleVerify={verify}
+            onSuccess={() => {
+              setApproved(true);
+              setOpen(false);
+            }}
+            onError={(code) => setError(String(code))}
+          />
+        ) : null}
       </div>
     </main>
   );

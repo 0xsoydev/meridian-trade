@@ -3,7 +3,7 @@ import { and, desc, eq, gt } from "drizzle-orm";
 import { db } from "./db.ts";
 import { approvals, keys, type ApprovalRow } from "./schema.ts";
 import { seal } from "./secrets.ts";
-import { verifyWorld } from "./world.ts";
+import { testNullifier, verifyWorld, worldBypassed } from "./world.ts";
 import type { ApprovalStart, ApprovalStatus } from "./types.ts";
 
 const TTL_MS = 600_000;
@@ -120,11 +120,13 @@ export async function approveWithProof(id: string, idkit: unknown): Promise<Appr
   const row = await expire(found);
   if (row.status !== "pending") return { approved: false, httpStatus: 409, error: `approval is ${row.status}` };
 
-  const checked = await verifyWorld(idkit, { action: approvalAction(), signal: row.id });
-  if ("error" in checked) return { approved: false, httpStatus: 400, error: checked.error };
-
   const [key] = await db().select().from(keys).where(eq(keys.id, keyId)).limit(1);
   if (!key) return { approved: false, httpStatus: 401, error: "invalid router key" };
+
+  const checked = worldBypassed()
+    ? { worldNullifier: key.worldSub ?? testNullifier(keyId) }
+    : await verifyWorld(idkit, { action: approvalAction(), signal: row.id });
+  if ("error" in checked) return { approved: false, httpStatus: 400, error: checked.error };
 
   if (row.kind === "link_human") {
     if (key.worldSub !== null && key.worldSub !== checked.worldNullifier) {

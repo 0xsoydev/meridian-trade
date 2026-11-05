@@ -2,7 +2,7 @@
 
 import { usePrivy } from "@privy-io/react-auth";
 import { IDKitRequestWidget, proofOfHuman, type IDKitResult } from "@worldcoin/idkit";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useConnection, useSignMessage } from "wagmi";
 import { z } from "zod";
 import { charge, formatMicroPerMtok, formatMtok, formatUsd, parseMtok, parseUsd, sellerEarning } from "../../../lib/price";
@@ -41,6 +41,7 @@ const worldSchema = z.object({
 });
 const listedSchema = z.object({ listing_id: z.string() });
 const failureSchema = z.object({ error: z.object({ message: z.string() }) });
+const WORLD_BYPASS = process.env.NEXT_PUBLIC_WORLD_BYPASS === "true" && process.env.NODE_ENV !== "production";
 
 type Envelope = { address: string; message: string; signature: string };
 
@@ -121,6 +122,10 @@ export function Sell() {
     setFailure(null);
     try {
       const envelope = await sign({ action: "seller" });
+      if (WORLD_BYPASS) {
+        await submitSeller(envelope, {});
+        return;
+      }
       const res = await fetch("/api/sellers/rp-signature", { method: "POST" });
       const config = worldSchema.safeParse(await res.json().catch(() => null));
       if (!res.ok || !config.success) throw new Error("World ID is not configured on the server");
@@ -132,26 +137,23 @@ export function Sell() {
     }
   };
 
-  const verify = useCallback(
-    async (result: IDKitResult): Promise<void> => {
-      const res = await fetch("/api/sellers/verify", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ address, signed: sellerEnvelope, idkit: result }),
-      });
-      const body: unknown = await res.json().catch(() => null);
-      if (res.ok) {
-        setVerified("verified: one human, one seller");
-        return;
-      }
-      if (res.status === 409) {
-        setVerified("this human is already a seller");
-        return;
-      }
-      throw new Error(failureSchema.safeParse(body).data?.error.message ?? `verification failed (${res.status})`);
-    },
-    [address, sellerEnvelope],
-  );
+  const submitSeller = async (signed: Envelope | null, idkit: unknown): Promise<void> => {
+    const res = await fetch("/api/sellers/verify", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ address, signed, idkit }),
+    });
+    const body: unknown = await res.json().catch(() => null);
+    if (res.ok) {
+      setVerified(WORLD_BYPASS ? "verified with the test bypass, no World App" : "verified: one human, one seller");
+      return;
+    }
+    if (res.status === 409) {
+      setVerified("this human is already a seller");
+      return;
+    }
+    throw new Error(failureSchema.safeParse(body).data?.error.message ?? `verification failed (${res.status})`);
+  };
 
   const list = async () => {
     if (blocker !== null || busy || !selected) return;
@@ -267,10 +269,15 @@ export function Sell() {
                   onClick={() => void startVerify()}
                   className="mt-2 border border-[#CECECE] bg-white px-3 py-1.5 text-[13px] text-[#1E1E1E] hover:border-[#1743FF] disabled:text-[#C9C9C9]"
                 >
-                  {verified ? "Verified" : "Verify with World ID"}
+                  {verified ? "Verified" : WORLD_BYPASS ? "Verify with World ID (test bypass)" : "Verify with World ID"}
                 </button>
                 <p className={`mt-1.5 text-[12px] ${MUTED}`}>
-                  {verified ?? (address ? "World App · Proof of Human, bound to this wallet" : "connect a wallet first")}
+                  {verified ??
+                    (address
+                      ? WORLD_BYPASS
+                        ? "test bypass on: no World App needed"
+                        : "World App · Proof of Human, bound to this wallet"
+                      : "connect a wallet first")}
                 </p>
                 {world ? (
                   <IDKitRequestWidget
@@ -288,7 +295,7 @@ export function Sell() {
                     }}
                     allow_legacy_proofs
                     preset={preset}
-                    handleVerify={verify}
+                    handleVerify={(result: IDKitResult) => submitSeller(sellerEnvelope, result)}
                     onSuccess={() => setWorldOpen(false)}
                     onError={(code) => setFailure(String(code))}
                   />

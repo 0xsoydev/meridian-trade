@@ -4,6 +4,7 @@ import { eq, inArray } from "drizzle-orm";
 import { generatePrivateKey, privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
 import { DELETE, PATCH } from "../app/api/listings/[id]/route.ts";
 import { POST } from "../app/api/listings/route.ts";
+import { POST as verifySeller } from "../app/api/sellers/verify/route.ts";
 import { db } from "./db.ts";
 import { listingPriceError, parseCapacityMtok } from "./listings.ts";
 import { listings, sellers } from "./schema.ts";
@@ -323,4 +324,26 @@ test("cancel refuses an open reservation and then cancels once", { skip }, async
     await sign({ action: "cancel", listing_id: id, client_nonce: `n-${suffix}-8` }),
   );
   assert.equal(again.status, 409);
+});
+
+test("with the World bypass on, a signed wallet becomes a seller once without a World proof", { skip }, async () => {
+  process.env.NEXT_PUBLIC_WORLD_BYPASS = "true";
+  const wallet = privateKeyToAccount(generatePrivateKey());
+  try {
+    const message = JSON.stringify({ domain: "localhost", action: "seller", issued_at: new Date().toISOString() });
+    const signed = { address: wallet.address, message, signature: await wallet.signMessage({ message }) };
+    const call = () =>
+      verifySeller(
+        new Request("http://localhost/api/sellers/verify", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ address: wallet.address, signed, idkit: {} }),
+        }),
+      );
+    assert.equal((await call()).status, 200);
+    assert.equal((await call()).status, 409);
+  } finally {
+    process.env.NEXT_PUBLIC_WORLD_BYPASS = "false";
+    await db().delete(sellers).where(eq(sellers.address, wallet.address.toLowerCase()));
+  }
 });
