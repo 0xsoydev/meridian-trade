@@ -1,4 +1,4 @@
-import { createPublicClient, createWalletClient, defineChain, http, isAddress, isHex, type Address } from "viem";
+import { createPublicClient, createWalletClient, defineChain, http, isAddress, isHex, nonceManager, type Address } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
 export const galileo = defineChain({
@@ -36,5 +36,5 @@ export function publicClient() {
 export function keeperWallet() {
   const key = process.env.KEEPER_PRIVATE_KEY;
   if (!key || !isHex(key) || key.length !== 66) throw new Error("KEEPER_PRIVATE_KEY must be a 0x-prefixed 32-byte hex key");
-  return createWalletClient({ account: privateKeyToAccount(key), chain: galileo, transport: http() });
+  return createWalletClient({ account: privateKeyToAccount(key, { nonceManager }), chain: galileo, transport: http() });
 }
