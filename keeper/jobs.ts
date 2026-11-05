@@ -1,3 +1,4 @@
+import { matchAllBids } from "../apps/web/lib/bids.ts";
 import { asks } from "../apps/web/lib/book.ts";
 import { keeperWallet, publicClient } from "../apps/web/lib/chain.ts";
 import { buildRollups, markPublished, minuteFills, submitRollup } from "../apps/web/lib/hcs.ts";
@@ -133,6 +134,11 @@ export async function liquidateUnderwater(): Promise<void> {
 export async function sweepStale(): Promise<void> {
   const released = await releaseStale();
   if (released > 0) console.log(`[sweep] released ${released} stale usage rows`);
+}
+
+export async function matchRestingBids(): Promise<void> {
+  const filled = await matchAllBids();
+  if (filled > 0) console.log(`[match] ${filled} resting bid fills`);
 }
 
 let resetDay: string | null = null;

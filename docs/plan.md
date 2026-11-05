@@ -254,6 +254,7 @@ Missing usage (client abort, upstream break, deadline abort): `mixedTokens(estim
 | `usage` | `id uuid pk`, `status text`, `rail text`, `upstream_request_id text null`, `key_id fk`, `listing_id fk`, `prepaid_id fk null` (set when the request spends prepaid MTokens), `price_micro_per_mtok bigint`, `reserved_tokens bigint`, `reserved_usd_micro bigint`, `prompt_tokens int default 0`, `completion_tokens int default 0`, `list_cost_usd_micro bigint default 0`, `mixed_tokens bigint default 0`, `charge_usd_micro bigint default 0`, `seller_earning_usd_micro bigint default 0`, `payout_id uuid null`, `hcs_minute bigint null`, `created_at`, `settled_at timestamptz null` | `status in ('open','settled','released')`; `upstream_request_id` unique when not null; index `(status, created_at)`, `(settled_at)`, `(listing_id, payout_id)` |
 | `trades` | `id uuid pk`, `key_id fk`, `listing_id fk`, `model text`, `tokens bigint`, `price_micro_per_mtok bigint`, `charge_usd_micro bigint`, `seller_earning_usd_micro bigint`, `payout_id uuid null`, `created_at` | `tokens > 0`; index `(created_at)`, `(listing_id, payout_id)`, `(key_id, created_at)` |
 | `prepaid` | `id uuid pk`, `key_id fk`, `listing_id fk`, `model text`, `tokens_remaining bigint`, `expires_at timestamptz null`, `created_at` | `tokens_remaining >= 0`; index `(key_id, model, expires_at)` |
+| `bids` | `id uuid pk`, `key_id fk`, `model text`, `price_micro_per_mtok bigint`, `tokens bigint` (unfilled), `hold_usd_micro bigint`, `status text`, `created_at` | `status in ('open','filled','cancelled')`; `price > 0`; `tokens, hold >= 0`; index `(model, status, price)`, `(key_id, status)` |
 | `payouts` | `id uuid pk`, `seller_id fk`, `day date`, `amount_usd_micro bigint`, `schedule_id text null`, `status text`, `created_at` | unique `(seller_id, day)`; `status in ('pending','scheduled','executed','cancelled')` |
 | `approvals` | `id uuid pk`, `key_id fk`, `kind text`, `cap_usd_micro bigint null`, `device_code_ciphertext text`, `user_code text`, `verification_uri_complete text`, `interval_s int`, `expires_at`, `status text`, `created_at` | `kind in ('link_human','raise_cap')`; `status in ('pending','approved','denied','expired')` |
 
@@ -334,7 +335,9 @@ export type ApprovalStatus = { status: "pending" | "approved" | "denied" | "expi
 |---|---|---|---|---|---|
 | POST | `/api/v1/chat/completions` | `Bearer rk_` (+ `PAYMENT-SIGNATURE` on retry) | OpenAI chat request; `model` optional (falls back to `default_model`) | 200 JSON or SSE passthrough | 401, 402, 403 `approval_required`, 404 `model_not_found`/`no_liquidity`, 502 |
 | POST | `/api/v1/topup?usd=0.50` | none (creates key) or `Bearer rk_` | none | 200 `TopupResult` + `PAYMENT-RESPONSE` | 402 (x402), 400 |
-| POST | `/api/v1/trades` | `Bearer rk_` | `{ model, tokens }` | `{ fills: Trade[], prepaid_tokens }` | 402, 404 `no_liquidity`, 400 |
+| POST | `/api/v1/trades` | `Bearer rk_` | `{ model, tokens, limit_price_micro_per_mtok? }` | `{ fills: Trade[], bid: Bid \| null, prepaid_tokens }` | 402, 404 `no_liquidity`, 400 |
+| GET | `/api/v1/bids?model=` | `Bearer rk_` | — | `{ data: Bid[] }`, the key's open bids | 401 |
+| DELETE | `/api/v1/bids/:id` | `Bearer rk_` | — | `{ bid_id, status, balance_usd_micro }` | 404 |
 | GET | `/api/v1/book?model=` | none | — | `{ asks, fills }` | 404 |
 | GET | `/api/v1/models` | none | — | `{ object: "list", data: ModelRow[] }`, the OpenAI list shape | — |
 | GET | `/api/v1/balance` | `Bearer rk_` | — | `Balance` | 401 |
@@ -536,7 +539,14 @@ export function buy(keyId: string, intent: TradeIntent): Promise<{ fills: Trade[
 5. Requests spend prepaid first (§9 step 6). A request is served entirely from prepaid or entirely at the current ask, never a mix, so `charge = 0` is an unambiguous marker and the VWAP stays exact.
 6. Prepaid MTokens expire with the period they were bought for and are not refunded: the capacity was set aside and the seller was paid. That is the same expiring-credit logic that makes below-list asks rational.
 
-`GET /api/v1/book?model=` returns the asks (`listing_id`, rail, price, tokens left, verifiable) and the last 50 `trades`, which is what `/trade` renders and what its live series reads.
+`GET /api/v1/book?model=` returns the asks (`listing_id`, rail, price, tokens left, verifiable), the open bids summed by price (best first, at most 20 levels) and the last 50 `trades`, which is what `/trade` renders and what its live series reads.
+
+Limit buys (`lib/bids.ts`):
+1. `limit_price_micro_per_mtok` stops the ask walk at the first ask above it. What the walk fills is charged as above; the rest rests as a `bids` row. One statement moves `hold = charge(rest, limit)` from the key's balance into the bid, or rests nothing when the balance cannot cover it. The 402 check covers the fills plus that hold.
+2. A bid always holds exactly `charge(tokens, price)` for its unfilled tokens. A fill of `take` tokens charges `hold − charge(tokens − take, price)` and the bid keeps the new `charge(tokens − take, price)`, so a bid's fills add up to what it held, and a full fill leaves 0.
+3. `matchBids(model)` fills the best bid (highest price, then oldest) from the best ask while the ask is at or below the bid, one statement per fill that locks the bid and the listing, and stops at the first fill that fails. The trade prints at the bid's price: the resting order sets the price, so sellers selling into bids print below the asks and the tape moves both ways. Fills write `trades` and `prepaid` like a buy, and the seller is paid at the trade's charge.
+4. Matching runs after `POST /api/listings` and `PATCH /api/listings/:id`, and every 60 s in the keeper, which also catches capacity returned by the daily reset.
+5. `DELETE /api/v1/bids/:id` cancels an open bid of the calling key and returns its hold to the balance in one statement. Bids stay open until filled or cancelled; a key may fill its own bid.
 
 ### 10.11 Human signup and deposit (`/api/v1/keys`)
 
@@ -648,7 +658,7 @@ Parameters: `MAX_LEVERAGE = 5`, `MM_BPS = 500`, `FEE_BPS = 10`, `LIQ_BPS = 50`, 
 
 ## 12. Keeper (`keeper/main.ts`)
 
-Single Node 22 process (`node --env-file=.env keeper/main.ts`). `setInterval` loops from §10.5 and §10.7, plus a 60 s sweep, `releaseStale()` from `apps/web/lib/ledger.ts`, that releases (§9, 11a) `open` usage rows older than 6 min, which exist only when a function died mid-request; each loop catches and logs its own errors and never overlaps itself. Holds `KEEPER_PRIVATE_KEY` (Galileo), `HEDERA_TREASURY_ID/KEY` (HCS, payouts). Idempotency: payouts `(seller_id, day)` unique and linked to their usage rows in the same statement; Hedera deduplicates identical schedules; HCS minute recorded in `usage.hcs_minute` after submit; oracle posts carry seq ranges; settle, release and sweep all require `status = 'open'`.
+Single Node 22 process (`node --env-file=.env keeper/main.ts`). `setInterval` loops from §10.5 and §10.7, a 60 s `matchAllBids()` (§10.10), plus a 60 s sweep, `releaseStale()` from `apps/web/lib/ledger.ts`, that releases (§9, 11a) `open` usage rows older than 6 min, which exist only when a function died mid-request; each loop catches and logs its own errors and never overlaps itself. Holds `KEEPER_PRIVATE_KEY` (Galileo), `HEDERA_TREASURY_ID/KEY` (HCS, payouts). Idempotency: payouts `(seller_id, day)` unique and linked to their usage rows in the same statement; Hedera deduplicates identical schedules; HCS minute recorded in `usage.hcs_minute` after submit; oracle posts carry seq ranges; settle, release and sweep all require `status = 'open'`.
 
 ---
 
@@ -679,7 +689,7 @@ type AgentEnv = {
 | Page | Who | Contents | Data |
 |---|---|---|---|
 | `/` | everyone | Markets overview and the way in: model, rails, verifiability, best ask, index, discount, 24 h volume, links to `/trade?model=` and `/perps?model=` | DB + `IndexOracle.latest` |
-| `/trade` | spot buyers and sellers | Model picker (`?model=`). **Buy**: the ask book with price, MTokens left, rail and verifiability; size input; fee and total; recent fills, charted as 1m, 5m, 15m or 1h candles from the last 50 fills; a short balance on a wallet key is paid from that wallet in Hedera USDC, up to 20 USD, before the buy. **Sell**: from the connected seller wallet, your own asks with amend price, capacity and cancel, and a limit sell (price, size) placed with a key already stored on one of your listings on a rail that serves the model; a link to `/sell` only when the wallet is not a verified seller or has no such key | `GET /api/v1/book`, `POST /api/v1/trades`, `PATCH`/`DELETE /api/listings/:id` |
+| `/trade` | spot buyers and sellers | Model picker (`?model=`). **Buy**: the order book, asks with price, MTokens left, rail and verifiability and bids in green under them; size input; an optional limit price, where blank buys at market and a price fills what it can and rests the rest as a bid; fee, the amount held for the bid and the total; your open bids with cancel; recent fills, charted as 1m, 5m, 15m or 1h candles from the last 50 fills; a short balance on a wallet key is paid from that wallet in Hedera USDC, up to 20 USD, before the buy. **Sell**: from the connected seller wallet, your own asks with amend price, capacity and cancel, and a limit sell (price, size) placed with a key already stored on one of your listings on a rail that serves the model; a link to `/sell` only when the wallet is not a verified seller or has no such key | `GET /api/v1/book`, `POST /api/v1/trades`, `PATCH`/`DELETE /api/listings/:id` |
 | `/perps` | traders | Model picker (`?model=`). Index chart and mark price, current funding rate, long/short with size, leverage and margin, previewed liquidation price, Positions tab across all models, MockUSDC balance and faucet, connect-wallet state | `IndexPosted` logs (viem `getLogs`), `PerpMarket` reads, wagmi |
 | `/sell` | sellers, once | Wallet → World verify → source picker (API key or Connect Claude Code / Codex) → new listing → earnings and payouts (HashScan). Setup and accounting, not trading | API, DB |
 | `/keys` | a human buyer | Connect a wallet → sign once to create a router key → list keys, deposit panel (deposit from the key's wallet, or treasury, memo = key id, amount, tx id), balance, auto top-up, daily cap, default model, link human (QR via `qrcode`). Pasting an agent's key still works | `/api/v1/keys`, `/api/v1/keys/deposit`, `/api/v1/*` |

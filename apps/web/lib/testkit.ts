@@ -5,7 +5,7 @@ import { inArray } from "drizzle-orm";
 import { z } from "zod";
 import { hashKey } from "./auth.ts";
 import { db } from "./db.ts";
-import { approvals, keys, listings, prepaid, sellers, topups, trades, usage } from "./schema.ts";
+import { approvals, bids, keys, listings, prepaid, sellers, topups, trades, usage } from "./schema.ts";
 import { seal } from "./secrets.ts";
 
 process.env.NEXT_PUBLIC_WORLD_BYPASS = "false";
@@ -203,6 +203,7 @@ export async function cleanup(): Promise<void> {
     await d.delete(prepaid).where(inArray(prepaid.keyId, keyIds));
     await d.delete(trades).where(inArray(trades.keyId, keyIds));
     await d.delete(topups).where(inArray(topups.keyId, keyIds));
+    await d.delete(bids).where(inArray(bids.keyId, keyIds));
   }
   if (listingIds.length > 0) {
     await d.delete(usage).where(inArray(usage.listingId, listingIds));

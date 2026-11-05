@@ -1,9 +1,9 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, sum } from "drizzle-orm";
 import { asks } from "../../../../lib/book.ts";
 import { db } from "../../../../lib/db.ts";
 import { fail } from "../../../../lib/errors.ts";
 import { reference } from "../../../../lib/rails.ts";
-import { trades } from "../../../../lib/schema.ts";
+import { bids, trades } from "../../../../lib/schema.ts";
 import type { Book } from "../../../../lib/types";
 
 export async function GET(request: Request): Promise<Response> {
@@ -11,7 +11,7 @@ export async function GET(request: Request): Promise<Response> {
   if (!model) return fail(400, "invalid_request", "model is required");
   if (!(await reference(model))) return fail(404, "model_not_found", `unknown model: ${model}`);
 
-  const [open, recent] = await Promise.all([
+  const [open, recent, levels] = await Promise.all([
     asks(model),
     db()
       .select({
@@ -24,6 +24,13 @@ export async function GET(request: Request): Promise<Response> {
       .where(eq(trades.model, model))
       .orderBy(desc(trades.createdAt))
       .limit(50),
+    db()
+      .select({ price: bids.priceMicroPerMtok, tokens: sum(bids.tokens) })
+      .from(bids)
+      .where(and(eq(bids.model, model), eq(bids.status, "open")))
+      .groupBy(bids.priceMicroPerMtok)
+      .orderBy(desc(bids.priceMicroPerMtok))
+      .limit(20),
   ]);
 
   const book: Book = {
@@ -35,6 +42,7 @@ export async function GET(request: Request): Promise<Response> {
       tokens_left: ask.tokensLeft.toString(),
       verifiable: ask.verifiability !== null,
     })),
+    bids: levels.map((level) => ({ price_micro_per_mtok: level.price.toString(), tokens: level.tokens ?? "0" })),
     fills: recent.map((row) => ({
       listing_id: row.listingId,
       tokens: row.tokens.toString(),

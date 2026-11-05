@@ -191,6 +191,10 @@ export type FillInput = {
   expiresAt: Date | null;
 };
 
+export function nextUtcMidnight(now: Date): Date {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+}
+
 export async function fill(input: FillInput): Promise<{ listingOk: boolean; keyOk: boolean }> {
   const result = await db().execute<{ listing_ok: number; key_ok: number }>(sql`
     with l as (

@@ -13,11 +13,13 @@ import {
   formatMtok,
   formatUsd,
   parseMtok,
+  parseUsd,
   previewFill,
   TOPUP_MAX_MICRO,
 } from "../../../lib/price.ts";
 import type {
   Balance,
+  Bid,
   Book,
   ModelRow,
   RouterError,
@@ -26,6 +28,7 @@ import type {
 } from "../../../lib/types";
 import { useWalletDeposit } from "../wallet-deposit";
 import { FillsChart, INTERVALS, type ScaleMode } from "./chart";
+import { OpenBids } from "./open-bids";
 import { SellTicket } from "./sell-ticket";
 
 const KEY_STORAGE = "router_key";
@@ -67,6 +70,9 @@ export function Trade({ initialModel }: { initialModel: string }) {
   const [scale, setScale] = useState<ScaleMode>("linear");
   const [expanded, setExpanded] = useState(false);
   const [size, setSize] = useState("10");
+  const [limitPrice, setLimitPrice] = useState("");
+  const [rested, setRested] = useState<Bid | null>(null);
+  const [ordersVersion, setOrdersVersion] = useState(0);
   const { ready, login } = usePrivy();
   const { address } = useConnection();
   const walletDeposit = useWalletDeposit();
@@ -171,7 +177,15 @@ export function Trade({ initialModel }: { initialModel: string }) {
   const asks = book?.asks ?? [];
   const venueFills = book?.fills ?? [];
   const wanted = parseMtok(size);
-  const preview = useMemo(() => previewFill(asks, wanted, TAKE_BPS), [asks, wanted]);
+  const limit = limitPrice.trim() === "" ? null : parseUsd(limitPrice);
+  const limitBad = limitPrice.trim() !== "" && (limit === null || limit === 0n);
+  const preview = useMemo(
+    () => previewFill(limit === null ? asks : asks.filter((ask) => BigInt(ask.price_micro_per_mtok) <= limit), wanted, TAKE_BPS),
+    [asks, limit, wanted],
+  );
+  const resting = limit !== null && wanted > preview.fillable ? wanted - preview.fillable : 0n;
+  const hold = limit !== null && resting > 0n ? charge(resting, limit) : 0n;
+  const needed = preview.cost + hold;
   const points = useMemo(() => fillsToPoints(venueFills), [venueFills]);
 
   const bestAsk = asks[0] ? BigInt(asks[0].price_micro_per_mtok) : null;
@@ -181,7 +195,12 @@ export function Trade({ initialModel }: { initialModel: string }) {
   const delta = last !== null && first !== null ? (last - first) / first : null;
   const depth = asks.reduce((total, ask) => total + BigInt(ask.tokens_left), 0n);
   const volume = venueFills.reduce((total, fill) => total + BigInt(fill.tokens), 0n);
-  const widest = asks.reduce((max, ask) => (BigInt(ask.tokens_left) > max ? BigInt(ask.tokens_left) : max), 0n);
+  const bidLevels = book?.bids ?? [];
+  const bidDepth = bidLevels.reduce((total, level) => total + BigInt(level.tokens), 0n);
+  const widest = [...asks.map((ask) => BigInt(ask.tokens_left)), ...bidLevels.map((level) => BigInt(level.tokens))].reduce(
+    (max, size) => (size > max ? size : max),
+    0n,
+  );
 
   const affordable =
     balance !== null && bestAsk !== null && balance > 0n ? (balance * 1_000_000n) / bestAsk : 0n;
@@ -191,7 +210,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
       : 0;
   const overCap = wanted > MAX_TOKENS;
   const shortfall =
-    balance !== null && preview.cost > balance ? ((preview.cost - balance + 9_999n) / 10_000n) * 10_000n : 0n;
+    balance !== null && needed > balance ? ((needed - balance + 9_999n) / 10_000n) * 10_000n : 0n;
   const wallet = account?.wallet ?? null;
   const payFromWallet = wallet !== null && shortfall > 0n;
   const payBlocked = !payFromWallet
@@ -210,10 +229,11 @@ export function Trade({ initialModel }: { initialModel: string }) {
   };
 
   const buy = async () => {
-    if (!key || wanted === 0n || pending) return;
+    if (!key || wanted === 0n || pending || limitBad) return;
     setPending(true);
     setProblem(null);
     setFills([]);
+    setRested(null);
     try {
       if (payFromWallet) {
         setPaying(true);
@@ -226,7 +246,11 @@ export function Trade({ initialModel }: { initialModel: string }) {
       const res = await fetch("/api/v1/trades", {
         method: "POST",
         headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
-        body: JSON.stringify({ model, tokens: wanted.toString() }),
+        body: JSON.stringify(
+          limit === null
+            ? { model, tokens: wanted.toString() }
+            : { model, tokens: wanted.toString(), limit_price_micro_per_mtok: limit.toString() },
+        ),
       });
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as RouterError | null;
@@ -238,13 +262,15 @@ export function Trade({ initialModel }: { initialModel: string }) {
               : code === "no_liquidity"
                 ? "the asks moved before the fill; retry"
                 : body?.error?.message ?? `request failed (${res.status})`,
-          shortfall: wallet === null && balance !== null && preview.cost > balance ? preview.cost - balance : null,
+          shortfall: wallet === null && balance !== null && needed > balance ? needed - balance : null,
         });
         return;
       }
       const result = (await res.json()) as TradeResult;
       const at = new Date().toISOString();
       setFills(result.fills.map((fill) => ({ ...fill, at })));
+      setRested(result.bid);
+      setOrdersVersion((value) => value + 1);
       setDock("mine");
       void refreshBook();
       void refreshBalance();
@@ -260,7 +286,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
   };
 
   const topupCommand = () => {
-    const cents = ((preview.cost - (balance ?? 0n) + 9_999n) / 10_000n) * 10_000n;
+    const cents = ((needed - (balance ?? 0n) + 9_999n) / 10_000n) * 10_000n;
     return `POST ${window.location.origin}/api/v1/topup?usd=${formatMicroPerMtok(cents)}`;
   };
 
@@ -456,7 +482,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
           <div className="mt-5 border-t border-[#D9D9D9] pt-4">
             <div className="flex items-center justify-between">
               <h2 className="font-serif text-[22px] leading-tight text-[#1E1E1E]">
-                {pane === "book" ? "Ask book" : "Fill tape"}
+                {pane === "book" ? "Order book" : "Fill tape"}
               </h2>
               <div className="flex gap-4">
                 {(["book", "tape"] as const).map((item) => (
@@ -506,9 +532,25 @@ export function Trade({ initialModel }: { initialModel: string }) {
                       no asks yet for {model}
                     </p>
                   ) : null}
+                  {bidLevels.map((level) => (
+                    <div
+                      key={level.price_micro_per_mtok}
+                      className="flex items-baseline justify-between gap-4 border-t border-[#D9D9D9] py-3"
+                      style={{
+                        background: `linear-gradient(90deg, rgba(46, 189, 133, ${widest === 0n ? 0 : (Number(BigInt(level.tokens)) / Number(widest)) * 0.16}) , rgba(46, 189, 133, 0) 100%)`,
+                      }}
+                    >
+                      <span className="text-[14px] tabular-nums text-[#2EBD85]">
+                        {formatMicroPerMtok(BigInt(level.price_micro_per_mtok))}
+                        <span className={`ml-1.5 text-[12px] ${MUTED}`}>USD / MTok</span>
+                      </span>
+                      <span className="text-[13px] tabular-nums text-[#757575]">{formatMtok(BigInt(level.tokens))} MTok</span>
+                      <span className={`text-[13px] ${MUTED}`}>bid</span>
+                    </div>
+                  ))}
                 </div>
                 <p className="border-t border-[#D9D9D9] pt-3 text-[13px] text-[#757575]">
-                  no bids — asks supply this venue. book depth: {formatMtok(depth)} MTok
+                  asks: {formatMtok(depth)} MTok · bids: {bidLevels.length === 0 ? "none yet; place a limit buy below the best ask" : `${formatMtok(bidDepth)} MTok`}
                 </p>
               </>
             ) : (
@@ -610,6 +652,17 @@ export function Trade({ initialModel }: { initialModel: string }) {
                   ))}
                 </div>
 
+                <label className="block">
+                  <span className={`mb-1 block text-[13px] ${MUTED}`}>Limit price, USD per MTok — blank buys at market</span>
+                  <input
+                    value={limitPrice}
+                    onChange={(event) => setLimitPrice(event.target.value)}
+                    inputMode="decimal"
+                    placeholder="market"
+                    className={`h-[34px] w-full border bg-white px-2.5 text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF] ${limitBad ? "border-[#F6465D]" : "border-[#CECECE]"}`}
+                  />
+                </label>
+
                 <dl className="border-t border-[#D9D9D9]">
                   <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
                     <dt className={MUTED}>Average ask</dt>
@@ -623,15 +676,26 @@ export function Trade({ initialModel }: { initialModel: string }) {
                     <dt className={MUTED}>Seller receives</dt>
                     <dd className="tabular-nums text-[#1E1E1E]">{preview.net > 0n ? formatUsd(preview.net) : "—"}</dd>
                   </div>
+                  {hold > 0n ? (
+                    <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
+                      <dt className={MUTED}>Held for the bid</dt>
+                      <dd className="tabular-nums text-[#1E1E1E]">{formatUsd(hold)}</dd>
+                    </div>
+                  ) : null}
                   <div className="flex justify-between py-3">
                     <dt className="text-[15px] font-semibold text-[#1E1E1E]">You pay</dt>
                     <dd className="text-[16px] font-semibold tabular-nums text-[#1E1E1E]">
-                      {preview.cost > 0n ? formatUsd(preview.cost) : "—"}
+                      {needed > 0n ? formatUsd(needed) : "—"}
                     </dd>
                   </div>
                 </dl>
 
-                {preview.partial && wanted > 0n && !overCap ? (
+                {limit !== null && resting > 0n && !overCap ? (
+                  <p className={`text-[13px] leading-5 ${MUTED}`}>
+                    {formatMtok(preview.fillable)} MTok fill now; {formatMtok(resting)} MTok wait on the book as a bid at{" "}
+                    {formatMicroPerMtok(limit)} until an ask meets it. Cancel returns what the bid still holds.
+                  </p>
+                ) : preview.partial && wanted > 0n && !overCap ? (
                   <p className="text-[13px] leading-5 text-[#F6465D]">
                     The book covers {formatMtok(preview.fillable)} of {formatMtok(wanted)} MTok. The rest stays unfilled.
                   </p>
@@ -673,18 +737,20 @@ export function Trade({ initialModel }: { initialModel: string }) {
                   <button
                     type="button"
                     onClick={() => void buy()}
-                    disabled={pending || wanted === 0n || preview.cost === 0n || overCap || payBlocked !== null}
+                    disabled={pending || wanted === 0n || needed === 0n || overCap || limitBad || payBlocked !== null}
                     className="h-[34px] w-full bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4] disabled:text-white"
                   >
                     {paying
                       ? "Paying from your wallet…"
                       : pending
-                        ? "Buying…"
+                        ? "Placing the order…"
                         : wanted === 0n
                           ? "Enter a size"
-                          : payFromWallet
-                            ? `Pay ${formatUsd(shortfall)} and buy ${formatMtok(wanted)} MTok`
-                            : `Buy ${formatMtok(wanted)} MTok`}
+                          : limitBad
+                            ? "Enter a limit price in USD"
+                            : payFromWallet
+                              ? `Pay ${formatUsd(shortfall)} and ${limit === null ? "buy" : "limit buy"} ${formatMtok(wanted)} MTok`
+                              : `${limit === null ? "Buy" : "Limit buy"} ${formatMtok(wanted)} MTok`}
                   </button>
                 )}
 
@@ -715,6 +781,25 @@ export function Trade({ initialModel }: { initialModel: string }) {
                       </button>
                     ) : null}
                   </div>
+                ) : null}
+
+                {rested ? (
+                  <p className="text-[13px] leading-5 text-[#2EBD85]">
+                    {formatMtok(BigInt(rested.tokens))} MTok rest as a bid at{" "}
+                    {formatMicroPerMtok(BigInt(rested.price_micro_per_mtok))}, holding {formatUsd(BigInt(rested.hold_usd_micro))}.
+                  </p>
+                ) : null}
+
+                {key !== null ? (
+                  <OpenBids
+                    routerKey={key}
+                    model={model}
+                    version={ordersVersion}
+                    onChange={() => {
+                      void refreshBook();
+                      void refreshBalance();
+                    }}
+                  />
                 ) : null}
 
                 {account ? (

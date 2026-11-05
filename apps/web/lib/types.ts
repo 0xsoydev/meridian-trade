@@ -145,7 +145,16 @@ export type Trade = {
   charge_usd_micro: string;
 };
 
-export type TradeResult = { fills: Trade[]; prepaid_tokens: string };
+export type Bid = {
+  bid_id: string;
+  model: string;
+  tokens: string;
+  price_micro_per_mtok: string;
+  hold_usd_micro: string;
+  created_at: string;
+};
+
+export type TradeResult = { fills: Trade[]; bid: Bid | null; prepaid_tokens: string };
 
 export type BookAsk = {
   listing_id: string;
@@ -162,7 +171,9 @@ export type BookFill = {
   created_at: string;
 };
 
-export type Book = { model: string; asks: BookAsk[]; fills: BookFill[] };
+export type BookBid = { price_micro_per_mtok: string; tokens: string };
+
+export type Book = { model: string; asks: BookAsk[]; bids: BookBid[]; fills: BookFill[] };
 
 export type SellerListing = {
   listing_id: string;
