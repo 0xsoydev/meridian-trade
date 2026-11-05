@@ -284,7 +284,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
       tone: "down",
     },
     {
-      label: "change, window",
+      label: "change, last 50 fills",
       value: delta !== null ? `${delta >= 0 ? "+" : ""}${(delta * 100).toFixed(2)}%` : "—",
       tone: delta === null ? undefined : delta >= 0 ? "up" : "down",
     },
