@@ -174,7 +174,15 @@ export function candlesFromPoints(points: ChartPoint[], bucket: number): CandleP
       last.close = point.value;
       last.volume += point.volume;
     } else {
-      candles.push({ time, open: point.value, high: point.value, low: point.value, close: point.value, volume: point.volume });
+      const open = last?.close ?? point.value;
+      candles.push({
+        time,
+        open,
+        high: Math.max(open, point.value),
+        low: Math.min(open, point.value),
+        close: point.value,
+        volume: point.volume,
+      });
     }
   }
   return candles;
