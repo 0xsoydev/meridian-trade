@@ -89,7 +89,6 @@ export function FillsChart({
         background: { color: "transparent" },
         textColor: "#757575",
         fontSize: 11,
-        attributionLogo: false,
       },
       grid: {
         vertLines: { visible: false },
