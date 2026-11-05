@@ -624,7 +624,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
               {key === null ? (
                 <Link
                   href="/keys"
-                  className="flex h-[34px] items-center justify-center bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E]"
+                  className="flex h-[34px] items-center justify-center rounded-[6px] bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E]"
                 >
                   Connect your agent
                 </Link>
@@ -633,7 +633,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
                   type="button"
                   onClick={() => void buy()}
                   disabled={pending || wanted === 0n || preview.cost === 0n || overCap}
-                  className="h-[34px] w-full bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4] disabled:text-white"
+                  className="h-[34px] w-full rounded-[6px] bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4] disabled:text-white"
                 >
                   {pending ? "Buying…" : wanted > 0n ? `Buy ${formatMtok(wanted)} MTok` : "Enter a size"}
                 </button>

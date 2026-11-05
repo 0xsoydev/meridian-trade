@@ -359,7 +359,7 @@ export function Sell({ privyReady }: { privyReady: boolean }) {
             <button
               type="button"
               disabled
-              className="h-[34px] w-full bg-black text-[14px] font-semibold text-white disabled:bg-[#D4D4D4] disabled:text-white"
+              className="h-[34px] w-full rounded-[6px] bg-black text-[14px] font-semibold text-white disabled:bg-[#D4D4D4] disabled:text-white"
             >
               List capacity
             </button>

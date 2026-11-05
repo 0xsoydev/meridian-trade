@@ -630,7 +630,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
             {key === null ? (
               <Link
                 href="/keys"
-                className="flex h-[34px] items-center justify-center bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E]"
+                className="flex h-[34px] items-center justify-center rounded-[6px] bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E]"
               >
                 Connect your agent
               </Link>
@@ -640,7 +640,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
                   type="button"
                   disabled
                   title="waits on the wallet provider — providers.tsx (Privy + wagmi) lands next"
-                  className="h-[34px] w-full bg-black text-[14px] font-semibold text-white disabled:bg-[#D4D4D4] disabled:text-white"
+                  className="h-[34px] w-full rounded-[6px] bg-black text-[14px] font-semibold text-white disabled:bg-[#D4D4D4] disabled:text-white"
                 >
                   {side === "long" ? "Long" : "Short"} {wanted > 0n ? `${formatMtok(wanted)} MTok` : ""}
                 </button>
