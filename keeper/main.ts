@@ -1,4 +1,4 @@
-import { liquidateUnderwater, postIndexes, publishRollups, sweepStale } from "./jobs.ts";
+import { dailyClose, liquidateUnderwater, postIndexes, publishRollups, sweepStale } from "./jobs.ts";
 
 const REQUIRED = [
   "DATABASE_URL",
@@ -40,4 +40,5 @@ every("rollup", 60_000, async () => {
 });
 every("sweep", 60_000, sweepStale);
 every("liquidate", 30_000, liquidateUnderwater);
+every("payouts", 60_000, dailyClose);
 console.log(`keeper running, index window ${process.env.INDEX_WINDOW_MIN ?? "60"} min`);
