@@ -75,7 +75,7 @@ export default function Home() {
         <section className="mt-16 border-t border-[#CECECE] px-6 pt-10">
           <p className="text-[15px] text-black">[ what we do ]</p>
           <h2 className="mt-5 font-serif text-[34px] leading-[1.1] text-[#1E1E1E]">
-            Conversation that build momentum
+            Sell what expires. Trade the rest.
           </h2>
           <div className="mt-9 flex flex-col gap-6">
             {CARDS.map((c) => (
@@ -134,11 +134,6 @@ export default function Home() {
               <p>Twitter X</p>
               <p>Telegram</p>
               <p>HashScan</p>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <p>About Us</p>
-              <p>contact us</p>
-              <p>Services</p>
             </div>
           </div>
           <div className="mt-10 flex flex-wrap gap-x-8 gap-y-3 text-[15px] leading-[22px] text-[#757575]">
@@ -200,7 +195,7 @@ export default function Home() {
           <div className={`absolute left-[1632px] top-[946px] h-[1044px] w-px ${LINE}`} />
           <div className={`absolute left-[990px] top-[726px] h-[477px] w-px ${LINE}`} />
           <h2 className="absolute left-[610px] top-[808px] whitespace-pre font-serif text-[60px] font-normal leading-[60px] text-[#1E1E1E]">
-            {"Conversation that\nbuild momentum"}
+            {"Sell what expires.\nTrade the rest."}
           </h2>
 
           {CARDS.map((c) => (
@@ -286,11 +281,6 @@ export default function Home() {
             <p className="leading-[30px]">Twitter X</p>
             <p className="leading-[30px]">Telegram</p>
             <p className="leading-[30px]">HashScan</p>
-          </div>
-          <div className="absolute left-[341px] top-[3384px] flex w-[139px] flex-col gap-[6px] text-[20px] text-[#1E1E1E]">
-            <p className="leading-[36px]">About Us</p>
-            <p className="leading-[30px]">contact us</p>
-            <p className="leading-[30px]">Services</p>
           </div>
           <div className="absolute left-[138px] top-[3576px] flex gap-[50px] text-[20px] leading-[24px] text-[#757575]">
             <a href="https://github.com/0xsoydev/celestial-trade/blob/develop/docs/plan.md">Plan</a>
