@@ -37,6 +37,22 @@ export function formatMicroPerMtok(value: MicroPerMTok): string {
   return `${negative ? "-" : ""}${whole}${fraction ? `.${fraction}` : ""}`;
 }
 
+export const formatUsd = (micro: Micro): string => `$${formatMicroPerMtok(micro)}`;
+
+const group = (whole: bigint) => whole.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+
+export function formatMtok(tokens: bigint): string {
+  const whole = tokens / MICRO_PER_MTOK;
+  const fraction = ((tokens % MICRO_PER_MTOK) / 1_000n).toString().padStart(3, "0").replace(/0+$/, "");
+  return fraction ? `${group(whole)}.${fraction}` : group(whole);
+}
+
+export function parseMtok(input: string): bigint {
+  const match = /^(\d{1,13})(?:\.(\d{1,6}))?$/.exec(input.trim().replace(/[,_\s]/g, ""));
+  if (!match) return 0n;
+  return BigInt(match[1] ?? "0") * MICRO_PER_MTOK + BigInt((match[2] ?? "").padEnd(6, "0"));
+}
+
 export function blended(p: Pricing): MicroPerMTok {
   return (3n * p.prompt + p.completion) / 4n;
 }

@@ -3,6 +3,8 @@ export type DepositCheck = { txId: string; amountMicro: bigint; payer: string } 
 type TokenTransfer = { token_id?: string; account?: string; amount?: number };
 type MirrorTransaction = { result?: string; memo?: string; token_transfers?: TokenTransfer[] };
 
+export const depositMemo = (keyId: string): string => Buffer.from(keyId).toString("base64");
+
 export function normalizeTxId(input: string): string | null {
   const match = /^(\d+\.\d+\.\d+)[@-](\d+)[.-](\d{1,9})$/.exec(input.trim());
   const [, account, seconds, nanos] = match ?? [];

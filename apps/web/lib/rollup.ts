@@ -63,6 +63,27 @@ export function shouldPost(next: bigint, last: bigint, updatedAt: bigint, nowS: 
   return move * 10_000n >= last * POST_MOVE_BPS || nowS - updatedAt >= HEARTBEAT_S;
 }
 
+export type IndexRecompute =
+  | { state: "no-post"; twap: bigint | null; band: [bigint, bigint] | null }
+  | { state: "no-input"; latest: bigint }
+  | { state: "sync"; twap: bigint; band: [bigint, bigint]; next: bigint; latest: bigint }
+  | { state: "pending"; twap: bigint; band: [bigint, bigint]; next: bigint; latest: bigint; diffBps: bigint };
+
+export function recomputeIndex(input: {
+  rollups: ReadonlyArray<Rollup>;
+  reference: bigint;
+  latest: bigint;
+}): IndexRecompute {
+  const band: [bigint, bigint] = [input.reference / 2n, input.reference];
+  const average = twap(input.rollups);
+  if (input.latest === 0n) return { state: "no-post", twap: average, band };
+  if (average === null) return { state: "no-input", latest: input.latest };
+  const next = stepToward(clampIndex(average, input.reference), input.latest);
+  if (next === input.latest) return { state: "sync", twap: average, band, next, latest: input.latest };
+  const diff = next > input.latest ? next - input.latest : input.latest - next;
+  return { state: "pending", twap: average, band, next, latest: input.latest, diffBps: (diff * 10_000n) / input.latest };
+}
+
 export async function readRollups(input: {
   mirrorUrl: string;
   topicId: string;

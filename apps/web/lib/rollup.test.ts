@@ -4,7 +4,7 @@ import { once } from "node:events";
 import { createServer } from "node:http";
 import test from "node:test";
 import { buildRollups, merkleRoot, type Fill } from "./hcs.ts";
-import { clampIndex, readRollups, shouldPost, stepToward, twap, vwap } from "./rollup.ts";
+import { clampIndex, readRollups, recomputeIndex, shouldPost, stepToward, twap, vwap } from "./rollup.ts";
 import type { Rollup } from "./types";
 
 const fill = (id: string, model: string, charge: bigint, tokens: bigint): Fill => ({
@@ -55,6 +55,42 @@ test("posts on a 10 bps move, on the 5 minute heartbeat, or when unseeded", () =
   assert.equal(shouldPost(5_004_999n, 5_000_000n, 1000n, 1100n), false);
   assert.equal(shouldPost(5_000_000n, 5_000_000n, 1000n, 1300n), true);
   assert.equal(shouldPost(1n, 0n, 0n, 0n), true);
+});
+
+test("recomputeIndex replays the keeper's math and reports the pending move", () => {
+  const window = [rollup("m", 100, "4000000"), rollup("m", 101, "5000000")];
+  assert.deepEqual(recomputeIndex({ rollups: [], reference: 4_000_000n, latest: 0n }), {
+    state: "no-post",
+    twap: null,
+    band: [2_000_000n, 4_000_000n],
+  });
+  assert.deepEqual(recomputeIndex({ rollups: [], reference: 4_000_000n, latest: 4_000_000n }), {
+    state: "no-input",
+    latest: 4_000_000n,
+  });
+  assert.deepEqual(recomputeIndex({ rollups: window, reference: 5_000_000n, latest: 4_500_000n }), {
+    state: "sync",
+    twap: 4_500_000n,
+    band: [2_500_000n, 5_000_000n],
+    next: 4_500_000n,
+    latest: 4_500_000n,
+  });
+  const high = [rollup("m", 100, "6000000"), rollup("m", 101, "8000000")];
+  assert.deepEqual(recomputeIndex({ rollups: high, reference: 5_000_000n, latest: 5_000_000n }), {
+    state: "sync",
+    twap: 7_000_000n,
+    band: [2_500_000n, 5_000_000n],
+    next: 5_000_000n,
+    latest: 5_000_000n,
+  });
+  assert.deepEqual(recomputeIndex({ rollups: window, reference: 5_000_000n, latest: 4_000_000n }), {
+    state: "pending",
+    twap: 4_500_000n,
+    band: [2_500_000n, 5_000_000n],
+    next: 4_400_000n,
+    latest: 4_000_000n,
+    diffBps: 1_000n,
+  });
 });
 
 test("buildRollups groups by model and commits to the rows", () => {

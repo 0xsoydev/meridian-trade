@@ -5,8 +5,11 @@ import {
   charge,
   estimatePromptTokens,
   formatMicroPerMtok,
+  formatMtok,
+  formatUsd,
   marketPrice,
   mixedTokens,
+  parseMtok,
   parseUsd,
   parseUsdPerToken,
   previewFill,
@@ -20,6 +23,20 @@ const glm: Pricing = { prompt: 1_400_000n, completion: 4_400_000n };
 
 const dailyRail = { resetPeriod: "daily" } as Rail;
 const idleRail = { resetPeriod: null } as Rail;
+
+test("MTok inputs and token counts round-trip at the boundary", () => {
+  assert.equal(parseMtok("10"), 10_000_000n);
+  assert.equal(parseMtok("1.5"), 1_500_000n);
+  assert.equal(parseMtok("1,000"), 1_000_000_000n);
+  assert.equal(parseMtok("0.000001"), 1n);
+  assert.equal(parseMtok("junk"), 0n);
+  assert.equal(parseMtok("10."), 0n);
+  assert.equal(formatMtok(10_000_000n), "10");
+  assert.equal(formatMtok(1_500_000n), "1.5");
+  assert.equal(formatMtok(1_000n), "0.001");
+  assert.equal(formatMtok(1_200_000_000n), "1,200");
+  assert.equal(formatUsd(1_400_000n), "$1.4");
+});
 
 test("parseUsdPerToken converts USD per token to micro per MTok", () => {
   assert.equal(parseUsdPerToken("0.000000264"), 264_000n);
