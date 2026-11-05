@@ -11,9 +11,9 @@ const nav = [
 
 export default function SiteLayout({ children }: { children: React.ReactNode }) {
   return (
-    <main className="mx-auto max-w-5xl p-6">
+    <>
       <header className="border-b border-zinc-800">
-        <nav className="flex gap-5 py-4 text-sm">
+        <nav className="mx-auto flex max-w-5xl gap-5 p-4 text-sm">
           {nav.map(([href, label]) => (
             <Link key={href} href={href} className="text-zinc-400 hover:text-zinc-100">
               {label}
@@ -21,7 +21,7 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
           ))}
         </nav>
       </header>
-      {children}
-    </main>
+      <main className="mx-auto max-w-5xl p-6">{children}</main>
+    </>
   );
 }
