@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Hero } from "../components/landing/hero";
+import { Panorama } from "../components/landing/panorama";
 import { Proof } from "../components/landing/proof";
 import { WhatWeDo } from "../components/landing/what-we-do";
 import { Navbar, NavLinks } from "../components/site-nav";
@@ -23,17 +24,7 @@ export default function Home() {
 
         <Proof variant="page" />
 
-        <section className="relative mt-16">
-          <div
-            className="h-[230px] w-full bg-cover"
-            style={{
-              backgroundImage: "url(/images/panorama.png)",
-              filter: "contrast(98%) saturate(0%)",
-            }}
-          />
-          <div className="absolute -top-7 right-0 h-[80px] w-2/5 bg-[#1743FF] opacity-30" />
-          <div className="absolute -bottom-5 left-0 h-[80px] w-2/5 bg-[#1743FF] opacity-30" />
-        </section>
+        <Panorama variant="page" />
 
         <section className="mt-16 border-t border-[#CECECE] px-6 pb-14 pt-10">
           <h2 className="font-serif text-[34px] leading-[1.1] text-black">How it works</h2>
