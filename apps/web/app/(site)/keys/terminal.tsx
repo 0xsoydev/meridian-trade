@@ -390,7 +390,7 @@ export function Keys({ privyReady }: { privyReady: boolean }) {
               Raise the daily cap with World
             </button>
             <p className={`mt-1.5 text-[13px] leading-5 ${MUTED}`}>
-              waits on /api/v1/approvals — the device-code flow is written, the route is not.
+              waits on the approvals API — the route is not.
             </p>
           </div>
         </div>
