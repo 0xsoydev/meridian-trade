@@ -219,3 +219,175 @@ export function Sell({ privyReady }: { privyReady: boolean }) {
             </li>
           </ol>
         </div>
+
+        <div className="border border-[#CECECE] bg-[#EBEBEB] p-4">
+          <div className="flex border border-[#CECECE] bg-white">
+            <button
+              type="button"
+              aria-pressed
+              className="w-1/2 bg-black py-2 text-[14px] font-semibold text-white"
+            >
+              List
+            </button>
+            <button
+              type="button"
+              disabled
+              title="amend lands with the listings API"
+              className="w-1/2 border-l border-[#CECECE] py-2 text-[14px] font-semibold text-[#C9C9C9]"
+            >
+              Amend
+            </button>
+          </div>
+
+          <div className="mt-4 space-y-4">
+            <div>
+              <span className={`mb-1 block text-[13px] ${MUTED}`}>Model</span>
+              <details ref={picker} className="relative">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-2 border border-[#CECECE] bg-white px-2.5 py-2 [&::-webkit-details-marker]:hidden">
+                  <span className="min-w-0">
+                    <span className="block truncate text-[14px] text-[#1E1E1E]">
+                      {selected?.id ?? "loading models…"}
+                    </span>
+                    <span className="block text-[12px] text-[#757575]">
+                      {blended !== null ? `ref ${formatMicroPerMtok(blended)} USD / MTok` : "no reference yet"}
+                    </span>
+                  </span>
+                  <span aria-hidden className="text-[#757575]">⌄</span>
+                </summary>
+                <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-auto border border-[#CECECE] bg-white py-1">
+                  {models.map((row) => (
+                    <li key={row.id}>
+                      <button
+                        type="button"
+                        onClick={() => pick(row.id)}
+                        className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-[13px] hover:bg-[#F5F5F5] ${
+                          row.id === selected?.id ? "text-[#1E1E1E]" : "text-[#757575]"
+                        }`}
+                      >
+                        <span className="truncate">{row.id}</span>
+                        <span className="shrink-0 tabular-nums text-[12px] text-[#757575]">
+                          ref {formatMicroPerMtok(BigInt(row.reference_blended_micro_per_mtok))}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                  {models.length === 0 ? (
+                    <li className="px-3 py-2 text-[13px] text-[#757575]">loading models…</li>
+                  ) : null}
+                </ul>
+              </details>
+            </div>
+
+            <div className="flex justify-between text-[14px]">
+              <span className={MUTED}>Rail</span>
+              <span className="tabular-nums text-[#1E1E1E]">
+                {railConfig.label} · {railConfig.id}
+              </span>
+            </div>
+
+            <label className="block">
+              <span className={`mb-1 flex items-baseline justify-between gap-2 text-[13px] ${MUTED}`}>
+                <span>Price, USD / MTok</span>
+                {railConfig.market ? <span className="text-[12px] text-[#1743FF]">market allowed</span> : null}
+              </span>
+              <input
+                value={atMarket ? "" : price}
+                onChange={(event) => setPrice(event.target.value)}
+                disabled={atMarket}
+                inputMode="decimal"
+                placeholder={blended !== null ? formatMicroPerMtok(blended) : "0.00"}
+                className="h-[34px] w-full border border-[#CECECE] bg-white px-2.5 text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF] disabled:text-[#C9C9C9]"
+              />
+            </label>
+
+            <label className="flex items-start gap-2 text-[13px] leading-5">
+              <input
+                type="checkbox"
+                checked={atMarket}
+                disabled={!railConfig.market}
+                onChange={(event) => setMarketWanted(event.target.checked)}
+                className="mt-1 accent-[#1743FF] disabled:opacity-40"
+              />
+              <span className={railConfig.market ? "text-[#1E1E1E]" : "text-[#C9C9C9]"}>
+                list at market — 90% of the blended reference
+                {!railConfig.market ? " (daily rails only)" : ""}
+              </span>
+            </label>
+
+            {!atMarket && price.trim() !== "" && typed === null ? (
+              <p className="text-[13px] leading-5 text-[#F6465D]">That price is not a USD amount.</p>
+            ) : null}
+
+            <label className="block">
+              <span className={`mb-1 block text-[13px] ${MUTED}`}>Capacity, in MTokens</span>
+              <span className="flex items-center gap-2 border border-[#CECECE] bg-white px-2.5 focus-within:border-[#1743FF]">
+                <input
+                  value={capacity}
+                  onChange={(event) => setCapacity(event.target.value)}
+                  inputMode="numeric"
+                  placeholder="1000000"
+                  className="h-[34px] w-full bg-transparent text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9]"
+                />
+                <span className={`text-[12px] ${MUTED}`}>MTok</span>
+              </span>
+            </label>
+
+            <div className="flex gap-5">
+              {PRESETS.map((preset) => (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onClick={() => setCapacity(preset.value)}
+                  className={`text-[14px] ${
+                    capacity === preset.value
+                      ? "text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
+                      : "text-[#757575] hover:text-[#1E1E1E]"
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+
+            <dl className="border-t border-[#D9D9D9]">
+              <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
+                <dt className={MUTED}>Sell value</dt>
+                <dd className="tabular-nums text-[#1E1E1E]">{notional > 0n ? usd(notional) : "—"}</dd>
+              </div>
+              <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
+                <dt className={MUTED}>Venue keeps, 10 percent</dt>
+                <dd className="tabular-nums text-[#1E1E1E]">{fee > 0n ? usd(fee) : "—"}</dd>
+              </div>
+              <div className="flex justify-between py-3">
+                <dt className="text-[15px] font-semibold text-[#1E1E1E]">You receive</dt>
+                <dd className="text-[16px] font-semibold tabular-nums text-[#1E1E1E]">
+                  {earning > 0n ? usd(earning) : "—"}
+                </dd>
+              </div>
+            </dl>
+
+            <p className={`text-[13px] leading-5 ${MUTED}`}>
+              {atMarket && marketAnchor !== null
+                ? `at market: ${formatMicroPerMtok(marketAnchor)} USD / MTok, 90% of the ${formatMicroPerMtok(blended ?? 0n)} reference`
+                : `capacity ${tokensText(capacityMtok)} MTok · paid daily at 00:00 UTC`}
+            </p>
+
+            <button
+              type="button"
+              disabled
+              className="h-[34px] w-full bg-black text-[14px] font-semibold text-white disabled:bg-[#D4D4D4] disabled:text-white"
+            >
+              List capacity
+            </button>
+            <p className={`text-center text-[13px] leading-5 ${MUTED}`}>{blocker}</p>
+
+            <div className="border border-[#CECECE] bg-white px-3 py-3">
+              <p className="text-[14px] text-[#1E1E1E]">Your key never leaves the server.</p>
+              <p className="mt-1 text-[13px] leading-5 text-[#757575]">
+                It is probed once, then sealed with AES-256-GCM and opened only inside the request
+                that uses it.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
