@@ -105,6 +105,9 @@ export type DepositResult = {
 export type Balance = {
   memo: string;
   treasury: string | null;
+  treasury_evm: string | null;
+  usdc_evm: string | null;
+  wallet: string | null;
   balance_usd_micro: string;
   reserved_usd_micro: string;
   topped_up_today_usd_micro: string;

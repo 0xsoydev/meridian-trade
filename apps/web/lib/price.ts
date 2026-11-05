@@ -23,6 +23,9 @@ export function parseUsdPerToken(decimal: string): MicroPerMTok {
   return negative ? -value : value;
 }
 
+export const TOPUP_MIN_MICRO = 100_000n;
+export const TOPUP_MAX_MICRO = 20_000_000n;
+
 export function parseUsd(decimal: string): Micro | null {
   const match = /^(\d{1,6})(?:\.(\d{1,6}))?$/.exec(decimal.trim());
   if (!match) return null;

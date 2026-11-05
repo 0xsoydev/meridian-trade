@@ -1,6 +1,6 @@
 import { keccak256, toBytes, type Account, type Address, type Chain, type Hash, type Transport, type WalletClient } from "viem";
 import { indexOracleAbi, mockUsdcAbi, perpMarketAbi } from "./abi.ts";
-import { addresses, publicClient } from "./chain.ts";
+import { addresses, galileo, publicClient } from "./chain.ts";
 
 export const MARKETS = ["glm-5.3", "0gm-1.0-35b-a3b", "deepseek-v4.1-flash"] as const;
 
@@ -95,6 +95,7 @@ export async function modify(wallet: PerpWallet, model: string, sizeDelta: bigin
     if (allowance < marginDelta) {
       const { request } = await client.simulateContract({
         account: wallet.account,
+        chain: galileo,
         address: mockUsdc,
         abi: mockUsdcAbi,
         functionName: "approve",
@@ -106,6 +107,7 @@ export async function modify(wallet: PerpWallet, model: string, sizeDelta: bigin
   }
   const { request } = await client.simulateContract({
     account: wallet.account,
+    chain: galileo,
     address: perpMarket,
     abi: [...perpMarketAbi, ...mockUsdcAbi],
     functionName: "modify",

@@ -182,6 +182,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
     setPending(true);
     setNotice(null);
     try {
+      if (chainId !== galileo.id) await switchChain({ chainId: galileo.id });
       const hash = await run();
       const receipt = await publicClient().waitForTransactionReceipt({ hash });
       setNotice(`${receipt.status === "success" ? "confirmed" : "reverted"} ${hash.slice(0, 10)}…`);
@@ -724,6 +725,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
                   if (wallet) {
                     void send(() =>
                       wallet.writeContract({
+                        chain: galileo,
                         address: addresses().mockUsdc,
                         abi: mockUsdcAbi,
                         functionName: "mint",

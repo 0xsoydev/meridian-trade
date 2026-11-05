@@ -1,9 +1,20 @@
 "use client";
 
+import { usePrivy } from "@privy-io/react-auth";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { charge, formatMicroPerMtok, formatMtok, formatUsd, parseMtok, previewFill } from "../../../lib/price.ts";
+import { BaseError } from "viem";
+import { useConnection } from "wagmi";
+import {
+  charge,
+  formatMicroPerMtok,
+  formatMtok,
+  formatUsd,
+  parseMtok,
+  previewFill,
+  TOPUP_MAX_MICRO,
+} from "../../../lib/price.ts";
 import type {
   Balance,
   Book,
@@ -12,6 +23,7 @@ import type {
   Trade,
   TradeResult,
 } from "../../../lib/types";
+import { useWalletDeposit } from "../wallet-deposit";
 import { FillsChart, fillsToPoints, type ScaleMode } from "./chart";
 
 const KEY_STORAGE = "router_key";
@@ -60,6 +72,10 @@ export function Trade({ initialModel }: { initialModel: string }) {
   const [scale, setScale] = useState<ScaleMode>("linear");
   const [expanded, setExpanded] = useState(false);
   const [size, setSize] = useState("10");
+  const { ready, login } = usePrivy();
+  const { address } = useConnection();
+  const walletDeposit = useWalletDeposit();
+  const [paying, setPaying] = useState(false);
   const [key, setKey] = useState<string | null>(null);
   const [balance, setBalance] = useState<bigint | null>(null);
   const [account, setAccount] = useState<Balance | null>(null);
@@ -184,6 +200,17 @@ export function Trade({ initialModel }: { initialModel: string }) {
       ? Math.max(0, Math.min(100, Math.round((Number(wanted) / Number(affordable)) * 100)))
       : 0;
   const overCap = wanted > MAX_TOKENS;
+  const shortfall =
+    balance !== null && preview.cost > balance ? ((preview.cost - balance + 9_999n) / 10_000n) * 10_000n : 0n;
+  const wallet = account?.wallet ?? null;
+  const payFromWallet = wallet !== null && shortfall > 0n;
+  const payBlocked = !payFromWallet
+    ? null
+    : shortfall > TOPUP_MAX_MICRO
+      ? `One wallet deposit carries at most ${formatUsd(TOPUP_MAX_MICRO)}; buy less, or deposit in parts on Keys.`
+      : address && address.toLowerCase() !== wallet
+        ? `Connect ${wallet}, the wallet that created this key, to pay.`
+        : null;
 
   const pick = (id: string) => {
     setModel(id);
@@ -198,6 +225,14 @@ export function Trade({ initialModel }: { initialModel: string }) {
     setProblem(null);
     setFills([]);
     try {
+      if (payFromWallet) {
+        setPaying(true);
+        try {
+          await walletDeposit(key, shortfall, account);
+        } finally {
+          setPaying(false);
+        }
+      }
       const res = await fetch("/api/v1/trades", {
         method: "POST",
         headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
@@ -206,7 +241,6 @@ export function Trade({ initialModel }: { initialModel: string }) {
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as RouterError | null;
         const code = body?.error?.code;
-        const shortfall = balance !== null && preview.cost > balance ? preview.cost - balance : null;
         setProblem({
           message:
             code === "invalid_api_key"
@@ -214,7 +248,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
               : code === "no_liquidity"
                 ? "the asks moved before the fill; retry"
                 : body?.error?.message ?? `request failed (${res.status})`,
-          shortfall,
+          shortfall: wallet === null && balance !== null && preview.cost > balance ? preview.cost - balance : null,
         });
         return;
       }
@@ -224,8 +258,12 @@ export function Trade({ initialModel }: { initialModel: string }) {
       setDock("mine");
       void refreshBook();
       void refreshBalance();
-    } catch {
-      setProblem({ message: "network error — retry", shortfall: null });
+    } catch (cause) {
+      setProblem({
+        message: cause instanceof BaseError ? cause.shortMessage : cause instanceof Error ? cause.message : "network error — retry",
+        shortfall: null,
+      });
+      void refreshBalance();
     } finally {
       setPending(false);
     }
@@ -616,7 +654,8 @@ export function Trade({ initialModel }: { initialModel: string }) {
                 <div className="border border-[#CECECE] bg-white px-3 py-3">
                   <p className="text-[14px] text-[#1E1E1E]">Buying needs a router key.</p>
                   <p className="mt-1 text-[13px] leading-5 text-[#757575]">
-                    Paste your agent&apos;s key once. It stays in this browser, never in a URL.
+                    Create one with your wallet on Keys, or paste an agent&apos;s key there. It stays in this
+                    browser, never in a URL.
                   </p>
                 </div>
               ) : null}
@@ -626,22 +665,46 @@ export function Trade({ initialModel }: { initialModel: string }) {
                   href="/keys"
                   className="flex h-[34px] items-center justify-center bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E]"
                 >
-                  Connect your agent
+                  Create a key on Keys
                 </Link>
+              ) : payFromWallet && !address ? (
+                <button
+                  type="button"
+                  disabled={!ready}
+                  onClick={() => login()}
+                  className="h-[34px] w-full bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4]"
+                >
+                  Connect wallet to pay
+                </button>
               ) : (
                 <button
                   type="button"
                   onClick={() => void buy()}
-                  disabled={pending || wanted === 0n || preview.cost === 0n || overCap}
+                  disabled={pending || wanted === 0n || preview.cost === 0n || overCap || payBlocked !== null}
                   className="h-[34px] w-full bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4] disabled:text-white"
                 >
-                  {pending ? "Buying…" : wanted > 0n ? `Buy ${formatMtok(wanted)} MTok` : "Enter a size"}
+                  {paying
+                    ? "Paying from your wallet…"
+                    : pending
+                      ? "Buying…"
+                      : wanted === 0n
+                        ? "Enter a size"
+                        : payFromWallet
+                          ? `Pay ${formatUsd(shortfall)} and buy ${formatMtok(wanted)} MTok`
+                          : `Buy ${formatMtok(wanted)} MTok`}
                 </button>
               )}
 
-              {balance !== null && balance < preview.cost ? (
-                <p className="text-center text-[13px] text-[#F6465D]">
-                  Short by {formatUsd(preview.cost - balance)} — top up the agent.
+              {shortfall > 0n ? (
+                <p
+                  className={`text-center text-[13px] leading-5 ${payFromWallet && payBlocked === null ? "text-[#757575]" : "text-[#F6465D]"}`}
+                >
+                  {!payFromWallet
+                    ? `Short by ${formatUsd(shortfall)} — top up the agent.`
+                    : payBlocked ??
+                      (address
+                        ? `The key is short ${formatUsd(shortfall)}; Buy sends it from your wallet in Hedera testnet USDC first.`
+                        : `The key is short ${formatUsd(shortfall)}; connect the wallet that created it to pay in Hedera testnet USDC.`)}
                 </p>
               ) : null}
 
