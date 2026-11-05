@@ -2,9 +2,11 @@ import Link from "next/link";
 
 const NAV_LINKS = [
   { label: "Home", href: "/" },
-  { label: "Features", href: "/perps" },
-  { label: "How it works", href: "/receipts" },
-  { label: "Contact us", href: "/keys" },
+  { label: "Trade", href: "/trade" },
+  { label: "Perps", href: "/perps" },
+  { label: "Sell", href: "/sell" },
+  { label: "Keys", href: "/keys" },
+  { label: "Receipts", href: "/receipts" },
 ];
 
 const DEMO_HREF = "/trade?model=glm-5.3";
@@ -276,7 +278,7 @@ export default function Home() {
             {LOREM}
           </p>
 
-          <nav className="absolute left-[1116px] top-[37px] flex h-[24px] items-center gap-[39px] text-[20px] leading-[24px] text-[#1E1E1E]">
+          <nav className="absolute right-[56px] top-[37px] flex h-[24px] items-center gap-[39px] text-[20px] leading-[24px] text-[#1E1E1E]">
             {NAV_LINKS.map((link) => (
               <Link key={link.label} href={link.href}>
                 {link.label}
