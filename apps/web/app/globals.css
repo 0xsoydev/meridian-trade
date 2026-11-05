@@ -1,1 +1,24 @@
 @import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-instrument-sans);
+  --font-serif: var(--font-instrument-serif);
+}
+
+@media (min-width: 1024px) and (max-width: 1727.98px) {
+  .desktop-wrap {
+    height: calc(4081 / 1728 * 100vw);
+    overflow: hidden;
+  }
+  .desktop-canvas {
+    transform: scale(tan(atan2(100vw, 1728px)));
+    transform-origin: top left;
+  }
+}
+
+@media (min-width: 1728px) {
+  .desktop-wrap {
+    display: flex;
+    justify-content: center;
+  }
+}
