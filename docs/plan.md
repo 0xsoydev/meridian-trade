@@ -248,7 +248,7 @@ Missing usage (client abort, upstream break, deadline abort): `mixedTokens(estim
 | `listings` | `id uuid pk`, `seller_id fk`, `rail text`, `model text`, `auth_kind text`, `credential_ciphertext text`, `account_ref text null`, `price_micro_per_mtok bigint null`, `capacity_tokens bigint`, `used_tokens bigint default 0`, `reserved_tokens bigint default 0`, `throttled_until timestamptz null`, `status text`, `client_nonce text`, `created_at` | `capacity_tokens > 0`; `used_tokens + reserved_tokens <= capacity_tokens`; `auth_kind in ('key','oauth')`; `status in ('active','exhausted','invalid','cancelled','pending_auth')`; `client_nonce` unique; index `(model, status, price_micro_per_mtok)` |
 | `keys` | `id uuid pk`, `hash bytea`, `balance_usd_micro bigint`, `reserved_usd_micro bigint default 0`, `auto_topup_usd_micro bigint default 0`, `daily_topup_cap_usd_micro bigint default 5000000`, `default_model text null`, `world_sub text null`, `created_at` | `hash` unique; `balance_usd_micro >= 0`; `reserved_usd_micro >= 0` |
 | `topups` | `tx_id text pk`, `key_id fk`, `amount_usd_micro bigint`, `payer text`, `created_at` | index `(key_id, created_at)` |
-| `usage` | `id uuid pk`, `status text`, `rail text`, `upstream_request_id text null`, `key_id fk`, `listing_id fk`, `price_micro_per_mtok bigint`, `reserved_tokens bigint`, `reserved_usd_micro bigint`, `prompt_tokens int default 0`, `completion_tokens int default 0`, `list_cost_usd_micro bigint default 0`, `mixed_tokens bigint default 0`, `charge_usd_micro bigint default 0`, `seller_earning_usd_micro bigint default 0`, `payout_id uuid null`, `hcs_minute bigint null`, `created_at`, `settled_at timestamptz null` | `status in ('open','settled','released')`; `upstream_request_id` unique when not null; index `(status, created_at)`, `(settled_at)`, `(listing_id, payout_id)` |
+| `usage` | `id uuid pk`, `status text`, `rail text`, `upstream_request_id text null`, `key_id fk`, `listing_id fk`, `prepaid_id fk null` (set when the request spends prepaid MTokens), `price_micro_per_mtok bigint`, `reserved_tokens bigint`, `reserved_usd_micro bigint`, `prompt_tokens int default 0`, `completion_tokens int default 0`, `list_cost_usd_micro bigint default 0`, `mixed_tokens bigint default 0`, `charge_usd_micro bigint default 0`, `seller_earning_usd_micro bigint default 0`, `payout_id uuid null`, `hcs_minute bigint null`, `created_at`, `settled_at timestamptz null` | `status in ('open','settled','released')`; `upstream_request_id` unique when not null; index `(status, created_at)`, `(settled_at)`, `(listing_id, payout_id)` |
 | `trades` | `id uuid pk`, `key_id fk`, `listing_id fk`, `model text`, `tokens bigint`, `price_micro_per_mtok bigint`, `charge_usd_micro bigint`, `seller_earning_usd_micro bigint`, `payout_id uuid null`, `created_at` | `tokens > 0`; index `(created_at)`, `(listing_id, payout_id)`, `(key_id, created_at)` |
 | `prepaid` | `id uuid pk`, `key_id fk`, `listing_id fk`, `model text`, `tokens_remaining bigint`, `expires_at timestamptz null`, `created_at` | `tokens_remaining >= 0`; index `(key_id, model, expires_at)` |
 | `payouts` | `id uuid pk`, `seller_id fk`, `day date`, `amount_usd_micro bigint`, `schedule_id text null`, `status text`, `created_at` | unique `(seller_id, day)`; `status in ('pending','scheduled','executed','cancelled')` |
@@ -288,6 +288,7 @@ export type ApprovalStart = {
 
 export type ModelRow = {
   id: string;
+  object: "model";
   rails: RailId[];
   verifiability: "TeeML" | "TeeTLS" | null;
   list_prompt_micro_per_mtok: string;
@@ -330,7 +331,7 @@ export type ApprovalStatus = { status: "pending" | "approved" | "denied" | "expi
 | POST | `/api/v1/topup?usd=0.50` | none (creates key) or `Bearer rk_` | none | 200 `TopupResult` + `PAYMENT-RESPONSE` | 402 (x402), 400 |
 | POST | `/api/v1/trades` | `Bearer rk_` | `{ model, tokens }` | `{ fills: Trade[], prepaid_tokens }` | 402, 404 `no_liquidity`, 400 |
 | GET | `/api/v1/book?model=` | none | — | `{ asks, fills }` | 404 |
-| GET | `/api/v1/models` | none | — | `ModelRow[]` | — |
+| GET | `/api/v1/models` | none | — | `{ object: "list", data: ModelRow[] }`, the OpenAI list shape | — |
 | GET | `/api/v1/balance` | `Bearer rk_` | — | `Balance` | 401 |
 | PATCH | `/api/v1/keys/settings` | `Bearer rk_` | `KeySettings` | `Balance` | 403 `approval_required` when raising the cap |
 | POST | `/api/v1/approvals` | `Bearer rk_` | `{ kind: "link_human" }` | `ApprovalStart` | 401 |
@@ -620,7 +621,7 @@ Parameters: `MAX_LEVERAGE = 5`, `MM_BPS = 500`, `FEE_BPS = 10`, `LIQ_BPS = 50`, 
 
 ## 12. Keeper (`keeper/main.ts`)
 
-Single Node 22 process (`node --env-file=.env keeper/main.ts`). `setInterval` loops from §10.5 and §10.7, plus a 60 s sweep that releases (§9, 11a) `open` usage rows older than 6 min, which exist only when a function died mid-request; each loop catches and logs its own errors and never overlaps itself. Holds `KEEPER_PRIVATE_KEY` (Galileo), `HEDERA_TREASURY_ID/KEY` (HCS, payouts). Idempotency: payouts `(seller_id, day)` unique and linked to their usage rows in the same statement; Hedera deduplicates identical schedules; HCS minute recorded in `usage.hcs_minute` after submit; oracle posts carry seq ranges; settle, release and sweep all require `status = 'open'`.
+Single Node 22 process (`node --env-file=.env keeper/main.ts`). `setInterval` loops from §10.5 and §10.7, plus a 60 s sweep, `releaseStale()` from `apps/web/lib/ledger.ts`, that releases (§9, 11a) `open` usage rows older than 6 min, which exist only when a function died mid-request; each loop catches and logs its own errors and never overlaps itself. Holds `KEEPER_PRIVATE_KEY` (Galileo), `HEDERA_TREASURY_ID/KEY` (HCS, payouts). Idempotency: payouts `(seller_id, day)` unique and linked to their usage rows in the same statement; Hedera deduplicates identical schedules; HCS minute recorded in `usage.hcs_minute` after submit; oracle posts carry seq ranges; settle, release and sweep all require `status = 'open'`.
 
 ---
 
