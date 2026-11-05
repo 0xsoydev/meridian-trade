@@ -2,7 +2,7 @@ import { asks } from "../apps/web/lib/book.ts";
 import { keeperWallet, publicClient } from "../apps/web/lib/chain.ts";
 import { buildRollups, markPublished, minuteFills, submitRollup } from "../apps/web/lib/hcs.ts";
 import { releaseStale } from "../apps/web/lib/ledger.ts";
-import { checkScheduled, closeDay, overduePending, payPending, resetDailyListings, utcDay } from "../apps/web/lib/payouts.ts";
+import { checkScheduled, closeDay, payPending, resetDailyListings, utcDay } from "../apps/web/lib/payouts.ts";
 import { MARKETS, liquidate, marketId, needsLiquidation, positionAccounts, postIndex, readMarket } from "../apps/web/lib/perp.ts";
 import { blended, marketPrice, referenceFor } from "../apps/web/lib/price.ts";
 import { catalog } from "../apps/web/lib/rails.ts";
@@ -149,8 +149,7 @@ export async function dailyClose(): Promise<void> {
     console.log(`[reset] ${await resetDailyListings()} daily listings reset for ${today}`);
     resetDay = today;
   }
-  const overdue = (await overduePending()).map((id) => `[payout] ${id}: still pending after 01:00 UTC, needs an operator`);
-  for (const line of [...(await payPending()), ...(await checkScheduled()), ...overdue]) {
+  for (const line of [...(await payPending()), ...(await checkScheduled())]) {
     if (printed.has(line)) continue;
     printed.add(line);
     console.log(line);

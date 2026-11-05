@@ -155,7 +155,10 @@ export async function payPending(): Promise<string[]> {
     .innerJoin(sellers, eq(sellers.id, payouts.sellerId))
     .where(eq(payouts.status, "pending"));
   for (const row of rows) {
-    if (payAt(row.day).getTime() <= Date.now()) continue;
+    if (payAt(row.day).getTime() <= Date.now()) {
+      lines.push(`[payout] ${row.id}: still pending after 01:00 UTC, needs an operator`);
+      continue;
+    }
     try {
       const account = row.hederaAccount ?? (await ensureAccount(row.sellerId, row.address));
       const scheduleId = await schedulePayout(row.id, row.day, row.amount, account);
@@ -169,14 +172,6 @@ export async function payPending(): Promise<string[]> {
     }
   }
   return lines;
-}
-
-export async function overduePending(): Promise<string[]> {
-  const rows = await db()
-    .select({ id: payouts.id, day: payouts.day })
-    .from(payouts)
-    .where(eq(payouts.status, "pending"));
-  return rows.filter((row) => payAt(row.day).getTime() <= Date.now()).map((row) => row.id);
 }
 
 export async function checkScheduled(): Promise<string[]> {
