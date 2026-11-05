@@ -11,7 +11,7 @@
 
 `@ponytail ultra` is a behaviour mode: delete before you add, prefer the standard library, no abstraction with one implementation, question the requirement before building it.
 
-Install the ponytail skill (https://github.com/DietrichGebert/ponytail) and graft (https://github.com/trailhq/Trail-Code). Run `graft map` to orient and `graft callers <symbol>` before changing a shared function.
+Install the ponytail skill (https://github.com/DietrichGebert/ponytail) and trail (`npm i -g @trailhq/trail-code`). Run `trail map` to orient and `trail callers <symbol>` before changing a shared function.
 
 ## Branching
 
@@ -36,7 +36,7 @@ git switch -c feat/<area>-<short-name>
 Verify end to end that what you just implemented works as intended, and introduces no breaking change or unintended behavioural change.
 
 - Run the real path, not just the unit test.
-- Follow every caller with `graft callers <symbol>` or grep, then re-check the sibling paths you did not touch.
+- Follow every caller with `trail callers <symbol>` or grep, then re-check the sibling paths you did not touch.
 - Prove the contract did not move: request fields, response fields, status codes, database columns, env names, signatures. If one changed on purpose, update the handoff and tell the consumers.
 - Check invariants after your path: balance, reserved, capacity, listing status, no `open` usage rows.
 - Migrations are forward-only and safe to run twice.
