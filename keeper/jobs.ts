@@ -2,6 +2,7 @@ import { asks } from "../apps/web/lib/book.ts";
 import { keeperWallet, publicClient } from "../apps/web/lib/chain.ts";
 import { buildRollups, markPublished, minuteFills, submitRollup } from "../apps/web/lib/hcs.ts";
 import { releaseStale } from "../apps/web/lib/ledger.ts";
+import { checkScheduled, closeDay, overduePending, payPending, resetDailyListings, utcDay } from "../apps/web/lib/payouts.ts";
 import { MARKETS, liquidate, marketId, needsLiquidation, positionAccounts, postIndex, readMarket } from "../apps/web/lib/perp.ts";
 import { blended, marketPrice, referenceFor } from "../apps/web/lib/price.ts";
 import { catalog } from "../apps/web/lib/rails.ts";
@@ -132,4 +133,26 @@ export async function liquidateUnderwater(): Promise<void> {
 export async function sweepStale(): Promise<void> {
   const released = await releaseStale();
   if (released > 0) console.log(`[sweep] released ${released} stale usage rows`);
+}
+
+let resetDay: string | null = null;
+const warnedOverdue = new Set<string>();
+
+export async function dailyClose(): Promise<void> {
+  const now = Date.now();
+  const today = utcDay(now);
+  const yesterday = utcDay(now - 86_400_000);
+  const created = await closeDay(yesterday);
+  if (created > 0) console.log(`[payout] closed ${yesterday}: ${created} payouts pending`);
+  resetDay ??= today;
+  if (resetDay !== today) {
+    console.log(`[reset] ${await resetDailyListings()} daily listings reset for ${today}`);
+    resetDay = today;
+  }
+  for (const line of [...(await payPending()), ...(await checkScheduled())]) console.log(line);
+  for (const id of await overduePending()) {
+    if (warnedOverdue.has(id)) continue;
+    warnedOverdue.add(id);
+    console.log(`[payout] ${id}: still pending after 01:00 UTC, needs an operator`);
+  }
 }
