@@ -2,10 +2,12 @@
 
 import { usePrivy } from "@privy-io/react-auth";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { BaseError } from "viem";
 import { useConnection, useSignMessage } from "wagmi";
 import { z } from "zod";
-import { formatMicroPerMtok, formatUsd, parseUsd } from "../../../lib/price";
+import { formatMicroPerMtok, formatUsd, parseUsd, TOPUP_MAX_MICRO } from "../../../lib/price";
 import type { ApprovalStart, Balance, DepositResult, ModelRow, RouterError } from "../../../lib/types";
+import { useWalletDeposit } from "../wallet-deposit";
 
 const KEY_STORAGE = "router_key";
 const MUTED = "text-[#757575]";
@@ -36,6 +38,9 @@ export function Keys() {
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  const walletDeposit = useWalletDeposit();
+  const [walletAmount, setWalletAmount] = useState("1.00");
+  const [walletPaying, setWalletPaying] = useState(false);
   const [depositTx, setDepositTx] = useState("");
   const [depositResult, setDepositResult] = useState<{ ok: true; result: DepositResult } | { ok: false; message: string } | null>(null);
   const [depositing, setDepositing] = useState(false);
@@ -189,6 +194,25 @@ export function Keys() {
       setDepositResult({ ok: false, message: "the deposit route is unreachable; retry in a moment" });
     } finally {
       setDepositing(false);
+    }
+  };
+
+  const depositFromWallet = async () => {
+    const amount = parseUsd(walletAmount);
+    if (!key || walletPaying || amount === null || amount <= 0n) return;
+    setWalletPaying(true);
+    setDepositResult(null);
+    try {
+      const result = await walletDeposit(key, amount, balance);
+      setDepositResult({ ok: true, result });
+      refresh();
+    } catch (cause) {
+      setDepositResult({
+        ok: false,
+        message: cause instanceof BaseError ? cause.shortMessage : cause instanceof Error ? cause.message : "the wallet deposit failed",
+      });
+    } finally {
+      setWalletPaying(false);
     }
   };
 
@@ -358,10 +382,54 @@ export function Keys() {
 
           <div className="mt-5 border-t border-[#D9D9D9] pt-4">
             <p className="text-[13px] text-[#1E1E1E]">[ deposit ]</p>
-            <p className={`mt-2 text-[13px] leading-5 ${MUTED}`}>
-              Send USDC to the venue treasury on Hedera with this memo, then paste the transaction
-              id. The mirror verifies the transfer before it credits.
-            </p>
+            {balance?.wallet ? (
+              <>
+                <p className={`mt-2 text-[13px] leading-5 ${MUTED}`}>
+                  Pay up to {formatUsd(TOPUP_MAX_MICRO)} at a time in Hedera testnet USDC from{" "}
+                  {`${balance.wallet.slice(0, 6)}…${balance.wallet.slice(-4)}`}, the wallet that created this key.
+                  The mirror verifies the transfer before it credits.
+                </p>
+                <div className="mt-3 flex gap-2">
+                  <span className="flex w-28 items-center gap-1 border border-[#CECECE] bg-white px-2.5 focus-within:border-[#1743FF]">
+                    <span className={`text-[13px] ${MUTED}`}>$</span>
+                    <input
+                      value={walletAmount}
+                      onChange={(event) => setWalletAmount(event.target.value)}
+                      inputMode="decimal"
+                      aria-label="deposit amount in USD"
+                      className="h-[34px] w-full bg-transparent text-[14px] tabular-nums text-[#1E1E1E] outline-none"
+                    />
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void depositFromWallet()}
+                    disabled={
+                      !key ||
+                      walletPaying ||
+                      address?.toLowerCase() !== balance.wallet ||
+                      (parseUsd(walletAmount) ?? 0n) <= 0n ||
+                      (parseUsd(walletAmount) ?? 0n) > TOPUP_MAX_MICRO
+                    }
+                    className="h-[34px] flex-1 bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4] disabled:text-white"
+                  >
+                    {walletPaying
+                      ? "Paying from your wallet…"
+                      : address?.toLowerCase() === balance.wallet
+                        ? "Deposit from wallet"
+                        : `Connect ${balance.wallet.slice(0, 6)}…${balance.wallet.slice(-4)} below`}
+                  </button>
+                </div>
+                <p className={`mt-3 text-[13px] leading-5 ${MUTED}`}>
+                  Or send USDC to the treasury with this memo from any Hedera wallet, then paste the
+                  transaction id.
+                </p>
+              </>
+            ) : (
+              <p className={`mt-2 text-[13px] leading-5 ${MUTED}`}>
+                Send USDC to the venue treasury on Hedera with this memo, then paste the transaction
+                id. The mirror verifies the transfer before it credits.
+              </p>
+            )}
             {balance ? (
               <div className="mt-3 border-t border-[#CECECE]">
                 {[
@@ -388,11 +456,11 @@ export function Keys() {
               </div>
             ) : null}
             <label className="mt-3 block">
-              <span className={`mb-1 block text-[13px] ${MUTED}`}>Hedera transaction id</span>
+              <span className={`mb-1 block text-[13px] ${MUTED}`}>Hedera transaction id or EVM hash</span>
               <input
                 value={depositTx}
                 onChange={(event) => setDepositTx(event.target.value)}
-                placeholder="0.0.12345@1700000000.000000000"
+                placeholder="0.0.12345@1700000000.000000000 or 0x…"
                 className="h-[34px] w-full border border-[#CECECE] bg-white px-2.5 text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF]"
               />
             </label>

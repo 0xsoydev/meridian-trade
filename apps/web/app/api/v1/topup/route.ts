@@ -1,14 +1,8 @@
 import { routerKey } from "../../../../lib/auth.ts";
 import { fail } from "../../../../lib/errors.ts";
 import { createFundedKey } from "../../../../lib/ledger.ts";
-import { parseUsd } from "../../../../lib/price.ts";
-import {
-  creditSettlement,
-  paymentRequired,
-  settleTopup,
-  TOPUP_MAX_MICRO,
-  TOPUP_MIN_MICRO,
-} from "../../../../lib/x402.ts";
+import { parseUsd, TOPUP_MAX_MICRO, TOPUP_MIN_MICRO } from "../../../../lib/price.ts";
+import { creditSettlement, paymentRequired, settleTopup } from "../../../../lib/x402.ts";
 import type { TopupResult } from "../../../../lib/types";
 
 export async function POST(request: Request): Promise<Response> {

@@ -4,18 +4,25 @@ import { PrivyProvider } from "@privy-io/react-auth";
 import { WagmiProvider, createConfig } from "@privy-io/wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
+import { hederaTestnet } from "viem/chains";
 import { http } from "wagmi";
 import { galileo } from "../../lib/chain";
 
-const wagmiConfig = createConfig({ chains: [galileo], transports: { [galileo.id]: http() }, ssr: true });
+const wagmiConfig = createConfig({
+  chains: [galileo, hederaTestnet],
+  transports: { [galileo.id]: http(), [hederaTestnet.id]: http() },
+  ssr: true,
+});
 
-const privyChain = {
-  id: galileo.id,
-  name: galileo.name,
-  nativeCurrency: galileo.nativeCurrency,
-  rpcUrls: galileo.rpcUrls,
-  blockExplorers: galileo.blockExplorers,
-};
+function forPrivy(chain: typeof galileo | typeof hederaTestnet) {
+  return {
+    id: chain.id,
+    name: chain.name,
+    nativeCurrency: chain.nativeCurrency,
+    rpcUrls: chain.rpcUrls,
+    blockExplorers: chain.blockExplorers,
+  };
+}
 
 export function Providers({ appId, children }: { appId: string; children: ReactNode }) {
   const [queryClient] = useState(() => new QueryClient());
@@ -23,8 +30,8 @@ export function Providers({ appId, children }: { appId: string; children: ReactN
     <PrivyProvider
       appId={appId}
       config={{
-        defaultChain: privyChain,
-        supportedChains: [privyChain],
+        defaultChain: forPrivy(galileo),
+        supportedChains: [forPrivy(galileo), forPrivy(hederaTestnet)],
         loginMethods: ["email", "wallet"],
         embeddedWallets: { ethereum: { createOnLogin: "users-without-wallets" } },
       }}

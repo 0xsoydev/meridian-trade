@@ -347,7 +347,7 @@ export type ApprovalStatus = { status: "pending" | "approved" | "denied" | "expi
 | DELETE | `/api/listings/:id` | `Signed<CancelIntent>` | — | 200 | 404/409 |
 | POST | `/api/v1/keys` | wallet signature | `{ address, message, signature, world? }` | `CreateKeyResult` | 401, 409 |
 | GET | `/api/v1/keys` | wallet signature (query) | — | `{ keys: KeySummary[] }` | 401 |
-| POST | `/api/v1/keys/deposit` | `Bearer rk_` | `{ tx_id }` | `DepositResult` | 400, 409 |
+| POST | `/api/v1/keys/deposit` | `Bearer rk_` | `{ tx_id }`, a Hedera transaction id or an EVM hash | `DepositResult` | 400, 409 |
 
 `export const maxDuration = 300` on the chat route (Vercel Fluid compute ceiling on Hobby). `topup` amount bounds: 0.10–20.00 USD.
 
@@ -547,7 +547,7 @@ export type DepositResult = { tx_id: string; amount_usd_micro: string; balance_u
 3. `ensureAccount` upserts on the lowercase address; a second address presenting the same nullifier is a 409.
 4. A key is created with zero balance and `account_id`; the plaintext is returned once.
 5. `GET /api/v1/keys?address&message&signature` with `action: "list_keys"` returns that account's keys, balances and creation times.
-6. `POST /api/v1/keys/deposit` `{ tx_id }` with a bearer key: normalise the id to `0.0.x-seconds-nanos`, fetch `{MIRROR_NODE_URL}/api/v1/transactions/{id}` (v1; there is no v2 path), require `result: SUCCESS`, `memo_base64` decoding to the key id, and a positive USDC transfer to the treasury. Credit exactly what arrived, at most `TOPUP_MAX_MICRO`; `topups.tx_id` makes a replay a 409. `GET /api/v1/balance` returns that memo (the key id) and the treasury account, so the deposit panel can show both.
+6. `POST /api/v1/keys/deposit` `{ tx_id }` with a bearer key: normalise the id to `0.0.x-seconds-nanos`, fetch `{MIRROR_NODE_URL}/api/v1/transactions/{id}` (v1; there is no v2 path), require `result: SUCCESS`, `memo_base64` decoding to the key id, and a positive USDC transfer to the treasury. Credit exactly what arrived, at most `TOPUP_MAX_MICRO`; `topups.tx_id` makes a replay a 409. `GET /api/v1/balance` returns that memo (the key id) and the treasury account, so the deposit panel can show both. An EVM hash (`0x` and 64 hex) takes the wallet path instead: the key must belong to a wallet account; fetch `{MIRROR_NODE_URL}/api/v1/contracts/results/{hash}`, require the returned `hash` to equal the input and `result: SUCCESS`, then credit the sum of the USDC `Transfer` logs from that wallet to the treasury's `evm_address` on the mirror. That address is the treasury's alias when it has one: HTS refuses a transfer to the long-zero form of an aliased account with `INVALID_ALIAS_KEY`. The lowercased hash is the `topups.tx_id`. The balance also carries `treasury_evm`, `usdc_evm` (the token's long-zero address) and the key's `wallet`, which the browser needs to pay.
 
 ---
 
@@ -675,10 +675,10 @@ type AgentEnv = {
 | Page | Who | Contents | Data |
 |---|---|---|---|
 | `/` | everyone | Markets overview and the way in: model, rails, verifiability, best ask, index, discount, 24 h volume, links to `/trade?model=` and `/perps?model=` | DB + `IndexOracle.latest` |
-| `/trade` | spot buyers and sellers | Model picker (`?model=`). **Buy**: the ask book with price, MTokens left, rail and verifiability; size input; fee and total; recent fills. **Sell**: your own asks with amend price, add capacity and cancel, plus a link to `/sell` when you have no source for that model yet | `GET /api/v1/book`, `POST /api/v1/trades`, `PATCH`/`DELETE /api/listings/:id` |
+| `/trade` | spot buyers and sellers | Model picker (`?model=`). **Buy**: the ask book with price, MTokens left, rail and verifiability; size input; fee and total; recent fills; a short balance on a wallet key is paid from that wallet in Hedera USDC, up to 20 USD, before the buy. **Sell**: your own asks with amend price, add capacity and cancel, plus a link to `/sell` when you have no source for that model yet | `GET /api/v1/book`, `POST /api/v1/trades`, `PATCH`/`DELETE /api/listings/:id` |
 | `/perps` | traders | Model picker (`?model=`). Index chart and mark price, current funding rate, long/short with size, leverage and margin, previewed liquidation price, Positions tab across all models, MockUSDC balance and faucet, connect-wallet state | `IndexPosted` logs (viem `getLogs`), `PerpMarket` reads, wagmi |
 | `/sell` | sellers, once | Wallet → World verify → source picker (API key or Connect Claude Code / Codex) → new listing → earnings and payouts (HashScan). Setup and accounting, not trading | API, DB |
-| `/keys` | a human buyer | Connect a wallet → sign once to create a router key → list keys, deposit panel (treasury, memo = key id, amount, tx id), balance, auto top-up, daily cap, default model, link human (QR via `qrcode`). Pasting an agent's key still works | `/api/v1/keys`, `/api/v1/keys/deposit`, `/api/v1/*` |
+| `/keys` | a human buyer | Connect a wallet → sign once to create a router key → list keys, deposit panel (deposit from the key's wallet, or treasury, memo = key id, amount, tx id), balance, auto top-up, daily cap, default model, link human (QR via `qrcode`). Pasting an agent's key still works | `/api/v1/keys`, `/api/v1/keys/deposit`, `/api/v1/*` |
 | `/receipts` | judges | HCS rollups, top-ups (HashScan), index posts (chainscan), "recompute index" from mirror in the browser | mirror node, Galileo |
 
 Charts use Lightweight Charts **v5**: series come from `chart.addSeries(LineSeries, …)` with the series types imported from the package, times are `UTCTimestamp` in seconds, new points go through `series.update()` (never `setData` on a tick — it resets the visible range), teardown is `chart.remove()`, and the chart renders client-only under Next.js. The v4 names (`addLineSeries`, `series.setMarkers`, the chart-level watermark option) do not exist in v5, and most examples online are v4. `/perps` plots two series: the on-chain index from `IndexPosted`, and the venue's per-minute VWAP from Hedera, polled every 15 s.
@@ -850,7 +850,7 @@ Video (2:30–2:55, human voice):
 - Command Code sells no API access on its Go plan: sellers need GOAT, Pro, Max, Team or Provider, or every request returns `upgrade_required`.
 - OpenCode Go is a single-member workspace with a monthly per-model dollar allowance (5h 20%, weekly 50%, monthly 100%) and monitored traffic; a listing there is rate-limited by allowance, not by the capacity the seller declared.
 - The `maxTokensField` choice for the Command Code and Zen rails is unverified without a seller key; a wrong field shows up as a 400 on the first real request.
-- A human deposit needs the transaction id pasted by hand; there is no automatic detection, and a transfer without the key id as memo cannot be credited.
+- A wallet deposit is credited only from the wallet that created the key. A memo deposit needs the transaction id pasted by hand, and a transfer without the key id as memo cannot be credited. An agent key without a wallet tops up with x402 or a memo deposit.
 - One signature creates one key; there is no rotation or export after the plaintext is shown.
 - A single deposit is capped at the same 20 USD ceiling as one x402 payment.
 - OAuth rails are refused by the providers for third-party clients: Anthropic blocks subscription tokens outside its own CLI, and Codex's endpoint accepts first-party originators only. Expect 401/403 on the first request, which marks the listing `invalid`; a seller who connects one risks a ban on their personal account.

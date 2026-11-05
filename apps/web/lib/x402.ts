@@ -8,11 +8,9 @@ import { db } from "./db.ts";
 import { fail } from "./errors.ts";
 import { startApproval } from "./approvals.ts";
 import { credit, toppedUpToday, type Payment } from "./ledger.ts";
+import { TOPUP_MAX_MICRO } from "./price.ts";
 import { keys, type KeyRow } from "./schema.ts";
 import type { RouterError } from "./types";
-
-export const TOPUP_MIN_MICRO = 100_000n;
-export const TOPUP_MAX_MICRO = 20_000_000n;
 
 const DEFAULT_FACILITATORS = "https://api.testnet.blocky402.com,https://x402.org/facilitator";
 const amountSchema = z.string().regex(/^\d{1,15}$/);

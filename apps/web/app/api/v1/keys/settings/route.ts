@@ -7,7 +7,7 @@ import { fail } from "../../../../../lib/errors.ts";
 import { balanceOf } from "../../../../../lib/ledger.ts";
 import { reference } from "../../../../../lib/rails.ts";
 import { keys } from "../../../../../lib/schema.ts";
-import { TOPUP_MAX_MICRO } from "../../../../../lib/x402.ts";
+import { TOPUP_MAX_MICRO } from "../../../../../lib/price.ts";
 
 const micro = z.string().regex(/^\d{1,13}$/);
 

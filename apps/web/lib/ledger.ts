@@ -1,7 +1,9 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { and, eq, lt, sql } from "drizzle-orm";
+import { walletOf } from "./accounts.ts";
 import { hashKey } from "./auth.ts";
 import { db } from "./db.ts";
+import { evmAddressOf, treasuryEvm } from "./mirror.ts";
 import { keys, usage } from "./schema.ts";
 import type { Balance, RailId } from "./types";
 
@@ -292,6 +294,9 @@ export async function balanceOf(keyId: string): Promise<Balance | null> {
   return {
     memo: keyId,
     treasury: process.env.HEDERA_TREASURY_ID ?? null,
+    treasury_evm: await treasuryEvm().catch(() => null),
+    usdc_evm: evmAddressOf(process.env.HEDERA_USDC ?? "0.0.429274"),
+    wallet: await walletOf(row.accountId),
     balance_usd_micro: row.balanceUsdMicro.toString(),
     reserved_usd_micro: row.reservedUsdMicro.toString(),
     topped_up_today_usd_micro: (await toppedUpToday(keyId)).toString(),
