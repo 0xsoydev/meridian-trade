@@ -394,3 +394,124 @@ export function Keys({ privyReady }: { privyReady: boolean }) {
             </p>
           </div>
         </div>
+
+        <div className="border border-[#CECECE] bg-[#EBEBEB] p-4">
+          <div className="bg-black py-2 text-center text-[14px] font-semibold text-white">Settings</div>
+
+          <div className="mt-4 space-y-4">
+            <label className="block">
+              <span className={`mb-1 flex items-baseline justify-between gap-2 text-[13px] ${MUTED}`}>
+                <span>Auto top-up, USD</span>
+                <span className="text-[12px]">0.10 – 20.00</span>
+              </span>
+              <input
+                value={autoTopup}
+                onChange={(event) => setAutoTopup(event.target.value)}
+                inputMode="decimal"
+                placeholder="0.50"
+                className="h-[34px] w-full border border-[#CECECE] bg-white px-2.5 text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF]"
+              />
+            </label>
+            <div className="flex gap-5">
+              {TOPUP_PRESETS.map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() => setAutoTopup(preset)}
+                  className={`text-[14px] ${
+                    autoTopup === preset
+                      ? "text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
+                      : "text-[#757575] hover:text-[#1E1E1E]"
+                  }`}
+                >
+                  {preset}
+                </button>
+              ))}
+            </div>
+
+            <label className="block">
+              <span className={`mb-1 block text-[13px] ${MUTED}`}>Daily cap, USD</span>
+              <input
+                value={dailyCap}
+                onChange={(event) => setDailyCap(event.target.value)}
+                inputMode="decimal"
+                placeholder="5.00"
+                className="h-[34px] w-full border border-[#CECECE] bg-white px-2.5 text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF]"
+              />
+            </label>
+            <p className={`text-[13px] leading-5 ${MUTED}`}>
+              Lowering is free. Raising needs a World approval — the route lands next.
+            </p>
+
+            <div>
+              <span className={`mb-1 block text-[13px] ${MUTED}`}>Default model</span>
+              <details ref={modelPicker} className="relative">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-2 border border-[#CECECE] bg-white px-2.5 py-2 text-[14px] text-[#1E1E1E] [&::-webkit-details-marker]:hidden">
+                  <span className="truncate">{defaultModel ?? "router default"}</span>
+                  <span aria-hidden className="text-[#757575]">⌄</span>
+                </summary>
+                <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-auto border border-[#CECECE] bg-white py-1">
+                  <li>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDefaultModel(null);
+                        if (modelPicker.current) modelPicker.current.open = false;
+                      }}
+                      className="w-full px-3 py-2 text-left text-[13px] text-[#757575] hover:bg-[#F5F5F5]"
+                    >
+                      router default
+                    </button>
+                  </li>
+                  {models.map((row) => (
+                    <li key={row.id}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDefaultModel(row.id);
+                          if (modelPicker.current) modelPicker.current.open = false;
+                        }}
+                        className={`w-full px-3 py-2 text-left text-[13px] hover:bg-[#F5F5F5] ${
+                          row.id === defaultModel ? "text-[#1E1E1E]" : "text-[#757575]"
+                        }`}
+                      >
+                        {row.id}
+                      </button>
+                    </li>
+                  ))}
+                  {models.length === 0 ? (
+                    <li className="px-3 py-2 text-[13px] text-[#757575]">loading models…</li>
+                  ) : null}
+                </ul>
+              </details>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => void saveSettings()}
+              disabled={!key || saving}
+              className="h-[34px] w-full bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4] disabled:text-white"
+            >
+              {saving ? "Saving…" : "Save settings"}
+            </button>
+
+            {!key ? (
+              <p className={`text-center text-[13px] ${MUTED}`}>paste a key first</p>
+            ) : saved ? (
+              <p className="text-center text-[13px] text-[#2EBD85]">Saved.</p>
+            ) : saveError ? (
+              <p className="text-center text-[13px] leading-5 text-[#F6465D]">{saveError}</p>
+            ) : (
+              <p className={`text-center text-[13px] ${MUTED}`}>saves with the key above</p>
+            )}
+
+            <div className="border border-[#CECECE] bg-white px-3 py-3">
+              <p className="text-[14px] text-[#1E1E1E]">Spends settle off the same ledger.</p>
+              <p className="mt-1 text-[13px] leading-5 text-[#757575]">
+                Every call reserves at the ask, settles on usage, and releases the rest. Receipts
+                back the public log.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
