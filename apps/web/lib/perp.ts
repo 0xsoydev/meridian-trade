@@ -27,7 +27,6 @@ export function liquidationPrice(p: PositionMath): bigint {
   if (p.size === 0n) return 0n;
   const long = p.size > 0n;
   if (long && !liquidatable(p, 0n)) return 0n;
-  if (!long && liquidatable(p, 0n)) return SEARCH_CEILING;
   let safe = long ? SEARCH_CEILING : 0n;
   let liq = long ? 0n : SEARCH_CEILING;
   while ((long ? safe - liq : liq - safe) > 1n) {
