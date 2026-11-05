@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Fragment } from "react";
 
 const NAV_LINKS = [
   { label: "Home", href: "/" },
@@ -193,40 +194,32 @@ export default function Home() {
           </h2>
 
           {CARDS.map((c) => (
-            <div
-              key={c.card}
-              className="absolute top-[965px] h-[547px] w-[336px] border border-[#CECECE] bg-[#EBEBEB]"
-              style={{ left: c.card }}
-            />
-          ))}
-          {CARDS.map((c) => (
-            <p
-              key={c.title}
-              className="absolute whitespace-pre text-[20px] leading-[24px] text-[#1E1E1E]"
-              style={{ left: c.label, top: 987 }}
-            >
-              {c.title}
-            </p>
-          ))}
-          {CARDS.map((c) => (
-            <img
-              key={c.title}
-              src={c.art.src}
-              alt=""
-              width={c.art.w}
-              height={c.art.h}
-              className="absolute"
-              style={{ left: c.sphere, top: c.sphereTop }}
-            />
-          ))}
-          {CARDS.map((c) => (
-            <p
-              key={`body-${c.title}`}
-              className="absolute w-[244px] whitespace-pre-wrap text-[20px] leading-[24px] text-black"
-              style={{ left: c.body, top: 1375 }}
-            >
-              {c.bodyText}
-            </p>
+            <Fragment key={c.card}>
+              <div
+                className="absolute top-[965px] h-[547px] w-[336px] border border-[#CECECE] bg-[#EBEBEB]"
+                style={{ left: c.card }}
+              />
+              <p
+                className="absolute whitespace-pre text-[20px] leading-[24px] text-[#1E1E1E]"
+                style={{ left: c.label, top: 987 }}
+              >
+                {c.title}
+              </p>
+              <img
+                src={c.art.src}
+                alt=""
+                width={c.art.w}
+                height={c.art.h}
+                className="absolute"
+                style={{ left: c.sphere, top: c.sphereTop }}
+              />
+              <p
+                className="absolute w-[244px] whitespace-pre-wrap text-[20px] leading-[24px] text-black"
+                style={{ left: c.body, top: 1375 }}
+              >
+                {c.bodyText}
+              </p>
+            </Fragment>
           ))}
 
           <p className="absolute left-[96px] top-[1575px] w-[876px] whitespace-pre-wrap font-serif text-[60px] font-normal leading-[60px] text-black">
@@ -241,22 +234,20 @@ export default function Home() {
             <div key={x} className={`absolute top-[2039px] h-[40px] w-px ${LINE}`} style={{ left: x - 1 }} />
           ))}
           {COLUMN_COPY.map((c) => (
-            <p
-              key={`h-${c.x}`}
-              className="absolute whitespace-pre text-[20px] leading-[24px] text-[#1E1E1E]"
-              style={{ left: c.x, top: 1816 }}
-            >
-              {c.head}
-            </p>
-          ))}
-          {COLUMN_COPY.map((c) => (
-            <p
-              key={`b-${c.x}`}
-              className="absolute w-[199px] whitespace-pre-wrap text-[20px] leading-[24px] text-black"
-              style={{ left: c.x, top: 1850 }}
-            >
-              {c.bodyText}
-            </p>
+            <Fragment key={c.x}>
+              <p
+                className="absolute whitespace-pre text-[20px] leading-[24px] text-[#1E1E1E]"
+                style={{ left: c.x, top: 1816 }}
+              >
+                {c.head}
+              </p>
+              <p
+                className="absolute w-[199px] whitespace-pre-wrap text-[20px] leading-[24px] text-black"
+                style={{ left: c.x, top: 1850 }}
+              >
+                {c.bodyText}
+              </p>
+            </Fragment>
           ))}
 
           <div
