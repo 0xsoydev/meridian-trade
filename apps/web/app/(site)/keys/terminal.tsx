@@ -326,7 +326,7 @@ export function Keys({ privyReady }: { privyReady: boolean }) {
               <div className="mt-3 border-t border-[#CECECE]">
                 {[
                   { id: "treasury", label: "treasury", value: balance.treasury ?? "—" },
-                  { id: "memo", label: "memo, base64", value: balance.memo },
+                  { id: "memo", label: "memo", value: balance.memo },
                 ].map((row) => (
                   <div
                     key={row.id}

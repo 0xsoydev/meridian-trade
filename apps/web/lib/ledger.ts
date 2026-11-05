@@ -2,7 +2,6 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { and, eq, lt, sql } from "drizzle-orm";
 import { hashKey } from "./auth.ts";
 import { db } from "./db.ts";
-import { depositMemo } from "./mirror.ts";
 import { keys, usage } from "./schema.ts";
 import type { Balance, RailId } from "./types";
 
@@ -291,7 +290,7 @@ export async function balanceOf(keyId: string): Promise<Balance | null> {
   const row = (await db().select().from(keys).where(eq(keys.id, keyId)).limit(1))[0];
   if (!row) return null;
   return {
-    memo: depositMemo(keyId),
+    memo: keyId,
     treasury: process.env.HEDERA_TREASURY_ID ?? null,
     balance_usd_micro: row.balanceUsdMicro.toString(),
     reserved_usd_micro: row.reservedUsdMicro.toString(),

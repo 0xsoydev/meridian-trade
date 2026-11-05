@@ -5,6 +5,7 @@ import { after, before, test } from "node:test";
 import { eq } from "drizzle-orm";
 import { POST } from "../app/api/v1/keys/deposit/route.ts";
 import { db } from "./db.ts";
+import { balanceOf } from "./ledger.ts";
 import { keys } from "./schema.ts";
 import { cleanup, first, hasDb, makeKey, skip } from "./testkit.ts";
 import type { DepositResult } from "./types";
@@ -27,13 +28,18 @@ before(async () => {
   mirror = createServer((request, response) => {
     request.resume();
     request.on("end", () => {
+      if (!request.url?.startsWith("/api/v1/transactions/")) {
+        response.writeHead(404);
+        response.end();
+        return;
+      }
       response.writeHead(200, { "content-type": "application/json" });
       response.end(
         JSON.stringify({
           transactions: [
             {
               result: tx.result,
-              memo: tx.memo,
+              memo_base64: tx.memo,
               token_transfers: [
                 { token_id: tx.token_id, account: tx.account, amount: tx.amount },
                 { token_id: tx.token_id, account: PAYER, amount: -tx.amount },
@@ -80,6 +86,7 @@ test("a USDC transfer with the key memo is credited exactly once", { skip }, asy
   assert.equal(result.tx_id, "0.0.1234-1700000000-000000001");
   assert.equal(result.amount_usd_micro, "500000");
   assert.equal(result.balance_usd_micro, "500000");
+  assert.equal((await balanceOf(key.id))?.memo, key.id);
 
   const replay = await deposit(key.raw, TX_ID);
   assert.equal(replay.status, 409);
