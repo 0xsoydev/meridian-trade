@@ -45,33 +45,59 @@ const bodySchema = z
   })
   .strict();
 
+const listedSchema = z.object({ data: z.array(z.object({ id: z.string() })) });
+
 type Probe = { ok: true } | { ok: false; status: number; message: string };
 
-async function probeKey(rail: Rail, key: string): Promise<Probe> {
-  const headers = { authorization: `Bearer ${key}`, ...rail.extraHeaders };
+function authStatus(status: number): number {
+  return status === 401 || status === 403 ? status : 502;
+}
+
+async function probeKey(rail: Rail, upstream: string, key: string): Promise<Probe> {
+  const headers: Record<string, string> = {
+    authorization: `Bearer ${key}`,
+    ...(rail.id === "anthropic" ? { "x-api-key": key } : {}),
+    ...rail.extraHeaders,
+  };
   try {
-    if (rail.id === "0g") {
+    if (rail.check === "probe") {
       const response = await fetch(`${rail.baseUrl}/chat/completions`, {
         method: "POST",
         headers: { ...headers, "content-type": "application/json" },
-        body: JSON.stringify({
-          model: "__probe__",
-          messages: [{ role: "user", content: "." }],
-          max_tokens: 1,
-        }),
+        body: JSON.stringify({ model: "__probe__", messages: [{ role: "user", content: "." }], max_tokens: 1 }),
         signal: AbortSignal.timeout(15_000),
       });
       if (response.status === 404) return { ok: true };
-      return { ok: false, status: response.status, message: "0g probe did not answer model_not_found" };
+      return { ok: false, status: authStatus(response.status), message: `${rail.id} probe did not answer model_not_found` };
     }
 
-    const path = rail.id === "openrouter" ? "/key" : "/models";
-    const response = await fetch(`${rail.baseUrl}${path}`, {
-      headers,
-      signal: AbortSignal.timeout(15_000),
+    if (rail.check === "key") {
+      const response = await fetch(`${rail.baseUrl}/key`, { headers, signal: AbortSignal.timeout(15_000) });
+      if (response.ok) return { ok: true };
+      return { ok: false, status: authStatus(response.status), message: `credential probe answered ${response.status}` };
+    }
+
+    if (rail.check === "models") {
+      const response = await fetch(rail.modelsUrl, { headers, signal: AbortSignal.timeout(15_000) });
+      if (!response.ok) return { ok: false, status: response.status, message: `the model list answered ${response.status}` };
+      const listed = listedSchema.safeParse(await response.json().catch(() => null));
+      if (!listed.success) return { ok: false, status: 502, message: `${rail.id} sent an unreadable model list` };
+      if (listed.data.data.some((entry) => entry.id === upstream)) return { ok: true };
+      return { ok: false, status: 404, message: `${upstream} is not in this key's model list` };
+    }
+
+    const response = await fetch(`${rail.baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: { ...headers, "content-type": "application/json" },
+      body: JSON.stringify({
+        model: upstream,
+        messages: [{ role: "user", content: "." }],
+        [rail.maxTokensField ?? "max_tokens"]: 1,
+      }),
+      signal: AbortSignal.timeout(30_000),
     });
     if (response.ok) return { ok: true };
-    return { ok: false, status: response.status, message: `credential probe answered ${response.status}` };
+    return { ok: false, status: response.status, message: `${rail.id} answered ${response.status}` };
   } catch {
     return { ok: false, status: 0, message: "credential probe failed" };
   }
@@ -119,11 +145,14 @@ export async function POST(request: Request): Promise<Response> {
   }
   if (rail.auth !== "key") return fail(400, "invalid_request", "rail does not accept api keys");
 
-  const probe = await probeKey(rail, credential.key);
+  const probe = await probeKey(rail, model.upstream, credential.key);
   if (!probe.ok) {
-    return probe.status === 401 || probe.status === 403
-      ? fail(401, "invalid_api_key", "credential rejected by the rail")
-      : fail(502, "upstream_failed", probe.message);
+    if (probe.status === 401 || probe.status === 403) return fail(401, "invalid_api_key", "credential rejected by the rail");
+    if (probe.status === 400 || probe.status === 404) {
+      return fail(404, "model_not_found", `this key cannot serve ${model.canonical} on ${rail.id}`);
+    }
+    if (probe.status === 402) return fail(402, "insufficient_balance", `this key has no credit on ${rail.id}`);
+    return fail(502, "upstream_failed", probe.message);
   }
 
   const [created] = await db()

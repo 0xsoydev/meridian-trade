@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { eq, inArray } from "drizzle-orm";
 import { generatePrivateKey, privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
+import { z } from "zod";
 import { DELETE, PATCH } from "../app/api/listings/[id]/route.ts";
 import { POST } from "../app/api/listings/route.ts";
 import { POST as verifySeller } from "../app/api/sellers/verify/route.ts";
@@ -56,8 +57,13 @@ before(async () => {
       status(response, call.auth === "Bearer sk-bad" ? 401 : 404);
       return;
     }
+    if (call.auth === "Bearer sk-bad") {
+      status(response, 401);
+      return;
+    }
     reply(response, `chatcmpl-${suffix}-listing`);
   });
+  process.env.COMMANDCODE_BASE_URL = process.env.STUB_RAIL_URL;
   sellerId = await makeSeller();
   await db().update(sellers).set({ address: account.address.toLowerCase() }).where(eq(sellers.id, sellerId));
 });
@@ -346,4 +352,27 @@ test("with the World bypass on, a signed wallet becomes a seller once without a 
     process.env.NEXT_PUBLIC_WORLD_BYPASS = "false";
     await db().delete(sellers).where(eq(sellers.address, wallet.address.toLowerCase()));
   }
+});
+
+test("a key whose model list lacks the model cannot list it, and a rejected key cannot list at all", { skip }, async () => {
+  const listing = (nonce: string) =>
+    sign({ rail: "stub", model: MODEL, capacity_mtok: "1", price_micro_per_mtok: "1000000", client_nonce: `n-${suffix}-${nonce}` });
+  const narrow = await createCall(await listing("40"), "sk-narrow");
+  assert.equal(narrow.status, 404);
+  const rejected = await createCall(await listing("41"), "sk-bad");
+  assert.equal(rejected.status, 401);
+});
+
+test("a chat-checked rail lists on a 1-token answer for the exact model and refuses a rejected key", { skip }, async () => {
+  const listing = (nonce: string) =>
+    sign({ rail: "commandcode", model: MODEL, capacity_mtok: "1", price_micro_per_mtok: "1000000", client_nonce: `n-${suffix}-${nonce}` });
+  const accepted = await createCall(await listing("42"));
+  assert.equal(accepted.status, 200);
+  created.push(z.object({ listing_id: z.string() }).parse(await accepted.json()).listing_id);
+  const checked = rail?.calls.at(-1);
+  assert.equal(checked?.body.model, MODEL);
+  assert.equal(checked?.body.max_completion_tokens, 1);
+
+  const rejected = await createCall(await listing("43"), "sk-bad");
+  assert.equal(rejected.status, 401);
 });
