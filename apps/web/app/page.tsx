@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Fragment } from "react";
 import { Hero } from "../components/landing/hero";
+import { Proof } from "../components/landing/proof";
 import { WhatWeDo } from "../components/landing/what-we-do";
 import { Navbar, NavLinks } from "../components/site-nav";
 
@@ -35,19 +36,7 @@ export default function Home() {
 
         <WhatWeDo variant="page" />
 
-        <section className="mt-16 border-t border-[#CECECE] px-6 pt-10">
-          <h2 className="font-serif text-[32px] leading-[1.12] text-black">
-            Proof over marketing. Recompute our index in your browser.
-          </h2>
-          <div className="mt-8 border-b border-[#CECECE]">
-            {COLUMN_COPY.map((c) => (
-              <div key={c.x} className="border-t border-[#CECECE] py-5">
-                <p className="text-[15px] leading-[22px] text-[#1E1E1E]">{c.head}</p>
-                <p className="mt-1 text-[15px] leading-[22px] text-black">{c.bodyText}</p>
-              </div>
-            ))}
-          </div>
-        </section>
+        <Proof variant="page" />
 
         <section className="relative mt-16">
           <div
