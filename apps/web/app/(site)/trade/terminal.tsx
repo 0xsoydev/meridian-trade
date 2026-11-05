@@ -8,6 +8,7 @@ import { BaseError } from "viem";
 import { useConnection } from "wagmi";
 import {
   charge,
+  fillsToPoints,
   formatMicroPerMtok,
   formatMtok,
   formatUsd,
@@ -24,20 +25,12 @@ import type {
   TradeResult,
 } from "../../../lib/types";
 import { useWalletDeposit } from "../wallet-deposit";
-import { FillsChart, fillsToPoints, type ScaleMode } from "./chart";
+import { FillsChart, INTERVALS, type ScaleMode } from "./chart";
 
 const KEY_STORAGE = "router_key";
 const TAKE_BPS = 1000n;
 const MAX_TOKENS = 1_000_000_000n;
 const POLL_MS = 15_000;
-
-const WINDOWS = [
-  { id: "1h", label: "1h", ms: 3_600_000 },
-  { id: "6h", label: "6h", ms: 6 * 3_600_000 },
-  { id: "24h", label: "24h", ms: 86_400_000 },
-  { id: "all", label: "All", ms: null },
-] as const;
-type WindowId = (typeof WINDOWS)[number]["id"];
 
 const PRESETS = [
   { label: "1", value: "1" },
@@ -68,7 +61,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
   const [bookFailed, setBookFailed] = useState<"unknown" | "down" | null>(null);
   const [pane, setPane] = useState<"book" | "tape">("book");
   const [dock, setDock] = useState<"mine" | "venue">("venue");
-  const [windowId, setWindowId] = useState<WindowId>("all");
+  const [bucket, setBucket] = useState(60);
   const [scale, setScale] = useState<ScaleMode>("linear");
   const [expanded, setExpanded] = useState(false);
   const [size, setSize] = useState("10");
@@ -84,13 +77,11 @@ export function Trade({ initialModel }: { initialModel: string }) {
   const [problem, setProblem] = useState<{ message: string; shortfall: bigint | null } | null>(null);
   const [copied, setCopied] = useState(false);
   const [clock, setClock] = useState<string | null>(null);
-  const nowRef = useRef(Date.now());
   const picker = useRef<HTMLDetailsElement | null>(null);
 
   useEffect(() => {
     const id = window.setInterval(() => {
       setClock(clockFormat.format(new Date()));
-      nowRef.current = Date.now();
     }, 1000);
     setClock(clockFormat.format(new Date()));
     return () => window.clearInterval(id);
@@ -179,10 +170,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
   const venueFills = book?.fills ?? [];
   const wanted = parseMtok(size);
   const preview = useMemo(() => previewFill(asks, wanted, TAKE_BPS), [asks, wanted]);
-  const points = useMemo(
-    () => fillsToPoints(venueFills, WINDOWS.find((w) => w.id === windowId)?.ms ?? null, nowRef.current),
-    [venueFills, windowId],
-  );
+  const points = useMemo(() => fillsToPoints(venueFills), [venueFills]);
 
   const bestAsk = asks[0] ? BigInt(asks[0].price_micro_per_mtok) : null;
   const listPrice = selected ? BigInt(selected.reference_blended_micro_per_mtok) : null;
@@ -388,15 +376,15 @@ export function Trade({ initialModel }: { initialModel: string }) {
       <div className={`mt-5 grid gap-[17px] ${expanded ? "" : "lg:grid-cols-[1fr_300px]"}`}>
         <div className="border border-[#CECECE] bg-[#EBEBEB] p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex gap-5">
-              {WINDOWS.map((item) => (
+            <div role="group" aria-label="candle interval" className="flex gap-5">
+              {INTERVALS.map((item) => (
                 <button
-                  key={item.id}
+                  key={item.label}
                   type="button"
-                  onClick={() => setWindowId(item.id)}
-                  aria-pressed={windowId === item.id}
+                  onClick={() => setBucket(item.seconds)}
+                  aria-pressed={bucket === item.seconds}
                   className={`text-[14px] ${
-                    windowId === item.id
+                    bucket === item.seconds
                       ? "text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
                       : "text-[#757575] hover:text-[#1E1E1E]"
                   }`}
@@ -442,7 +430,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
             ) : null}
           </div>
 
-          <FillsChart points={points} scale={scale} />
+          <FillsChart points={points} bucket={bucket} scale={scale} />
 
           <div className="flex flex-wrap items-center gap-5 pt-1">
             {(["percent", "log"] as const).map((mode) => (

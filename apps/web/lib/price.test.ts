@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   blended,
+  candlesFromPoints,
   charge,
   estimatePromptTokens,
+  fillsToPoints,
   formatMicroPerMtok,
   formatMtok,
   formatUsd,
@@ -166,4 +168,23 @@ test("a 1M MTok listing at $1.40 produces the expected notional and seller net",
   const notional = charge(1_000_000n * 1_000_000n, price);
   assert.equal(notional, 1_400_000_000_000n);
   assert.equal(sellerEarning(notional, 1000n), 1_260_000_000_000n);
+});
+
+test("every fill of a sweep reaches its candle, and candles bucket by interval", () => {
+  const fills = [
+    { listing_id: "b", tokens: "250000", price_micro_per_mtok: "174600", created_at: "2026-11-01T10:01:30.125Z" },
+    { listing_id: "a", tokens: "250000", price_micro_per_mtok: "153000", created_at: "2026-11-01T10:01:30.120Z" },
+    { listing_id: "a", tokens: "500000", price_micro_per_mtok: "160000", created_at: "2026-11-01T10:00:05.000Z" },
+  ];
+  const points = fillsToPoints(fills);
+  const at = (iso: string) => Date.parse(iso) / 1000;
+  const ohlcv = (bucket: number) =>
+    candlesFromPoints(points, bucket).map(({ time, open, high, low, close, volume }) => [time, open, high, low, close, volume]);
+
+  assert.deepEqual(ohlcv(60), [
+    [at("2026-11-01T10:00:00Z"), 0.16, 0.16, 0.16, 0.16, 0.5],
+    [at("2026-11-01T10:01:00Z"), 0.153, 0.1746, 0.153, 0.1746, 0.5],
+  ]);
+  assert.deepEqual(ohlcv(300), [[at("2026-11-01T10:00:00Z"), 0.16, 0.1746, 0.153, 0.1746, 1]]);
+  assert.equal(fillsToPoints(fills, Date.parse("2026-11-01T10:01:00Z")).length, 2);
 });
