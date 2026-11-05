@@ -164,6 +164,19 @@ export type BookFill = {
 
 export type Book = { model: string; asks: BookAsk[]; fills: BookFill[] };
 
+export type SellerListing = {
+  listing_id: string;
+  rail: string;
+  model: string;
+  price_micro_per_mtok: string | null;
+  capacity_tokens: string;
+  used_tokens: string;
+  reserved_tokens: string;
+  status: string;
+};
+
+export type SellerListings = { verified: boolean; listings: SellerListing[] };
+
 export type Rollup = {
   v: 1;
   model: string;

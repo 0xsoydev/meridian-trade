@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { expectedHost, verifySigned } from "../../../lib/auth.ts";
 import { db } from "../../../lib/db.ts";
@@ -6,8 +6,8 @@ import { fail } from "../../../lib/errors.ts";
 import { listingPriceError, parseCapacityMtok } from "../../../lib/listings.ts";
 import { catalog } from "../../../lib/rails.ts";
 import { listings, sellers } from "../../../lib/schema.ts";
-import { seal } from "../../../lib/secrets.ts";
-import type { Rail } from "../../../lib/types";
+import { open, seal } from "../../../lib/secrets.ts";
+import type { Rail, SellerListings } from "../../../lib/types";
 
 const railIds = [
   "0g",
@@ -40,6 +40,7 @@ const bodySchema = z
     signed: z.unknown(),
     credential: z.discriminatedUnion("kind", [
       z.object({ kind: z.literal("key"), key: z.string().min(1).max(4096) }).strict(),
+      z.object({ kind: z.literal("stored"), listing_id: z.uuid() }).strict(),
       z.object({ kind: z.literal("oauth") }).strict(),
     ]),
   })
@@ -103,6 +104,59 @@ async function probeKey(rail: Rail, upstream: string, key: string): Promise<Prob
   }
 }
 
+async function storedKey(listingId: string, sellerId: string, railId: string): Promise<string | null> {
+  const [source] = await db()
+    .select({ rail: listings.rail, authKind: listings.authKind, sealed: listings.credentialCiphertext })
+    .from(listings)
+    .where(and(eq(listings.id, listingId), eq(listings.sellerId, sellerId)))
+    .limit(1);
+  if (!source || source.rail !== railId || source.authKind !== "key") return null;
+  try {
+    return open(source.sealed);
+  } catch {
+    return null;
+  }
+}
+
+export async function GET(request: Request): Promise<Response> {
+  const address = (new URL(request.url).searchParams.get("seller") ?? "").toLowerCase();
+  if (!/^0x[0-9a-f]{40}$/.test(address)) return fail(400, "invalid_request", "seller must be a wallet address");
+
+  const [seller] = await db().select({ id: sellers.id }).from(sellers).where(eq(sellers.address, address)).limit(1);
+  const rows = seller
+    ? await db()
+        .select({
+          id: listings.id,
+          rail: listings.rail,
+          model: listings.model,
+          price: listings.priceMicroPerMtok,
+          capacity: listings.capacityTokens,
+          used: listings.usedTokens,
+          reserved: listings.reservedTokens,
+          status: listings.status,
+        })
+        .from(listings)
+        .where(eq(listings.sellerId, seller.id))
+        .orderBy(desc(listings.createdAt))
+        .limit(200)
+    : [];
+
+  const result: SellerListings = {
+    verified: seller !== undefined,
+    listings: rows.map((row) => ({
+      listing_id: row.id,
+      rail: row.rail,
+      model: row.model,
+      price_micro_per_mtok: row.price === null ? null : row.price.toString(),
+      capacity_tokens: row.capacity.toString(),
+      used_tokens: row.used.toString(),
+      reserved_tokens: row.reserved.toString(),
+      status: row.status,
+    })),
+  };
+  return Response.json(result);
+}
+
 export async function POST(request: Request): Promise<Response> {
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return fail(400, "invalid_request", "invalid listing request");
@@ -140,12 +194,13 @@ export async function POST(request: Request): Promise<Response> {
   if (capacityTokens === null) return fail(400, "invalid_request", "invalid capacity");
 
   const credential = parsed.data.credential;
-  if (credential.kind !== "key") {
-    return fail(400, "invalid_request", "oauth rails are disabled");
-  }
+  if (credential.kind === "oauth") return fail(400, "invalid_request", "oauth rails are disabled");
   if (rail.auth !== "key") return fail(400, "invalid_request", "rail does not accept api keys");
 
-  const probe = await probeKey(rail, model.upstream, credential.key);
+  const key = credential.kind === "key" ? credential.key : await storedKey(credential.listing_id, seller.id, rail.id);
+  if (key === null) return fail(404, "invalid_request", `no stored ${rail.id} key on that listing`);
+
+  const probe = await probeKey(rail, model.upstream, key);
   if (!probe.ok) {
     if (probe.status === 401 || probe.status === 403) return fail(401, "invalid_api_key", "credential rejected by the rail");
     if (probe.status === 400 || probe.status === 404) {
@@ -162,7 +217,7 @@ export async function POST(request: Request): Promise<Response> {
       rail: rail.id,
       model: model.canonical,
       authKind: "key",
-      credentialCiphertext: seal(credential.key),
+      credentialCiphertext: seal(key),
       priceMicroPerMtok: price,
       capacityTokens,
       status: "active",
