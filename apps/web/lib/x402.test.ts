@@ -235,7 +235,7 @@ test("models lists the stub model with its best ask", { skip }, async () => {
   const row = list.data.find((entry) => entry.id === MODEL);
   assert.ok(row);
   assert.equal(row.object, "model");
-  assert.deepEqual(row.rails, ["stub"]);
+  assert.deepEqual(row.rails, ["0g", "stub"]);
   assert.equal(row.best_ask_micro_per_mtok, "1500000");
   assert.equal(row.reference_blended_micro_per_mtok, "2150000");
   assert.equal(row.index_micro_per_mtok, null);

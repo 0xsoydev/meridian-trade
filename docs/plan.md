@@ -816,7 +816,17 @@ Video (2:30–2:55, human voice):
 ## 21. Known limits
 
 - The router holds seller credentials (custodial, AES-GCM). Upgrade: TEE-sealed keys.
-- Prices are seeded by hand for `anthropic`, `openai`, `commandcode` and `zen`; their catalogs carry no prices. 0G and OpenRouter are fetched live. Re-check the seeds at kickoff and before judging.
+- Rail catalogs:
+  - 0G and Command Code list their models live; Command Code keeps only those that support `/chat/completions`.
+  - OpenRouter lists its top 30 models by weekly tokens. The rankings endpoint needs `OPENROUTER_API_KEY`; without it the OpenRouter rail is off.
+  - Anthropic, OpenAI, Zen and OpenCode Go only expose their model lists to a key holder, so `lib/rails.ts` keeps their chat-capable ids.
+  - Prices come from the provider when its API publishes them (0G, OpenRouter). Otherwise they come from OpenRouter's live price for the same model, matched by the last id segment, lowercased, with Claude's `-5-5` read as `-5.5`. A model with no price is not listed.
+- Each listing checks the seller's key against the exact model:
+  - 0G: the free `__probe__` request.
+  - OpenRouter: `/key`.
+  - Command Code: one 1-token request.
+  - Anthropic, OpenAI, Zen, OpenCode Go: the model must be in the key's own `/models` list.
+- OpenCode Go requests carry a fresh `x-opencode-session` header.
 - Seeded prices are the standard short-context tier. OpenAI doubles prices past 272K input tokens and Claude Haiku 5.5 is five times dearer past 100K, so a flat $/MTok listing priced at the short-context rate loses money on a very large prompt.
 - Failover can move one request between rails with different upstreams and different verifiability. The buyer names a model, not a rail.
 - Cash-denominated credits carry no discount incentive, which is why a rail with `resetPeriod = null` cannot post a market ask.

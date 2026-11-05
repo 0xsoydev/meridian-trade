@@ -9,12 +9,13 @@ import { approvals, keys, listings, prepaid, sellers, topups, trades, usage } fr
 import { seal } from "./secrets.ts";
 
 process.env.NEXT_PUBLIC_WORLD_BYPASS = "false";
+process.env.COMMANDCODE_BASE_URL = "http://127.0.0.1:1";
 
 export const hasDb = Boolean(process.env.DATABASE_URL && process.env.SECRETS_KEY);
 export const skip = hasDb ? false : "DATABASE_URL and SECRETS_KEY required";
 export const suffix = randomBytes(4).toString("hex");
 
-export type ChatCall = { auth: string; body: Record<string, unknown> };
+export type ChatCall = { auth: string; session: string; body: Record<string, unknown> };
 export type StubUsage = { prompt_tokens: number; completion_tokens: number };
 
 const bodySchema = z.record(z.string(), z.unknown());
@@ -32,12 +33,22 @@ export async function stubRail(
     });
     request.on("end", () => {
       if (request.url?.endsWith("/models")) {
+        const auth = request.headers.authorization ?? "";
+        if (auth === "Bearer sk-bad") {
+          response.writeHead(401).end();
+          return;
+        }
+        const listed = auth === "Bearer sk-narrow" ? models.slice(-1) : models;
         response.writeHead(200, { "content-type": "application/json" });
-        response.end(JSON.stringify({ object: "list", data: models.map((id) => ({ id, pricing_usd: PRICING })) }));
+        response.end(JSON.stringify({ object: "list", data: listed.map((id) => ({ id, pricing_usd: PRICING })) }));
         return;
       }
       if (request.url?.endsWith("/chat/completions")) {
-        const call = { auth: request.headers.authorization ?? "", body: bodySchema.parse(JSON.parse(raw)) };
+        const call = {
+          auth: request.headers.authorization ?? "",
+          session: String(request.headers["x-opencode-session"] ?? ""),
+          body: bodySchema.parse(JSON.parse(raw)),
+        };
         calls.push(call);
         onChat(call, response);
         return;

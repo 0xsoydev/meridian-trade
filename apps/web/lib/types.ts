@@ -22,10 +22,14 @@ export type RailModel = {
   verifiability: Verifiability;
 };
 
+export type RailCheck = "probe" | "key" | "models" | "chat";
+
 export type Rail = {
   id: RailId;
   protocol: RailProtocol;
   baseUrl: string;
+  modelsUrl: string;
+  check: RailCheck;
   auth: "key" | "oauth";
   extraHeaders: Record<string, string>;
   models: ReadonlyArray<RailModel>;

@@ -45,7 +45,15 @@ let sequence = 0;
 
 before(async () => {
   if (!hasDb) return;
-  rail = await stubRail(Object.values(MODEL), (call, response) => {
+  const priced = [
+    "anthropic/claude-opus-5.5",
+    "anthropic/claude-sonnet-5.5",
+    "openai/gpt-6-sol",
+    "openai/gpt-6.1-terra",
+    "z-ai/glm-5.3",
+    "deepseek/deepseek-v4.1-flash",
+  ];
+  rail = await stubRail([...Object.values(MODEL), ...priced], (call, response) => {
     sequence += 1;
     const id = `chatcmpl-${suffix}-${sequence}`;
     if (call.auth === "Bearer sk-500") return status(response, 500);
@@ -219,7 +227,7 @@ test("a failing cheapest ask fails over to the next one", { skip }, async () => 
   assert.equal((await listingRow(bad)).status, "active");
 });
 
-test("the anthropic rail is seeded and sends the seller key", { skip }, async () => {
+test("the anthropic rail sends the seller key and Anthropic's dashed model id", { skip }, async () => {
   const listingId = await makeListing({
     sellerId,
     model: "claude-opus-5.5",
@@ -235,7 +243,8 @@ test("the anthropic rail is seeded and sends the seller key", { skip }, async ()
 
   const forwarded = lastCall();
   assert.equal(forwarded.auth, "Bearer sk-anthropic");
-  assert.equal(forwarded.body.model, "claude-opus-5.5");
+  assert.equal(forwarded.body.model, "claude-opus-5-5");
+  assert.equal(forwarded.session, "");
   assert.equal(forwarded.body.max_tokens, 16);
   assert.equal(forwarded.body.max_completion_tokens, undefined);
 
@@ -266,7 +275,7 @@ test("the openai rail asks for max_completion_tokens", { skip }, async () => {
   assert.equal(forwarded.body.max_tokens, undefined);
 });
 
-test("a 401 from a seeded rail invalidates only that listing", { skip }, async () => {
+test("a 401 from a rail invalidates only that listing", { skip }, async () => {
   const bad = await makeListing({
     sellerId,
     model: "claude-sonnet-5.5",
@@ -293,7 +302,7 @@ test("a 401 from a seeded rail invalidates only that listing", { skip }, async (
   assert.equal(rows.find((row) => row.listingId === good)?.status, "settled");
 });
 
-test("the commandcode rail is seeded and uses max_completion_tokens", { skip }, async () => {
+test("the commandcode rail uses max_completion_tokens", { skip }, async () => {
   await makeListing({
     sellerId,
     model: "gpt-6.1-terra",
@@ -314,31 +323,31 @@ test("the commandcode rail is seeded and uses max_completion_tokens", { skip }, 
   assert.equal(first(await usageOf(key.id)).rail, "commandcode");
 });
 
-test("the zen rail maps the canonical model to its hyphenated id", { skip }, async () => {
+test("the zen rail dispatches its chat model with max_tokens", { skip }, async () => {
   await makeListing({
     sellerId,
-    model: "claude-opus-5.5",
+    model: "glm-5.3",
     rail: "zen",
     credential: "sk-zen",
-    price: 2_000_000n,
+    price: 1_000_000n,
     capacity: 1_000_000n,
   });
   const key = await makeKey(1_000_000n);
 
-  const response = await chat(key.raw, { model: "claude-opus-5.5", messages: ping, max_tokens: 16 });
+  const response = await chat(key.raw, { model: "glm-5.3", messages: ping, max_tokens: 16 });
   assert.equal(response.status, 200);
 
   const forwarded = lastCall();
   assert.equal(forwarded.auth, "Bearer sk-zen");
-  assert.equal(forwarded.body.model, "claude-opus-5-5");
+  assert.equal(forwarded.body.model, "glm-5.3");
   assert.equal(forwarded.body.max_tokens, 16);
   assert.equal(first(await usageOf(key.id)).rail, "zen");
 });
 
-test("the opencode-go rail dispatches with max_tokens", { skip }, async () => {
+test("the opencode-go rail dispatches with max_tokens and a session header", { skip }, async () => {
   await makeListing({
     sellerId,
-    model: "gpt-6-luna",
+    model: "deepseek-v4.1-flash",
     rail: "opencode-go",
     credential: "sk-go",
     price: 1_000_000n,
@@ -346,11 +355,12 @@ test("the opencode-go rail dispatches with max_tokens", { skip }, async () => {
   });
   const key = await makeKey(1_000_000n);
 
-  const response = await chat(key.raw, { model: "gpt-6-luna", messages: ping, max_tokens: 16 });
+  const response = await chat(key.raw, { model: "deepseek-v4.1-flash", messages: ping, max_tokens: 16 });
   assert.equal(response.status, 200);
 
   const forwarded = lastCall();
   assert.equal(forwarded.auth, "Bearer sk-go");
+  assert.match(forwarded.session, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
   assert.equal(forwarded.body.max_tokens, 16);
   assert.equal(forwarded.body.max_completion_tokens, undefined);
   assert.equal(first(await usageOf(key.id)).rail, "opencode-go");
