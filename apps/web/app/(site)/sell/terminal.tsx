@@ -79,7 +79,8 @@ export function Sell() {
     };
   }, []);
 
-  const selected = models.find((row) => row.id === model) ?? models[0] ?? null;
+  const railModels = models.filter((row) => row.rails.includes(rail));
+  const selected = railModels.find((row) => row.id === model) ?? railModels[0] ?? null;
   const railConfig = RAILS.find((item) => item.id === rail) ?? RAILS[0];
   const atMarket = marketWanted && railConfig.market;
   const typed = parseUsd(price);
@@ -97,6 +98,8 @@ export function Sell() {
       ? "connect a wallet first"
       : models.length === 0
         ? "waiting for the model list"
+        : railModels.length === 0
+          ? "this rail lists no priced models right now"
         : !atMarket && price.trim() !== "" && typed === null
           ? "that price is not a USD amount"
           : atMarket && marketAnchor === null
@@ -340,8 +343,9 @@ export function Sell() {
                   ))}
                 </div>
                 <p className={`mt-3 text-[13px] leading-5 ${MUTED}`}>
-                  OAuth rails — Claude Code and Codex — are flagged off. The endpoint probes the key
-                  once, free of charge: a bad key never lists.
+                  OAuth rails — Claude Code and Codex — are flagged off. The key is checked once against
+                  the model you list, through the provider&apos;s model list or, on Command Code, a 1-token
+                  request: a bad key, or one without that model, never lists.
                 </p>
               </div>
             </li>
@@ -383,7 +387,7 @@ export function Sell() {
                   <span aria-hidden className="text-[#757575]">⌄</span>
                 </summary>
                 <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-auto border border-[#CECECE] bg-white py-1">
-                  {models.map((row) => (
+                  {railModels.map((row) => (
                     <li key={row.id}>
                       <button
                         type="button"
@@ -401,6 +405,8 @@ export function Sell() {
                   ))}
                   {models.length === 0 ? (
                     <li className="px-3 py-2 text-[13px] text-[#757575]">loading models…</li>
+                  ) : railModels.length === 0 ? (
+                    <li className="px-3 py-2 text-[13px] text-[#757575]">this rail lists no priced models right now</li>
                   ) : null}
                 </ul>
               </details>
