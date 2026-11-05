@@ -6,7 +6,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "node --env-file-if-exists=.env --test lib/*.test.ts",
+    "test": "node --experimental-strip-types --env-file-if-exists=.env --test lib/*.test.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node --env-file-if-exists=.env node_modules/drizzle-kit/bin.cjs migrate",
     "stub:rail": "node --experimental-strip-types scripts/stub-rail.ts",

@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto";
 import { Client, PrivateKey, TopicMessageSubmitTransaction } from "@hiero-ledger/sdk";
 import { eq, inArray } from "drizzle-orm";
-import { keccak256, toBytes } from "viem";
+import { isAddress, keccak256, toBytes } from "viem";
 import { indexOracleAbi, mockUsdcAbi, perpMarketAbi } from "../lib/abi.ts";
 import { hashKey } from "../lib/auth.ts";
 import { addresses, keeperWallet, publicClient } from "../lib/chain.ts";
@@ -200,20 +200,20 @@ async function fundChain(): Promise<void> {
       console.log(`index         fresh at ${latest[0]} for ${MODEL}`);
     }
 
-    const vault = (await reader.readContract({
+    const vault = await reader.readContract({
       address: perpMarket,
       abi: perpMarketAbi,
       functionName: "vault",
-    })) as bigint;
+    });
 
     if (vault < VAULT_TARGET) {
       const delta = VAULT_TARGET - vault;
-      const balance = (await reader.readContract({
+      const balance = await reader.readContract({
         address: mockUsdc,
         abi: mockUsdcAbi,
         functionName: "balanceOf",
         args: [keeper],
-      })) as bigint;
+      });
       if (balance < delta) {
         const mint = delta - balance;
         if (mint > MINT_CAP) throw new Error("vault delta exceeds the MockUSDC mint cap");
@@ -244,13 +244,14 @@ async function fundChain(): Promise<void> {
       console.log(`vault         already at ${vault} micro USDC`);
     }
 
-    const recipient = (process.env.SEED_USDC_RECIPIENT ?? SELLER) as `0x${string}`;
-    const held = (await reader.readContract({
+    const recipient = process.env.SEED_USDC_RECIPIENT ?? SELLER;
+    if (!isAddress(recipient)) throw new Error("SEED_USDC_RECIPIENT is not an address");
+    const held = await reader.readContract({
       address: mockUsdc,
       abi: mockUsdcAbi,
       functionName: "balanceOf",
       args: [recipient],
-    })) as bigint;
+    });
     if (held < USDC_TARGET) {
       const mint = USDC_TARGET - held;
       if (mint > MINT_CAP) throw new Error("judge allocation exceeds the MockUSDC mint cap");

@@ -2,16 +2,11 @@ import { x402Client } from "@x402/core/client";
 import { wrapFetchWithPayment } from "@x402/fetch";
 import { ExactHederaScheme, PrivateKey, createClientHederaSigner } from "@x402/hedera";
 import OpenAI from "openai";
-import {
-  createPublicClient,
-  createWalletClient,
-  defineChain,
-  http,
-  keccak256,
-  toBytes,
-  type Address,
-} from "viem";
+import { createWalletClient, http, isHex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import { indexOracleAbi, mockUsdcAbi, perpMarketAbi } from "../../apps/web/lib/abi.ts";
+import { addresses, galileo, publicClient } from "../../apps/web/lib/chain.ts";
+import { marketId } from "../../apps/web/lib/perp.ts";
 
 const NETWORK = "hedera:testnet";
 const ROUTER_URL = (process.env.ROUTER_URL ?? process.env.PUBLIC_HOST ?? "http://localhost:3000").replace(/\/+$/, "");
@@ -21,63 +16,6 @@ const AUTO_TOPUP_MICRO = "1000000";
 const DAILY_CAP_MICRO = "2000000";
 const RAISE_CAP_MICRO = "10000000";
 const MIRROR = process.env.MIRROR_NODE_URL ?? "https://testnet.mirrornode.hedera.com";
-
-const galileo = defineChain({
-  id: 16602,
-  name: "0G Galileo Testnet",
-  nativeCurrency: { name: "0G", symbol: "0G", decimals: 18 },
-  rpcUrls: { default: { http: [process.env.NEXT_PUBLIC_GALILEO_RPC ?? "https://evmrpc-testnet.0g.ai"] } },
-  blockExplorers: { default: { name: "Chainscan", url: "https://chainscan-galileo.0g.ai" } },
-});
-
-const usdcAbi = [
-  { type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ name: "account", type: "address" }], outputs: [{ name: "", type: "uint256" }] },
-  { type: "function", name: "mint", stateMutability: "nonpayable", inputs: [{ name: "to", type: "address" }, { name: "amount", type: "uint256" }], outputs: [] },
-  { type: "function", name: "approve", stateMutability: "nonpayable", inputs: [{ name: "spender", type: "address" }, { name: "value", type: "uint256" }], outputs: [{ name: "", type: "bool" }] },
-] as const;
-
-const perpAbi = [
-  {
-    type: "function",
-    name: "modify",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "market", type: "bytes32" },
-      { name: "sizeDelta", type: "int256" },
-      { name: "marginDelta", type: "int256" },
-    ],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "markets",
-    stateMutability: "view",
-    inputs: [{ name: "", type: "bytes32" }],
-    outputs: [
-      { name: "maxLeverage", type: "uint256" },
-      { name: "maxOiTokens", type: "uint256" },
-      { name: "fundingK", type: "int256" },
-      { name: "longOi", type: "uint256" },
-      { name: "shortOi", type: "uint256" },
-      { name: "cumFunding", type: "int256" },
-      { name: "lastAccrual", type: "uint64" },
-      { name: "listed", type: "bool" },
-    ],
-  },
-] as const;
-
-const oracleAbi = [
-  {
-    type: "function",
-    name: "latest",
-    stateMutability: "view",
-    inputs: [{ name: "", type: "bytes32" }],
-    outputs: [
-      { name: "priceMicroPerMTok", type: "uint256" },
-      { name: "updatedAt", type: "uint64" },
-    ],
-  },
-] as const;
 
 function required(name: string): string {
   const value = process.env[name];
@@ -237,32 +175,31 @@ async function streamOnce(client: OpenAI, prompt: string): Promise<void> {
 
 async function hedge(): Promise<void> {
   const secret = process.env.GALILEO_AGENT_KEY;
-  const usdc = process.env.NEXT_PUBLIC_MOCK_USDC;
-  const perp = process.env.NEXT_PUBLIC_PERP_MARKET;
-  const oracle = process.env.NEXT_PUBLIC_INDEX_ORACLE;
-  if (!secret || !usdc || !perp || !oracle) {
-    console.log("hedge         skipped: GALILEO_AGENT_KEY or contract addresses missing");
+  if (!secret || !isHex(secret) || secret.length !== 66) {
+    console.log("hedge         skipped: GALILEO_AGENT_KEY is missing or is not a 32-byte hex key");
     return;
   }
   const hedgeModel = process.env.HEDGE_MODEL ?? MODEL;
 
   try {
-    const account = privateKeyToAccount(secret as `0x${string}`);
+    const { mockUsdc, perpMarket, indexOracle } = addresses();
+    const account = privateKeyToAccount(secret);
     const transport = http();
     const wallet = createWalletClient({ account, chain: galileo, transport });
-    const reader = createPublicClient({ chain: galileo, transport });
+    const reader = publicClient();
+    const market = marketId(hedgeModel);
 
-    const balance = (await reader.readContract({
-      address: usdc as Address,
-      abi: usdcAbi,
+    const balance = await reader.readContract({
+      address: mockUsdc,
+      abi: mockUsdcAbi,
       functionName: "balanceOf",
       args: [account.address],
-    })) as bigint;
+    });
 
     if (balance < 100_000n) {
       const minted = await wallet.writeContract({
-        address: usdc as Address,
-        abi: usdcAbi,
+        address: mockUsdc,
+        abi: mockUsdcAbi,
         functionName: "mint",
         args: [account.address, 100_000n],
       });
@@ -270,17 +207,16 @@ async function hedge(): Promise<void> {
     }
 
     const approved = await wallet.writeContract({
-      address: usdc as Address,
-      abi: usdcAbi,
+      address: mockUsdc,
+      abi: mockUsdcAbi,
       functionName: "approve",
-      args: [perp as Address, 100_000n],
+      args: [perpMarket, 100_000n],
     });
     await reader.waitForTransactionReceipt({ hash: approved });
 
-    const market = keccak256(toBytes(hedgeModel));
     const listed = await reader.readContract({
-      address: perp as Address,
-      abi: perpAbi,
+      address: perpMarket,
+      abi: perpMarketAbi,
       functionName: "markets",
       args: [market],
     });
@@ -290,8 +226,8 @@ async function hedge(): Promise<void> {
     }
 
     const latest = await reader.readContract({
-      address: oracle as Address,
-      abi: oracleAbi,
+      address: indexOracle,
+      abi: indexOracleAbi,
       functionName: "latest",
       args: [market],
     });
@@ -301,8 +237,8 @@ async function hedge(): Promise<void> {
       return;
     }
     const modified = await wallet.writeContract({
-      address: perp as Address,
-      abi: perpAbi,
+      address: perpMarket,
+      abi: perpMarketAbi,
       functionName: "modify",
       args: [market, 100_000n, 100_000n],
     });
