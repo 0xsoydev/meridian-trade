@@ -1,0 +1,239 @@
+"use client";
+
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { liquidationPrice } from "../../../lib/perp";
+import { formatMicroPerMtok } from "../../../lib/price";
+import type { Book, ModelRow } from "../../../lib/types";
+import { FillsChart, fillsToPoints, type ScaleMode } from "../trade/chart";
+
+const KEY_STORAGE = "router_key";
+const POLL_MS = 15_000;
+const MAX_LEVERAGE = 5n;
+
+const WINDOWS = [
+  { id: "1h", label: "1h", ms: 3_600_000 },
+  { id: "6h", label: "6h", ms: 6 * 3_600_000 },
+  { id: "24h", label: "24h", ms: 86_400_000 },
+  { id: "all", label: "All", ms: null },
+] as const;
+type WindowId = (typeof WINDOWS)[number]["id"];
+
+const PRESETS = [
+  { label: "100K", value: "100000" },
+  { label: "1M", value: "1000000" },
+  { label: "10M", value: "10000000" },
+  { label: "100M", value: "100000000" },
+];
+
+const FUNDING_FORMULAS = [
+  {
+    name: "funding rate / s",
+    body: "clamp( fundingK · (longOI − shortOI) / max(longOI + shortOI, 1e6), ±fundingK )",
+  },
+  {
+    name: "accrual",
+    body: "cumFunding += rate · (now − lastAccrual) · price, on every modify / liquidate",
+  },
+  {
+    name: "funding owed",
+    body: "size · (cumFunding − entryCumFunding) / 1e18 · 1e6, positive means the trader pays",
+  },
+  {
+    name: "liquidation",
+    body: "equity · 10,000 < notional · 500 → liquidatable; MM_BPS 500",
+  },
+];
+
+const PARAMS = "MAX_LEVERAGE 5 · MM_BPS 500 · FEE_BPS 10 · LIQ_BPS 50 · fundingK 0.1%/hour at full skew · stale 600 s";
+
+const MUTED = "text-[#757575]";
+
+const usd = (micro: bigint) => `$${formatMicroPerMtok(micro)}`;
+
+function tokensText(value: bigint): string {
+  const n = Number(value);
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return `${n}`;
+}
+
+function parseTokens(input: string): bigint {
+  const digits = input.trim().replace(/[,_\s]/g, "");
+  if (!/^\d{1,13}$/.test(digits)) return 0n;
+  return BigInt(digits);
+}
+
+const clockFormat = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "UTC",
+  hour12: false,
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+});
+
+const BOOK_TABS = ["Order Book", "Trades"] as const;
+const STRIP_TABS = ["Positions", "Fills", "Funding History"] as const;
+
+export function Perps({ initialModel }: { initialModel: string }) {
+  const router = useRouter();
+  const [model, setModel] = useState(initialModel);
+  const [models, setModels] = useState<ModelRow[]>([]);
+  const [book, setBook] = useState<Book | null>(null);
+  const [bookFailed, setBookFailed] = useState<"unknown" | "down" | null>(null);
+  const [chartTab, setChartTab] = useState<"Chart" | "Funding">("Chart");
+  const [windowId, setWindowId] = useState<WindowId>("all");
+  const [scale, setScale] = useState<ScaleMode>("linear");
+  const [bookTab, setBookTab] = useState<(typeof BOOK_TABS)[number]>("Order Book");
+  const [stripTab, setStripTab] = useState<(typeof STRIP_TABS)[number]>("Positions");
+  const [side, setSide] = useState<"long" | "short">("long");
+  const [orderType, setOrderType] = useState<"market" | "limit">("market");
+  const [size, setSize] = useState("1000000");
+  const [key, setKey] = useState<string | null>(null);
+  const [balance, setBalance] = useState<bigint | null>(null);
+  const [clock, setClock] = useState<string | null>(null);
+  const picker = useRef<HTMLDetailsElement | null>(null);
+  const nowRef = useRef(Date.now());
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setClock(clockFormat.format(new Date()));
+      nowRef.current = Date.now();
+    }, 1000);
+    setClock(clockFormat.format(new Date()));
+    return () => window.clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/v1/models")
+      .then((res) => (res.ok ? (res.json() as Promise<{ data: ModelRow[] }>) : null))
+      .then((body) => {
+        if (alive && body) setModels(body.data);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    setKey(window.localStorage.getItem(KEY_STORAGE));
+  }, []);
+
+  const refreshBook = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const res = await fetch(`/api/v1/book?model=${encodeURIComponent(model)}`, {
+        cache: "no-store",
+        signal: signal ?? null,
+      });
+      if (!res.ok) throw new Error(`${res.status}`);
+      setBook((await res.json()) as Book);
+      setBookFailed(null);
+    } catch (error) {
+      setBookFailed(error instanceof Error && error.message === "404" ? "unknown" : "down");
+    }
+  }, [model]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setBook(null);
+    void refreshBook(controller.signal);
+    const id = window.setInterval(() => void refreshBook(), POLL_MS);
+    return () => {
+      controller.abort();
+      window.clearInterval(id);
+    };
+  }, [refreshBook]);
+
+  useEffect(() => {
+    const token = window.localStorage.getItem(KEY_STORAGE);
+    if (!token) {
+      setBalance(null);
+      return;
+    }
+    fetch("/api/v1/balance", {
+      cache: "no-store",
+      headers: { authorization: `Bearer ${token}` },
+    })
+      .then((res) => (res.ok ? (res.json() as Promise<{ balance_usd_micro: string }>) : null))
+      .then((body) => setBalance(body ? BigInt(body.balance_usd_micro) : null))
+      .catch(() => setBalance(null));
+  }, []);
+
+  const selected = models.find((row) => row.id === model);
+  const asks = book?.asks ?? [];
+  const wanted = parseTokens(size);
+  const depth = asks.reduce((total, ask) => total + BigInt(ask.tokens_left), 0n);
+
+  const ladderRows = useMemo(() => {
+    let acc = 0n;
+    const rows = asks.map((ask) => {
+      acc += BigInt(ask.tokens_left);
+      return { ask, total: acc };
+    });
+    rows.reverse();
+    return rows;
+  }, [asks]);
+
+  const points = useMemo(
+    () =>
+      fillsToPoints(
+        book?.fills ?? [],
+        WINDOWS.find((w) => w.id === windowId)?.ms ?? null,
+        nowRef.current,
+      ),
+    [book, windowId],
+  );
+  const points24 = useMemo(
+    () => fillsToPoints(book?.fills ?? [], 86_400_000, nowRef.current),
+    [book],
+  );
+
+  const bestAsk = asks[0] ? BigInt(asks[0].price_micro_per_mtok) : null;
+  const lastFill = book?.fills.at(-1);
+  const lastPrice = lastFill ? BigInt(lastFill.price_micro_per_mtok) : null;
+  const first24 = points24[0]?.value ?? null;
+  const last24 = points24.at(-1)?.value ?? null;
+  const delta = last24 !== null && first24 !== null ? (last24 - first24) / first24 : null;
+  const volume24 = points24.reduce((total, point) => total + point.volume, 0);
+  const index = selected?.index_micro_per_mtok ? BigInt(selected.index_micro_per_mtok) : null;
+  const mark = index ?? lastPrice ?? bestAsk;
+  const notional = wanted > 0n && mark !== null ? wanted * mark : 0n;
+  const margin = notional / MAX_LEVERAGE;
+  const liqPreview =
+    wanted > 0n && mark !== null
+      ? liquidationPrice({
+          size: (side === "long" ? 1n : -1n) * wanted * 1_000_000n,
+          margin,
+          entryPrice: mark,
+          fundingOwed: 0n,
+        })
+      : 0n;
+  const usableDepth = depth > 0n ? depth : 1n;
+  const sliderPct = wanted >= usableDepth ? 100 : Number((wanted * 100n) / usableDepth);
+  const first = points[0]?.value ?? null;
+  const last = points.at(-1)?.value ?? null;
+  const high = points.length > 0 ? Math.max(...points.map((point) => point.value)) : null;
+  const low = points.length > 0 ? Math.min(...points.map((point) => point.value)) : null;
+
+  const pick = (id: string) => {
+    setModel(id);
+    if (picker.current) picker.current.open = false;
+    router.replace(`/perps?model=${encodeURIComponent(id)}`, { scroll: false });
+  };
+
+  const stats: Stat[] = [
+    { label: "mark", value: mark !== null ? formatMicroPerMtok(mark) : "—" },
+    { label: "index", value: index !== null ? formatMicroPerMtok(index) : "—" },
+    { label: "best ask", value: bestAsk !== null ? formatMicroPerMtok(bestAsk) : "—" },
+    {
+      label: "change, 24h",
+      value: delta !== null ? `${delta >= 0 ? "+" : ""}${(delta * 100).toFixed(2)}%` : "—",
+      tone: delta === null ? undefined : delta >= 0 ? "up" : "down",
+    },
+    { label: "volume, 24h", value: volume24 > 0 ? `${volume24.toFixed(2)}M MTok` : "—" },
+    { label: "open interest", value: "—" },
+    { label: "funding / countdown", value: "—" },
+  ];
