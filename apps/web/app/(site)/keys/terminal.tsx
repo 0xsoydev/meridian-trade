@@ -515,3 +515,43 @@ export function Keys({ privyReady }: { privyReady: boolean }) {
           </div>
         </div>
       </div>
+
+      <div className="mt-10 border-t border-[#CECECE] pt-8">
+        <p className="text-[13px] text-[#1E1E1E]">[ the router ]</p>
+        <h2 className="mt-3 font-serif text-[32px] leading-[1.1] text-[#1E1E1E]">
+          Point your agent at the router.
+        </h2>
+        <p className={`mt-3 max-w-[560px] text-[14px] leading-5 ${MUTED}`}>
+          OpenAI-compatible chat, one bearer token. The key stays in the header; every call prices
+          itself at the cheapest ask and settles once.
+        </p>
+
+        <div className="mt-4 border-t border-[#CECECE]">
+          {snippets.map((snippet) => (
+            <div
+              key={snippet.id}
+              className="flex flex-wrap items-baseline justify-between gap-4 border-b border-[#CECECE] py-4"
+            >
+              <span className={`text-[13px] ${MUTED}`}>{snippet.label}</span>
+              <code className="min-w-0 flex-1 truncate text-[13px] tabular-nums text-[#1E1E1E]">
+                {snippet.text}
+              </code>
+              <button
+                type="button"
+                onClick={() => void copy(snippet.id, snippet.text)}
+                className="text-[14px] text-[#1743FF] hover:underline"
+              >
+                {copied === snippet.id ? "copied" : "copy"}
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <p className={`mt-4 text-[13px] leading-5 ${MUTED}`}>
+          A top-up with no Authorization header mints a fresh funded key; with one, it credits that
+          key. Deposits are credited only after the Hedera mirror confirms the transfer.
+        </p>
+      </div>
+    </section>
+  );
+}
