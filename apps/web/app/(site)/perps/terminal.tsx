@@ -205,7 +205,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
   const points24 = useMemo(() => fillsToPoints(book?.fills ?? [], nowRef.current - 86_400_000), [book]);
 
   const bestAsk = asks[0] ? BigInt(asks[0].price_micro_per_mtok) : null;
-  const lastFill = book?.fills.at(-1);
+  const lastFill = book?.fills[0];
   const lastPrice = lastFill ? BigInt(lastFill.price_micro_per_mtok) : null;
   const first24 = points24[0]?.value ?? null;
   const last24 = points24.at(-1)?.value ?? null;
