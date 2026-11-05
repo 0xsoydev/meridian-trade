@@ -164,6 +164,16 @@ export default function Home() {
             }}
           />
 
+          <nav className="absolute right-[56px] top-[37px] flex h-[24px] items-center gap-[39px] text-[20px] leading-[24px] text-[#1E1E1E]">
+            {NAV_LINKS.map((link) => (
+              <Link key={link.label} href={link.href}>
+                {link.label}
+              </Link>
+            ))}
+          </nav>
+          <div className={`absolute left-[1049px] top-[92px] h-px w-[623px] ${LINE}`} />
+          <div className={`absolute left-[1048px] top-[92px] h-[92px] w-px ${LINE}`} />
+
           <div className="absolute left-[55px] top-[3351px] h-[286px] w-[1617px] border border-[#CECECE] bg-[#EBEBEB]" />
 
           <div className={`absolute left-[54px] top-0 h-[4081px] w-px ${LINE}`} />
@@ -269,16 +279,6 @@ export default function Home() {
           <p className="absolute left-[103px] top-[2952px] w-[1449px] whitespace-pre-wrap text-[25px] font-medium leading-[30px] text-[#757575]">
             {HOW_IT_WORKS}
           </p>
-
-          <nav className="absolute right-[56px] top-[37px] flex h-[24px] items-center gap-[39px] text-[20px] leading-[24px] text-[#1E1E1E]">
-            {NAV_LINKS.map((link) => (
-              <Link key={link.label} href={link.href}>
-                {link.label}
-              </Link>
-            ))}
-          </nav>
-          <div className={`absolute left-[1049px] top-[92px] h-px w-[623px] ${LINE}`} />
-          <div className={`absolute left-[1048px] top-[92px] h-[92px] w-px ${LINE}`} />
 
           <div className="absolute left-[413px] top-[3427px] h-[658px] w-[1315px] bg-cover bg-center" style={{ backgroundImage: "url(/images/goddess.png)" }} />
           <div className="absolute left-[138px] top-[3384px] flex w-[119px] flex-col gap-[5px] text-[20px] text-[#1E1E1E]">
