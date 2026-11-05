@@ -1,5 +1,6 @@
 export type RailId =
   | "0g"
+  | "stub"
   | "anthropic"
   | "openai"
   | "openrouter"

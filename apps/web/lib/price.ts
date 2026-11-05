@@ -23,6 +23,14 @@ export function parseUsdPerToken(decimal: string): MicroPerMTok {
   return negative ? -value : value;
 }
 
+export function formatMicroPerMtok(value: MicroPerMTok): string {
+  const negative = value < 0n;
+  const abs = negative ? -value : value;
+  const whole = abs / 1_000_000n;
+  const fraction = (abs % 1_000_000n).toString().padStart(6, "0").replace(/0+$/, "");
+  return `${negative ? "-" : ""}${whole}${fraction ? `.${fraction}` : ""}`;
+}
+
 export function blended(p: Pricing): MicroPerMTok {
   return (3n * p.prompt + p.completion) / 4n;
 }

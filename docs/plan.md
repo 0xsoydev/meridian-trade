@@ -20,7 +20,7 @@ Rules fixed by tests or by the user:
 
 | Rule | Source |
 |---|---|
-| Ask must be below the model's reference list price — the lowest blended list among enabled rails | user |
+| Ask must be at or below the blended list price of the listing's own rail | user |
 | Market asks fill at the best limit ask; the 90%-of-reference fallback applies only to rails with expiring credits | plan |
 | One MToken = 1M mixed tokens (3 input : 1 output), price-free; capacity and usage are token counts | plan |
 | A request is served entirely from prepaid MTokens or entirely at the current ask, never a mix | plan |
@@ -66,7 +66,7 @@ export type Rail = {
 | `claude-code` | anthropic-messages | `https://api.anthropic.com/v1` | oauth | §10.9, flagged off |
 | `codex` | openai-responses | `https://chatgpt.com/backend-api/codex` | oauth | §10.9, flagged off |
 
-`catalog()` in `lib/rails.ts` fetches `/models` for 0G and OpenRouter (300 s cache) and merges the seeded prices for the rest. `resetPeriod` drives two things: capacity reset (`daily` only) and whether a listing may post a market ask (any non-null period, because expiring credits make a below-list ask rational).
+`catalog()` in `lib/rails.ts` fetches `/models` for 0G and OpenRouter (300 s cache). 0G prices come from `pricing_usd`; `pricing` is a scaled integer and must not be used. Model ids are per rail: 0G sends bare ids, OpenRouter namespaced ones, so each rail carries its own upstream id for a canonical model. `resetPeriod` drives two things: capacity reset (`daily` only) and whether a listing may post a market ask (any non-null period, because expiring credits make a below-list ask rational).
 
 ---
 
@@ -232,7 +232,7 @@ export function reservation(ask: MicroPerMTok, utf8Bytes: number, maxTokens: big
 
 Example: GLM-5.3 list $1.40 / $4.40 → reference blended $2.15 = 2_150_000. Ask $1.50 = 1_500_000. A 1 000-prompt / 1 000-completion request is 1 000 mixed tokens and costs $0.0015.
 
-Listing validation: `price === null || price < blended(reference(model)!.pricing)`; `price === null` requires `rail.resetPeriod !== null`.
+Listing validation: `price === null || price <= blended(railPricing(rail, model)!)`; `price === null` requires `rail.resetPeriod !== null`. The router still takes the cheapest ask across rails, so the venue's best price is what buyers compare.
 
 Missing usage (client abort, upstream break, deadline abort): `mixedTokens(estimatePromptTokens(bytes), ceil(forwardedCompletionBytes / 4))`, capped at the reservation.
 
@@ -401,7 +401,7 @@ export type Credential = { kind: "key"; key: string } | { kind: "oauth" };
 
 `POST /api/listings` `{ signed: Signed<ListingIntent>, credential: Credential }`:
 1. Verify signature, seller exists, `rail.enabled`.
-2. `ref = reference(model)?.pricing`; missing → 404 `model_not_found`; `price === null || price < blended(ref)` else 400. `price === null` requires `rail.resetPeriod !== null` else 400.
+2. `own = railPricing(rail, model)`; missing → 404 `model_not_found`; `price === null || price <= blended(own)` else 400. `price === null` requires `rail.resetPeriod !== null` else 400.
 3. Probe by rail, free of charge: `0g` → `POST /chat/completions` `{ model: "__probe__" }`, expect 404 `model_not_found`; `anthropic` and `openai` → `GET /models`; `openrouter` → `GET /api/v1/key` (also returns `limit_remaining`, shown as a capacity hint); gateways → `GET /models`. 401/403 → reject.
 4. `kind: "key"` → insert with `status = 'active'`, `auth_kind = 'key'`, `credential_ciphertext = seal(key)`. `kind: "oauth"` → insert with `status = 'pending_auth'`, `auth_kind = 'oauth'`, and return `{ authorization_url }` from §10.9; the callback flips it to `active`.
 5. `capacity_tokens = capacity_mtok × 1e6`. On OAuth rails capacity is advisory: the provider's window is the real limit and `throttled_until` is the only brake we control (§21).

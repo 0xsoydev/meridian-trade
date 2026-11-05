@@ -4,6 +4,7 @@ import {
   blended,
   charge,
   estimatePromptTokens,
+  formatMicroPerMtok,
   marketPrice,
   mixedTokens,
   parseUsdPerToken,
@@ -23,6 +24,12 @@ test("parseUsdPerToken converts USD per token to micro per MTok", () => {
   assert.equal(parseUsdPerToken("0.0000014"), 1_400_000n);
   assert.equal(parseUsdPerToken("4.4"), 4_400_000_000_000n);
   assert.equal(parseUsdPerToken("0.0000000000005"), 1n);
+});
+
+test("formatMicroPerMtok prints provider decimals", () => {
+  assert.equal(formatMicroPerMtok(1_400_000n), "1.4");
+  assert.equal(formatMicroPerMtok(90_000n), "0.09");
+  assert.equal(formatMicroPerMtok(1_000_000n), "1");
 });
 
 test("blended weights input three to one", () => {
