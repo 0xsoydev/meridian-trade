@@ -83,6 +83,8 @@ test("reference picks the cheapest enabled rail", () => {
       id: "0g",
       protocol: "openai-chat",
       baseUrl: "https://example.invalid",
+      modelsUrl: "https://example.invalid/models",
+      check: "probe",
       auth: "key",
       extraHeaders: {},
       models: [
@@ -95,6 +97,8 @@ test("reference picks the cheapest enabled rail", () => {
       id: "openrouter",
       protocol: "openai-chat",
       baseUrl: "https://example.invalid",
+      modelsUrl: "https://example.invalid/models",
+      check: "key",
       auth: "key",
       extraHeaders: {},
       models: [
@@ -107,6 +111,8 @@ test("reference picks the cheapest enabled rail", () => {
       id: "openai",
       protocol: "openai-chat",
       baseUrl: "https://example.invalid",
+      modelsUrl: "https://example.invalid/models",
+      check: "models",
       auth: "key",
       extraHeaders: {},
       models: [{ canonical: "glm-5.3", upstream: "gpt", listPrompt: 1n, listCompletion: 1n, verifiability: null }],

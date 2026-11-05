@@ -60,6 +60,10 @@ curl.exe -s -H "Authorization: Bearer $env:OG_API_KEY" "$env:OG_ROUTER_URL/provi
 
 `0gm-1.0-35b-a3b` must report `is_healthy: true`.
 
+### OpenRouter rankings
+
+Put any OpenRouter account key in `OPENROUTER_API_KEY`. The OpenRouter rail lists that week's top 30 models by tokens from `GET /api/v1/datasets/rankings-daily`, which needs a key. Without one, the rail is off. OpenRouter's public `/models` still prices the other rails.
+
 ### Demo agent accounts
 
 ```powershell
