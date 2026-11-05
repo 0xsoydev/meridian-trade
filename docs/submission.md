@@ -35,7 +35,8 @@ Provider credits expire and cannot be cashed out: 0G iAI credits reset daily, mo
 
 - Sellers prove humanity with IDKit; one nullifier maps to one seller.
 - Agents link to a human and raise their daily cap through an approval bound to an approval id; the proof's signal is that id, so it cannot be replayed against another approval.
-- The backend rejects a cap raise by a different human and expires approvals after ten minutes.
+- The approval page has an explicit deny action: a refusal sets the row to `denied`, and it cannot be verified afterwards.
+- The backend rejects a cap raise by a different human, asks an unlinked key to link first, and expires approvals after ten minutes.
 - Agent Pass (OIDC device flow) was evaluated and replaced by IDKit approvals; the current World docs do not expose the OIDC product the original plan assumed.
 
 ## Deployments

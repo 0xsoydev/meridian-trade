@@ -45,7 +45,8 @@ If the portal leaves a keyless alias account (faucet transfer to an EVM address)
 1. `https://developer.world.org` → create an app → enable World ID 4.0.
 2. Copy `WORLD_APP_ID`, `WORLD_RP_ID`, `WORLD_RP_SIGNING_KEY`; set `WORLD_ENV=production`.
 3. Use an Orb-verified phone with the World App.
-4. The approval flow reuses the `seller` action by default (`WORLD_APPROVAL_ACTION=seller`). Add a dedicated `approve` action in the portal and set the variable if you prefer separate action labels.
+4. The approval flow reuses the `seller` action (`WORLD_APPROVAL_ACTION=seller`); one action covers seller verification and every approval. Allow repeat verifications for that action in the portal, because linking and each cap raise verify again.
+5. Add a dedicated `approve` action in the portal and set the variable if you prefer separate action labels.
 
 ### 0G Router
 
@@ -108,7 +109,9 @@ Approval is a World ID QR scan, not a code typed anywhere. The six-character cod
 3. Scan the QR with the World App on the orb-verified phone and approve.
 4. The agent's poll flips to `approved`.
 
-The first approval links the human to the agent's router key. The second raises the daily cap. Denying in the World App (or not approving within ten minutes) exercises the deny/expiry path; the agent prints it and continues.
+Click **Deny this request** instead to record an explicit refusal: the page calls `POST /api/v1/approvals/:id/deny`, the row moves to `denied`, the poll returns it and the agent prints the deny path. A denied approval cannot be verified afterwards. Not approving within ten minutes exercises the expiry path instead.
+
+The first approval links the human to the agent's router key. The second raises the daily cap. A cap raise on a key with no linked human answers 403 with a `link_human` approval, so the client links first rather than waiting out a `raise_cap` that can never succeed.
 
 ## 6. Troubleshooting
 
