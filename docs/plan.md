@@ -309,6 +309,8 @@ export type TopupResult = {
 };
 
 export type Balance = {
+  memo: string;
+  treasury: string | null;
   balance_usd_micro: string;
   reserved_usd_micro: string;
   topped_up_today_usd_micro: string;
@@ -457,7 +459,7 @@ export function pollApproval(approvalId: string): Promise<ApprovalStatus>;
    - `ScheduleCreateTransaction` wrapping `TransferTransaction` USDC treasury → `seller.hedera_account`, `setExpirationTime(payout.day + 1 d, 01:00 UTC)`, `setWaitForExpiry(true)`, `setAdminKey(treasury)`, `setScheduleMemo(payout.id)`. Every input comes from the payout row, so a retry before 01:00 gets `IDENTICAL_SCHEDULE_ALREADY_CREATED` with the existing schedule id, and after 01:00 creation fails and the payout stays `pending` (§21). Store `schedule_id`, status `scheduled`.
 3. Reset listings on rails with `resetPeriod = 'daily'`: `used_tokens = 0, status = 'active' where status in ('active','exhausted')`. Monthly and non-expiring rails keep their usage; the seller re-lists or raises capacity.
 4. Between 00:00 and 01:00 UTC an operator can cancel a payout with `ScheduleDeleteTransaction`.
-5. 01:05 UTC: mirror `GET /schedules/{id}` → `executed` or `cancelled`.
+5. 01:05 UTC: mirror `GET /schedules/{id}`. `executed` only when `executed_timestamp` is set and `GET /transactions?timestamp=` holds a `scheduled` transaction with `result: SUCCESS`; deleted → `cancelled`; anything else stays `scheduled` and is re-checked every minute.
 
 Schedules pay the numeric account id because resolving an EVM alias inside a scheduled transaction is unverified.
 
@@ -544,7 +546,7 @@ export type DepositResult = { tx_id: string; amount_usd_micro: string; balance_u
 3. `ensureAccount` upserts on the lowercase address; a second address presenting the same nullifier is a 409.
 4. A key is created with zero balance and `account_id`; the plaintext is returned once.
 5. `GET /api/v1/keys?address&message&signature` with `action: "list_keys"` returns that account's keys, balances and creation times.
-6. `POST /api/v1/keys/deposit` `{ tx_id }` with a bearer key: normalise the id to `0.0.x-seconds-nanos`, fetch the mirror transaction, require `result: SUCCESS`, a memo (base64) equal to the key id, and a positive USDC transfer to the treasury. Credit exactly what arrived, at most `TOPUP_MAX_MICRO`; `topups.tx_id` makes a replay a 409.
+6. `POST /api/v1/keys/deposit` `{ tx_id }` with a bearer key: normalise the id to `0.0.x-seconds-nanos`, fetch `{MIRROR_NODE_URL}/api/v1/transactions/{id}` (v1; there is no v2 path), require `result: SUCCESS`, `memo_base64` decoding to the key id, and a positive USDC transfer to the treasury. Credit exactly what arrived, at most `TOPUP_MAX_MICRO`; `topups.tx_id` makes a replay a 409. `GET /api/v1/balance` returns that memo (the key id) and the treasury account, so the deposit panel can show both.
 
 ---
 
@@ -819,7 +821,9 @@ Video (2:30–2:55, human voice):
 - Prompt tokens estimated as `bytes / 3` for reservations; when actual cost exceeds what the reservation plus balance covers, the platform absorbs the rest. Upgrade: tokenizer per model.
 - Reservations swept after a function died are released at zero charge.
 - The daily cap is checked before settlement; concurrent top-ups can overshoot it by one top-up each.
-- Payouts need the seller's EVM address to be new on Hedera or able to receive USDC; otherwise the payout stays `pending`.
+- A payout needs the seller's Hedera account to be able to receive USDC. If the scheduled transfer fails at 01:00 UTC (no balance, account not associated), the payout stays `scheduled`; the keeper re-checks it every minute and logs it for an operator.
+- The daily listing reset runs only if the keeper is up when the UTC day changes; a missed day waits for the next reset or a manual run.
+- After keeper downtime longer than `INDEX_WINDOW_MIN`, minutes older than the window are never published to HCS: the index ignores them and `/receipts` cannot show them.
 - A payout still `pending` after 01:00 UTC on its pay day needs an operator: check the mirror for a schedule with that memo before paying by hand.
 - `usage_root` inclusion proofs are not served.
 - Facilitator chosen at startup; a signed payment cannot fail over mid-flight.
