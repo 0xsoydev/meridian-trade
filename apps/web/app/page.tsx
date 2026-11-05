@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Fragment } from "react";
 import { Hero } from "../components/landing/hero";
+import { WhatWeDo } from "../components/landing/what-we-do";
 import { Navbar, NavLinks } from "../components/site-nav";
 
 const CARDS = [
@@ -38,27 +39,7 @@ export default function Home() {
 
         <Hero variant="page" />
 
-        <section className="mt-16 border-t border-[#CECECE] px-6 pt-10">
-          <p className="text-[15px] text-black">[ what we do ]</p>
-          <h2 className="mt-5 font-serif text-[34px] leading-[1.1] text-[#1E1E1E]">
-            Sell what expires. Trade the rest.
-          </h2>
-          <div className="mt-9 flex flex-col gap-6">
-            {CARDS.map((c) => (
-              <article key={c.title} className="border border-[#CECECE] bg-[#EBEBEB] px-6 py-7">
-                <p className="text-[15px] text-[#1E1E1E]">{c.title}</p>
-                <img
-                  src={c.art.src}
-                  alt=""
-                  width={c.art.w}
-                  height={c.art.h}
-                  className="mx-auto my-7 h-auto w-[62%] max-w-[230px]"
-                />
-                <p className="text-[16px] leading-[24px] text-black">{c.bodyText}</p>
-              </article>
-            ))}
-          </div>
-        </section>
+        <WhatWeDo variant="page" />
 
         <section className="mt-16 border-t border-[#CECECE] px-6 pt-10">
           <h2 className="font-serif text-[32px] leading-[1.12] text-black">
