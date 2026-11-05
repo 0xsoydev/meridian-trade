@@ -1,8 +1,12 @@
-export default function Trade() {
-  return (
-    <section className="space-y-2">
-      <h1 className="text-xl font-semibold">Trade</h1>
-      <p className="text-sm text-zinc-400">Spot venue: ask book, buy, and manage your own asks.</p>
-    </section>
-  );
+import { Trade } from "./terminal";
+
+const DEMO_MODEL = "glm-5.3";
+
+export default async function TradePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ model?: string }>;
+}) {
+  const { model } = await searchParams;
+  return <Trade initialModel={model ?? DEMO_MODEL} />;
 }
