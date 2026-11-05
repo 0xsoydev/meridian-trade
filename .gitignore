@@ -1,0 +1,10 @@
+node_modules/
+.next/
+out/
+cache/
+.env
+.env.*
+!.env.example
+.opencode/
+.DS_Store
+*.tsbuildinfo

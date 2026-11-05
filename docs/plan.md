@@ -1,0 +1,823 @@
+# LLM Token Exchange — Implementation Plan (ETHGlobal Mumbai, Nov 5–7 2026)
+
+Planning artifact. ETHGlobal Classic track: no project code before kickoff. This document fixes types, interfaces, schemas and formulas; function bodies are written after kickoff. Commit this file as `docs/plan.md` in the first commit and disclose AI assistance in the README.
+
+Submission deadline: Sat Nov 7 2026, 09:00 IST. Partner prizes: 0G (Build with iAI + Wildcard), Hedera (AI Agents That Pay: x402), World (Agent Pass + IDKit).
+
+---
+
+## 1. Product
+
+- Sellers list unused LLM capacity as MTokens at a limit price or at market. Capacity comes from a **rail**: a provider credential the seller owns — 0G iAI credits, Anthropic or OpenAI API credits, a gateway key (OpenRouter, Command Code, OpenCode Zen), or a subscription OAuth login (§1.1, §10.9).
+- Buyers (people and their agents) hold a USD balance on a router key and call our OpenAI-compatible router. They can also buy MTokens up front at the best asks (§10.10); a request is served from prepaid MTokens when they cover it, otherwise bought at the cheapest ask across rails. Seller credentials never leave the server.
+- Optional auto top-up: when a request cannot be covered, the router answers with an x402 `402`; the buyer's x402 client pays in USDC on Hedera and retries automatically. Daily cap enforced server-side; raising it needs fresh World ID approval.
+- Perps: cash-settled USDC perps on the venue's $/MToken index, on 0G Galileo. Sellers short to lock in tomorrow's revenue; buyers long to cap costs.
+- Revenue: take rate on spot fills (`TAKE_BPS`, default 1000) and perp fees (10 bps of notional).
+
+Supply is worth selling because the credits expire and cannot be cashed out: 0G iAI resets daily, Claude Max and Team plans grant monthly API credits, gateway plans grant monthly allowances. That is why a below-list ask is rational, and why a rail with plain API credits adds coverage rather than discount.
+
+Rules fixed by tests or by the user:
+
+| Rule | Source |
+|---|---|
+| Ask must be below the model's reference list price — the lowest blended list among enabled rails | user |
+| Market asks fill at the best limit ask; the 90%-of-reference fallback applies only to rails with expiring credits | plan |
+| One MToken = 1M mixed tokens (3 input : 1 output), price-free; capacity and usage are token counts | plan |
+| A request is served entirely from prepaid MTokens or entirely at the current ask, never a mix | plan |
+| A spot fill takes the seller's capacity for that period and the prepaid MTokens expire with it; no refund | plan |
+| Metering uses the rail's reported token counts, never a rail's cost field | plan |
+| Subscription OAuth rails (Claude Code, Codex) run only when `ENABLE_OAUTH_RAILS=1` | user |
+| x402 payments are `exact` scheme, USDC on Hedera; client default cap $1 per payment | preflight |
+| `withX402` buffers responses, so the router settles top-ups itself before streaming | preflight |
+| New Hedera accounts need ~2 s on the mirror node before paying | preflight |
+| 0G keys support `credit_limit`, `reset_period: daily`, `allowed_models`, `trust_mode` | 0G API reference |
+| Galileo supports Cancun opcodes; deploy ≈ 128k gas, price post ≈ 44k gas | preflight |
+| Browser x402 paywall has no Hedera build; buyers pay from agents/CLI | package inspection |
+
+### 1.1 Rails
+
+Every seller credential is one rail instance. Rails are static config in `lib/rails.ts`; adding a provider is one entry, not one module.
+
+```ts
+export type RailId = "0g" | "anthropic" | "openai" | "openrouter" | "commandcode" | "zen" | "claude-code" | "codex";
+
+export type RailModel = { canonical: string; upstream: string; listPrompt: bigint; listCompletion: bigint };
+
+export type Rail = {
+  id: RailId;
+  protocol: "openai-chat" | "anthropic-messages" | "openai-responses";
+  baseUrl: string;
+  auth: "key" | "oauth";
+  extraHeaders: Record<string, string>;
+  models: ReadonlyArray<RailModel>;
+  resetPeriod: "daily" | "monthly" | null;
+  enabled: boolean;
+};
+```
+
+| Rail | Protocol | Base URL | Auth | Notes |
+|---|---|---|---|---|
+| `0g` | openai-chat | `OG_ROUTER_URL` | key | trust and max-price headers; prices from `/models`; credits reset daily |
+| `anthropic` | openai-chat | `https://api.anthropic.com/v1` | key | Anthropic's OpenAI-compatible layer; Console workspace key; Max/Team API credits are monthly; prices seeded |
+| `openai` | openai-chat | `https://api.openai.com/v1` | key | project key with a budget; no expiry; prices seeded |
+| `openrouter` | openai-chat | `https://openrouter.ai/api/v1` | key | prices from `/models`; `GET /api/v1/key` returns remaining credits; no expiry |
+| `commandcode` | openai-chat | `COMMANDCODE_BASE_URL` | key | their Provider API; plan credits are monthly |
+| `zen` | openai-chat | `ZEN_BASE_URL` | key | OpenCode Zen; no expiry |
+| `claude-code` | anthropic-messages | `https://api.anthropic.com/v1` | oauth | §10.9, flagged off |
+| `codex` | openai-responses | `https://chatgpt.com/backend-api/codex` | oauth | §10.9, flagged off |
+
+`catalog()` in `lib/rails.ts` fetches `/models` for 0G and OpenRouter (300 s cache) and merges the seeded prices for the rest. `resetPeriod` drives two things: capacity reset (`daily` only) and whether a listing may post a market ask (any non-null period, because expiring credits make a below-list ask rational).
+
+---
+
+## 2. Sponsor surface
+
+| Sponsor | What judges must see | Where |
+|---|---|---|
+| 0G | Credits spent by our app; inference on 0G Compute funded by them (request ids); daily return loop; Galileo contract addresses; live link; video < 3 min | Router metering, `/receipts`, README |
+| 0G Wildcard | 0G Compute request id, 0G Storage root hash, 0G Chain contract | Optional daily ledger archive (§20) |
+| Hedera | x402 endpoint settling on Hedera; agent paying with no human; README with settled tx ids + HashScan; video ≤ 5 min. Extras: spend controls, HCS audit log, USDC settlement, scheduled payouts | `/api/v1/topup`, `/api/v1/chat/completions`, keeper |
+| World Agent Pass | Verification request → completion → validated result → protected action; denied/expired path; backend validation; debrief | Raising the auto top-up cap; linking an agent to its human |
+| World IDKit | Trust moment with minimum sufficient credential; server verify; alternative path; debrief | Seller onboarding: one seller per human, proof bound to wallet |
+
+0G is the only rail in the demo and the only one named in the submission: it is the verifiable rail and the expiring-credit story. API-key gateways are product depth. OAuth rails are flag-gated and excluded (§21).
+
+---
+
+## 3. System
+
+```
+                    ┌──────────────── apps/web (Next.js 16, Vercel) ──────────────┐
+ Seller ─Privy────► │ UI: / · /trade · /perps · /sell · /keys · /receipts         │
+                    │                                                             │
+ Agent ───────────► │ /api/v1/chat/completions ── reserve ─► seller rail (§1.1)   │
+ OpenAI SDK +       │        │ 402 x402 ◄─ auto top-up ─► facilitator ─► Hedera     │
+ @x402/fetch        │ /api/v1/topup ─────────────── x402 ─► facilitator ─► Hedera   │
+                    │ /api/v1/approvals ─────────── device flow ─► World ID issuer │
+                    │ /api/sellers/* ── IDKit verify ─► developer.world.org         │
+                    └──────────────────────────┬──────────────────────────────────┘
+                                               │ Neon Postgres (drizzle, neon-http)
+ keeper (Node 22) ────────────────────────────┼─► HCS: per-minute fill rollups
+                                               ├─► Galileo IndexOracle.post
+                                               ├─► Galileo PerpMarket.liquidate
+                                               └─► Hedera scheduled payouts 00:00 UTC
+ Trader ─Privy/wagmi─► PerpMarket (Galileo, MockUSDC margin)
+```
+
+---
+
+## 4. Repository
+
+```
+apps/web/
+  app/page.tsx
+  app/trade/page.tsx
+  app/perps/page.tsx
+  app/sell/page.tsx
+  app/keys/page.tsx
+  app/receipts/page.tsx
+  app/providers.tsx
+  app/api/v1/chat/completions/route.ts
+  app/api/v1/topup/route.ts
+  app/api/v1/models/route.ts
+  app/api/v1/balance/route.ts
+  app/api/v1/keys/settings/route.ts
+  app/api/v1/trades/route.ts
+  app/api/v1/book/route.ts
+  app/api/v1/approvals/route.ts
+  app/api/v1/approvals/[id]/route.ts
+  app/api/sellers/rp-signature/route.ts
+  app/api/sellers/verify/route.ts
+  app/api/oauth/[rail]/start/route.ts
+  app/api/oauth/[rail]/callback/route.ts
+  app/api/listings/route.ts
+  app/api/listings/[id]/route.ts
+  lib/db.ts
+  lib/schema.ts
+  lib/price.ts
+  lib/price.test.ts
+  lib/rails.ts
+  lib/translate.ts
+  lib/translate.test.ts
+  lib/oauth.ts
+  lib/x402.ts
+  lib/world.ts
+  lib/secrets.ts
+  lib/auth.ts
+  lib/chain.ts
+contracts/
+  foundry.toml
+  src/IndexOracle.sol
+  src/PerpMarket.sol
+  src/MockUSDC.sol
+  test/PerpMarket.t.sol
+  script/Deploy.s.sol
+keeper/main.ts
+agents/demo/main.ts
+scripts/seed.ts
+docs/plan.md
+```
+
+`lib/*` are plain function modules, one per external system. No classes, services, repositories or DI.
+
+---
+
+## 5. Stack (exact pins, all verified by preflight)
+
+| Area | Packages |
+|---|---|
+| App | next 16.4.3, react 19.3.1, react-dom 19.3.1, typescript 7.0.2, @types/node 22 |
+| UI | tailwindcss 4.3.3, @tailwindcss/postcss 4.3.3, shadcn 4.23.0 (CLI), lightweight-charts 5.2.1, qrcode 1.5.4 |
+| Wallet | @privy-io/react-auth 3.51.0, @privy-io/wagmi 4.0.19, wagmi 3.7.9, viem 2.57.5, @tanstack/react-query 5.105.0 |
+| Payments | @x402/core 2.28.0, @x402/fetch 2.28.0, @x402/hedera 2.28.0, @hiero-ledger/sdk 2.85.0 |
+| Identity | openid-client 6.8.8, @worldcoin/idkit 4.6.0, @worldcoin/idkit-core 4.6.0 |
+| Data | drizzle-orm 0.45.4, drizzle-kit 0.31.11, @neondatabase/serverless 1.2.0, zod 4.6.7 |
+| Agent | openai 7.45.0 |
+| Contracts | Foundry 1.5.1, solc 0.8.30, evm_version cancun, @openzeppelin/contracts 5.6.1 |
+
+`@hiero-ledger/sdk` stays at 2.85.0 to match `@x402/hedera`; import `PrivateKey`, `Client`, `TransferTransaction` from `@x402/hedera` where possible. Rails and OAuth need no new package: `node:crypto` covers PKCE, and every rail is plain `fetch`.
+
+---
+
+## 6. Coding rules
+
+- `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`. No `any`; external data enters as `unknown` and leaves zod.
+- zod at every trust boundary: request bodies, query params, upstream responses (0G, Anthropic, OpenAI, gateways), World responses, facilitator responses.
+- Money and token counts are `bigint` end to end (USDC micro = 1e-6 USD; tokens = integer). No floats in money paths. JSON carries bigints as decimal strings.
+- No comments in code. Deliberate limits live in §21.
+- No abstractions without two real callers. Route handlers call `lib` functions directly.
+- Rails are static config in `lib/rails.ts`; no per-provider classes, no adapter interface. Adding a provider is one entry.
+- Translators (`lib/translate.ts`) are pure functions from `unknown` to zod-validated types, fixture-tested, and never compute money.
+- Seller credentials — API keys and OAuth token sets — are sealed with AES-256-GCM and opened only inside the request that uses them. OAuth refresh is deduped per listing in-process.
+- Every balance or capacity change is one SQL statement (conditional `UPDATE … RETURNING` or a CTE). neon-http has no interactive transactions; single statements are atomic. A statement that touches several tables locks existing rows in the order usage → listing → key.
+- Router errors use the OpenAI shape `{ error: { message, type, code } }`.
+- Never store or log prompts or completions. Only metadata.
+- One runnable check per non-trivial logic: `lib/price.test.ts` and `lib/translate.test.ts` (node:test with recorded fixtures), `contracts/test/PerpMarket.t.sol` (forge).
+
+---
+
+## 7. Units and math (`lib/price.ts`)
+
+All prices are USD micro per 1M tokens (`MicroPerMTok`, bigint). Prompt and completion prices come from the rail's catalog (§1.1); 0G and OpenRouter publish them as USD per token decimal strings.
+
+```ts
+export type Micro = bigint;
+export type MicroPerMTok = bigint;
+export type Pricing = { prompt: MicroPerMTok; completion: MicroPerMTok };
+
+export function parseUsdPerToken(decimal: string): MicroPerMTok;
+export function blended(p: Pricing): MicroPerMTok;
+export function reference(model: string): { railId: RailId; pricing: Pricing } | null;
+export function mixedTokens(promptTokens: bigint, completionTokens: bigint): bigint;
+export function charge(tokens: bigint, ask: MicroPerMTok): Micro;
+export function sellerEarning(chargeMicro: Micro, takeBps: bigint): Micro;
+export function railCost(p: Pricing, promptTokens: bigint, completionTokens: bigint): Micro;
+export function marketPrice(bestLimitAsk: MicroPerMTok | null, ref: Pricing, rail: Rail): MicroPerMTok | null;
+export function estimatePromptTokens(utf8Bytes: number): bigint;
+export function reservation(ask: MicroPerMTok, utf8Bytes: number, maxTokens: bigint): { tokens: bigint; micro: Micro };
+```
+
+| Function | Formula |
+|---|---|
+| `parseUsdPerToken` | exact decimal string × 10^12 (string math, no floats) |
+| `blended` | `(3·prompt + completion) / 4` |
+| `reference` | the enabled rail with the lowest `blended` for that model |
+| `mixedTokens` | `ceil((3·promptTokens + completionTokens) / 4)` |
+| `charge` | `ceil(tokens · ask / 1e6)` |
+| `sellerEarning` | `floor(charge · (10_000 − takeBps) / 10_000)` |
+| `railCost` | `ceil((promptTokens·prompt + completionTokens·completion) / 1e6)` — display only |
+| `marketPrice` | `bestLimitAsk ?? (rail.resetPeriod === null ? null : floor(blended(ref) · 9 / 10))` |
+| `estimatePromptTokens` | `ceil(utf8Bytes / 3)` |
+| `reservation` | `{ tokens: mixedTokens(estimatePromptTokens(bytes), maxTokens), micro: charge(tokens, ask) }` |
+
+Example: GLM-5.3 list $1.40 / $4.40 → reference blended $2.15 = 2_150_000. Ask $1.50 = 1_500_000. A 1 000-prompt / 1 000-completion request is 1 000 mixed tokens and costs $0.0015.
+
+Listing validation: `price === null || price < blended(reference(model)!.pricing)`; `price === null` requires `rail.resetPeriod !== null`.
+
+Missing usage (client abort, upstream break, deadline abort): `mixedTokens(estimatePromptTokens(bytes), ceil(forwardedCompletionBytes / 4))`, capped at the reservation.
+
+`lib/price.test.ts` asserts: the GLM-5.3 example; `marketPrice` returns `null` on a rail with `resetPeriod = null` and no asks; rounding never makes `sellerEarning + platform > charge`; `mixedTokens` is monotonic in both arguments; reservation ≥ actual for a fixed sample.
+
+---
+
+## 8. Data model (`lib/schema.ts`, Postgres)
+
+| Table | Columns | Constraints |
+|---|---|---|
+| `sellers` | `id uuid pk`, `address text`, `world_nullifier numeric(78,0)`, `hedera_account text null`, `created_at timestamptz` | `address` unique (lowercase), `world_nullifier` unique |
+| `listings` | `id uuid pk`, `seller_id fk`, `rail text`, `model text`, `auth_kind text`, `credential_ciphertext text`, `account_ref text null`, `price_micro_per_mtok bigint null`, `capacity_tokens bigint`, `used_tokens bigint default 0`, `reserved_tokens bigint default 0`, `throttled_until timestamptz null`, `status text`, `client_nonce text`, `created_at` | `capacity_tokens > 0`; `used_tokens + reserved_tokens <= capacity_tokens`; `auth_kind in ('key','oauth')`; `status in ('active','exhausted','invalid','cancelled','pending_auth')`; `client_nonce` unique; index `(model, status, price_micro_per_mtok)` |
+| `keys` | `id uuid pk`, `hash bytea`, `balance_usd_micro bigint`, `reserved_usd_micro bigint default 0`, `auto_topup_usd_micro bigint default 0`, `daily_topup_cap_usd_micro bigint default 5000000`, `default_model text null`, `world_sub text null`, `created_at` | `hash` unique; `balance_usd_micro >= 0`; `reserved_usd_micro >= 0` |
+| `topups` | `tx_id text pk`, `key_id fk`, `amount_usd_micro bigint`, `payer text`, `created_at` | index `(key_id, created_at)` |
+| `usage` | `id uuid pk`, `status text`, `rail text`, `upstream_request_id text null`, `key_id fk`, `listing_id fk`, `price_micro_per_mtok bigint`, `reserved_tokens bigint`, `reserved_usd_micro bigint`, `prompt_tokens int default 0`, `completion_tokens int default 0`, `list_cost_usd_micro bigint default 0`, `mixed_tokens bigint default 0`, `charge_usd_micro bigint default 0`, `seller_earning_usd_micro bigint default 0`, `payout_id uuid null`, `hcs_minute bigint null`, `created_at`, `settled_at timestamptz null` | `status in ('open','settled','released')`; `upstream_request_id` unique when not null; index `(status, created_at)`, `(settled_at)`, `(listing_id, payout_id)` |
+| `trades` | `id uuid pk`, `key_id fk`, `listing_id fk`, `model text`, `tokens bigint`, `price_micro_per_mtok bigint`, `charge_usd_micro bigint`, `seller_earning_usd_micro bigint`, `payout_id uuid null`, `created_at` | `tokens > 0`; index `(created_at)`, `(listing_id, payout_id)`, `(key_id, created_at)` |
+| `prepaid` | `id uuid pk`, `key_id fk`, `listing_id fk`, `model text`, `tokens_remaining bigint`, `expires_at timestamptz null`, `created_at` | `tokens_remaining >= 0`; index `(key_id, model, expires_at)` |
+| `payouts` | `id uuid pk`, `seller_id fk`, `day date`, `amount_usd_micro bigint`, `schedule_id text null`, `status text`, `created_at` | unique `(seller_id, day)`; `status in ('pending','scheduled','executed','cancelled')` |
+| `approvals` | `id uuid pk`, `key_id fk`, `kind text`, `cap_usd_micro bigint null`, `device_code_ciphertext text`, `user_code text`, `verification_uri_complete text`, `interval_s int`, `expires_at`, `status text`, `created_at` | `kind in ('link_human','raise_cap')`; `status in ('pending','approved','denied','expired')` |
+
+Each request attempt writes one `usage` row: `open` at reservation, then closed exactly once as `settled` or `released` (§9, 11a). A `trades` row is a spot fill: capacity taken, money moved, a price observed. A request covered from prepaid writes a `usage` row with `charge_usd_micro = 0` and leaves listing capacity alone, because the fill already took it.
+
+Router keys: `rk_` + 32 random bytes base64url; stored as SHA-256. Seller credentials (API keys and OAuth token sets) and device codes: AES-256-GCM with `SECRETS_KEY` (`lib/secrets.ts`: `seal(plain: string): string`, `open(sealed: string): string`).
+
+---
+
+## 9. Router API (`apps/web/app/api/v1`)
+
+```ts
+export type RouterError = {
+  error: {
+    message: string;
+    type: "invalid_request_error" | "authentication_error" | "payment_error" | "permission_error" | "server_error";
+    code:
+      | "invalid_api_key"
+      | "model_not_found"
+      | "no_liquidity"
+      | "insufficient_balance"
+      | "approval_required"
+      | "upstream_failed"
+      | "invalid_request";
+  };
+  approval?: ApprovalStart;
+};
+
+export type ApprovalStart = {
+  approval_id: string;
+  user_code: string;
+  verification_uri_complete: string;
+  expires_at: string;
+};
+
+export type ModelRow = {
+  id: string;
+  rails: RailId[];
+  verifiability: "TeeML" | "TeeTLS" | null;
+  list_prompt_micro_per_mtok: string;
+  list_completion_micro_per_mtok: string;
+  reference_blended_micro_per_mtok: string;
+  best_ask_micro_per_mtok: string | null;
+  index_micro_per_mtok: string | null;
+  available_tokens: string;
+};
+
+export type TopupResult = {
+  key?: string;
+  key_id: string;
+  balance_usd_micro: string;
+  tx_id: string;
+};
+
+export type Balance = {
+  balance_usd_micro: string;
+  reserved_usd_micro: string;
+  topped_up_today_usd_micro: string;
+  daily_topup_cap_usd_micro: string;
+  auto_topup_usd_micro: string;
+  default_model: string | null;
+  human_linked: boolean;
+};
+
+export type KeySettings = {
+  auto_topup_usd_micro?: string;
+  daily_topup_cap_usd_micro?: string;
+  default_model?: string | null;
+};
+
+export type ApprovalStatus = { status: "pending" | "approved" | "denied" | "expired" };
+```
+
+| Method | Path | Auth | Body | Success | Errors |
+|---|---|---|---|---|---|
+| POST | `/api/v1/chat/completions` | `Bearer rk_` (+ `PAYMENT-SIGNATURE` on retry) | OpenAI chat request; `model` optional (falls back to `default_model`) | 200 JSON or SSE passthrough | 401, 402, 403 `approval_required`, 404 `model_not_found`/`no_liquidity`, 502 |
+| POST | `/api/v1/topup?usd=0.50` | none (creates key) or `Bearer rk_` | none | 200 `TopupResult` + `PAYMENT-RESPONSE` | 402 (x402), 400 |
+| POST | `/api/v1/trades` | `Bearer rk_` | `{ model, tokens }` | `{ fills: Trade[], prepaid_tokens }` | 402, 404 `no_liquidity`, 400 |
+| GET | `/api/v1/book?model=` | none | — | `{ asks, fills }` | 404 |
+| GET | `/api/v1/models` | none | — | `ModelRow[]` | — |
+| GET | `/api/v1/balance` | `Bearer rk_` | — | `Balance` | 401 |
+| PATCH | `/api/v1/keys/settings` | `Bearer rk_` | `KeySettings` | `Balance` | 403 `approval_required` when raising the cap |
+| POST | `/api/v1/approvals` | `Bearer rk_` | `{ kind: "link_human" }` | `ApprovalStart` | 401 |
+| GET | `/api/v1/approvals/:id` | `Bearer rk_` | — | `ApprovalStatus` | 404 |
+| POST | `/api/oauth/:rail/start` | `Signed<ListingIntent>` | credential kind | `{ authorization_url }` | 400 rail disabled |
+| GET | `/api/oauth/:rail/callback` | `state` | `code` | 302 to `/sell` | 400 bad state |
+| PATCH | `/api/listings/:id` | `Signed<AmendIntent>` | `{ price_micro_per_mtok, capacity_mtok }` | 200 listing | 400/404/409 |
+| DELETE | `/api/listings/:id` | `Signed<CancelIntent>` | — | 200 | 404/409 |
+
+`export const maxDuration = 300` on the chat route (Vercel Fluid compute ceiling on Hobby). `topup` amount bounds: 0.10–20.00 USD.
+
+### Chat request handling
+
+1. Auth: hash bearer, load key. Missing/unknown → 401 `invalid_api_key`.
+2. Validate body (zod: `messages` array, `stream?`, `max_tokens?`/`max_completion_tokens?`, passthrough rest). `model ??= key.default_model` else 400.
+3. Catalog: `lib/rails.ts` `catalog()` (per-rail, 300 s cache) → `reference(model)`. Unknown model → 404 `model_not_found`.
+4. `maxTokens = clamp(request ?? 4096, 1, model.max_completion_tokens)`; force it into the upstream body. If `stream`, force `stream_options.include_usage = true`.
+5. If `PAYMENT-SIGNATURE` present → top-up settle path (§10.3) before continuing; bounds: 1 micro up to the remaining daily cap.
+6. Candidates: active listings for `model` from enabled rails with `throttled_until` null or past. Listings where this key holds unexpired prepaid MTokens come first (FIFO by `expires_at`); the rest are ordered by effective ask, computed in app code because it depends on the rail (`price ?? marketPrice(bestLimitAsk, reference, rail)`). No ask and no eligible market rail → 404 `no_liquidity`.
+7. For each candidate, one statement reserves what the request needs, or nothing:
+   - prepaid: if the key holds at least `r.tokens` unexpired MTokens on this listing, `prepaid.tokens_remaining -= r.tokens where tokens_remaining >= r.tokens`. No USD hold and no capacity change: the fill took both (§10.10).
+   - otherwise: lock the listing (`for update`) when `status = 'active'` and `used + reserved + r.tokens <= capacity`; `balance -= r.micro, reserved += r.micro where balance >= r.micro`, only if the listing row was locked; then `reserved_tokens += r.tokens`.
+   - then insert the `open` usage row, only if one of the two paths reserved. A prepaid request records `charge = 0`.
+   - Returns `paid_from`, `usage_id`. Listing side fails → next candidate. Key side fails → step 8. None → 404 `no_liquidity`.
+8. Insufficient balance: `auto_topup_usd_micro = 0` → 402 `insufficient_balance` (OpenAI shape). Else amount = `max(auto_topup, r.micro − balance)`; if `topped_up_today + amount > daily_cap` → 403 `approval_required` (creates `raise_cap` approval). Else 402 x402 PaymentRequired for `amount` (§10.3).
+9. Upstream: build the request for the candidate's rail.
+   - Credential: `key` rail → `open(credential_ciphertext)`; `oauth` rail → `lib/oauth.ts` `accessToken(listing)` (§10.9).
+   - Body: `openai-chat` → the body with `model = rail upstream id`; `anthropic-messages` → `translate.chatToAnthropic(body)`; `openai-responses` → `translate.chatToResponses(body)`.
+   - Headers: `rail.extraHeaders`, plus 0G's `X-0G-Provider-Trust-Mode: verified` and `X-0G-Provider-Max-Price-Usd-Prompt/Completion` = the rail's list price.
+   - Timeout 120 s until response headers, abort on client disconnect, abort at the deadline (`maxDuration − 20 s` after the request arrived).
+10. Upstream status before first byte: 401/403 → listing `invalid` (revoked key, or an OAuth token the provider refuses), release, next candidate. 402 → listing `exhausted`, release, next. 429 → `throttled_until = now + (retry-after || 60 s)`, release, next. 5xx/529/header timeout → release, next. 400/404 → release, return the upstream error mapped to the OpenAI shape.
+11. Non-stream: `openai-chat` returns the upstream JSON unchanged; the two translated protocols map it with `translate.*ToChat`. Read `usage`, settle (11a) in a `finally` (abort → §7 fallback), return the OpenAI chat shape.
+12. Stream: `openai-chat` forwards bytes untouched; `anthropic-messages` and `openai-responses` map their events to OpenAI chat chunks (`translate.*SseToChat`), which also yields the final usage. Settle (11a) in a `finally` that runs on normal end, upstream error, client cancel (which aborts upstream) and the deadline; a `TransformStream` `flush` alone never runs on cancel. Missing usage → §7 fallback.
+
+11a. Settle, one CTE statement, effective once: usage `open → settled` (`where status = 'open'`) with final fields and `settled_at = now()`; listing `reserved_tokens -= r.tokens`, `used_tokens = least(used_tokens + actualTokens, capacity_tokens − (reserved_tokens − r.tokens))`, → `exhausted` when `used = capacity`; key `reserved -= r.micro`, `balance = greatest(balance + r.micro − charge, 0)`. Listing and key change only if the usage row was still `open`. The clamps stop constraints from failing when actual cost exceeds the reservation (§21). Release is the same statement with zero usage, closing the row as `released`, and it gives back whichever hold was taken: `prepaid.tokens_remaining` for a prepaid request, `reserved_usd_micro` and `reserved_tokens` for a spot one.
+
+---
+
+## 10. Flows
+
+### 10.1 Seller onboarding (`/sell`)
+
+1. Connect wallet (Privy, embedded or external).
+2. `POST /api/sellers/rp-signature` → `signRequest({ signingKeyHex: WORLD_RP_SIGNING_KEY, action: "seller" })`.
+3. `IDKitRequestWidget` with `proofOfHuman` preset, `signal = address` (lowercase), `environment = WORLD_ENV`.
+4. `POST /api/sellers/verify` `{ address, signed, idkit }`: verify wallet signature (§10.6); assert `idkit.environment === WORLD_ENV`; forward to `https://developer.world.org/api/v4/verify/${WORLD_RP_ID}`; require `success === true`; insert seller with nullifier (`numeric(78,0)`). Duplicate nullifier → 409 (one seller per human). Cancel/failure → no row.
+5. Rail picker, one line per rail with its capping story:
+   - `0g`: create the key at pc.0g.ai with `allowed_models: [model]`, `trust_mode: verified`, `credit_limit = daily credits`, `reset_period: daily`.
+   - `anthropic`: a Console workspace key with a workspace spend limit; Max and Team plans grant monthly API credits to a linked Console organisation.
+   - `openai`: a project key with a budget.
+   - `openrouter`, `commandcode`, `zen`: a key carrying the gateway's own spend limit.
+   - `claude-code`, `codex`: the OAuth button (§10.9), visible only when `ENABLE_OAUTH_RAILS=1`.
+
+### 10.2 Listing
+
+```ts
+export type ListingIntent = {
+  action: "list";
+  rail: RailId;
+  model: string;
+  capacity_mtok: string;
+  price_micro_per_mtok: string | null;
+  client_nonce: string;
+};
+
+export type Credential = { kind: "key"; key: string } | { kind: "oauth" };
+```
+
+`POST /api/listings` `{ signed: Signed<ListingIntent>, credential: Credential }`:
+1. Verify signature, seller exists, `rail.enabled`.
+2. `ref = reference(model)?.pricing`; missing → 404 `model_not_found`; `price === null || price < blended(ref)` else 400. `price === null` requires `rail.resetPeriod !== null` else 400.
+3. Probe by rail, free of charge: `0g` → `POST /chat/completions` `{ model: "__probe__" }`, expect 404 `model_not_found`; `anthropic` and `openai` → `GET /models`; `openrouter` → `GET /api/v1/key` (also returns `limit_remaining`, shown as a capacity hint); gateways → `GET /models`. 401/403 → reject.
+4. `kind: "key"` → insert with `status = 'active'`, `auth_kind = 'key'`, `credential_ciphertext = seal(key)`. `kind: "oauth"` → insert with `status = 'pending_auth'`, `auth_kind = 'oauth'`, and return `{ authorization_url }` from §10.9; the callback flips it to `active`.
+5. `capacity_tokens = capacity_mtok × 1e6`. On OAuth rails capacity is advisory: the provider's window is the real limit and `throttled_until` is the only brake we control (§21).
+
+`DELETE /api/listings/:id` with `Signed<{ action: "cancel"; listing_id: string; client_nonce: string }>` → `status = cancelled` when no reservation is open.
+
+`PATCH /api/listings/:id` with `Signed<{ action: "amend"; listing_id: string; price_micro_per_mtok: string | null; capacity_mtok: string; client_nonce: string }>` → re-runs the price rule and updates both fields. `capacity_tokens` may not fall below `used_tokens + reserved_tokens`; shrinking to that floor is allowed. This is the Sell side of `/trade`.
+
+### 10.3 Top-up (`lib/x402.ts`)
+
+```ts
+export function resourceServer(): Promise<x402ResourceServer>;
+export function paymentRequired(amountMicro: bigint, resourceUrl: string): Promise<{ status: 402; headers: Headers; body: string }>;
+export function settleTopup(header: string, bounds: { minMicro: bigint; maxMicro: bigint }, resourceUrl: string): Promise<{ txId: string; payer: string; amountMicro: bigint } | { error: string }>;
+```
+
+- `x402ResourceServer([new HTTPFacilitatorClient({ url: X402_FACILITATOR_URLS[0] }), new HTTPFacilitatorClient({ url: X402_FACILITATOR_URLS[1] })]).register(HEDERA_NETWORK, new ExactHederaScheme())`, `await initialize()` once per instance. Requirements carry the first healthy facilitator's fee payer.
+- `paymentRequired`: `buildPaymentRequirements({ scheme: "exact", network: HEDERA_NETWORK, payTo: HEDERA_TREASURY_ID, price: "$<amount>" })` → `createPaymentRequiredResponse(...)` → `encodePaymentRequiredHeader` into `PAYMENT-REQUIRED`.
+- `settleTopup`: `decodePaymentSignatureHeader` → `accepted.amount` (zod: integer string; USDC atomic units = micro) must fall within `bounds` → rebuild requirements exactly as `paymentRequired` does for that amount → `findMatchingRequirements` → `verifyPayment` → `settlePayment`. The retry never re-derives the amount from state that may have changed since the 402. Any failure → 402 with the reason.
+- Credit, one statement: `with t as (insert into topups … on conflict (tx_id) do nothing returning amount_usd_micro) update keys set balance_usd_micro = balance_usd_micro + (select amount_usd_micro from t) where id = $key and exists (select 1 from t)`. A replayed tx id credits nothing.
+- `/api/v1/topup` without auth: after settlement insert a new key, return the plaintext key once.
+- Response header `PAYMENT-RESPONSE` via `encodePaymentResponseHeader`.
+
+### 10.4 Human link and cap raise (`lib/world.ts`, Agent Pass)
+
+```ts
+export function oidc(): Promise<Configuration>;
+export function startApproval(keyId: string, kind: "link_human" | "raise_cap", capMicro: bigint | null): Promise<ApprovalStart>;
+export function pollApproval(approvalId: string): Promise<ApprovalStatus>;
+```
+
+- `oidc()`: `discovery(new URL(WORLD_ISSUER), WORLD_CLIENT_ID, WORLD_CLIENT_SECRET)`, cached.
+- `startApproval`: `initiateDeviceAuthorization(config, { scope: "openid" })`; store sealed `device_code`, `user_code`, `verification_uri_complete`, `interval`, `expires_at`.
+- `pollApproval` (one attempt per call, never blocks): `genericGrantRequest(config, "urn:ietf:params:oauth:grant-type:device_code", { device_code })`.
+  - `authorization_pending`/`slow_down` → pending.
+  - `access_denied` → denied. `expired_token` or past `expires_at` → expired. Protected action not applied.
+  - Success: claims validated by openid-client; require `auth_time >= approval.created_at − 5 s`.
+    - `link_human`: set `keys.world_sub = sub`.
+    - `raise_cap`: require `sub === keys.world_sub`, then set `daily_topup_cap_usd_micro = cap`.
+- Raising the cap without a linked human → 403 telling the client to link first.
+
+### 10.5 Daily close (keeper, 00:00 UTC)
+
+1. For every seller with unpaid money from before today — `usage` rows settled with a seller earning, plus `trades` rows — one statement inserts the payout (`on conflict (seller_id, day) do nothing`, status `pending`) and sets `payout_id` on exactly the rows it sums.
+2. Every `pending` payout, including any left by a crash:
+   - Seller without `hedera_account`: look up `address` on the mirror; if absent, a plain `TransferTransaction` of 1 micro-USDC treasury → `AccountId.fromEvmAddress(0, 0, seller.address)` creates the account with USDC associated (HIP-542; treasury pays creation). Store the `0.0.N` id.
+   - `ScheduleCreateTransaction` wrapping `TransferTransaction` USDC treasury → `seller.hedera_account`, `setExpirationTime(payout.day + 1 d, 01:00 UTC)`, `setWaitForExpiry(true)`, `setAdminKey(treasury)`, `setScheduleMemo(payout.id)`. Every input comes from the payout row, so a retry before 01:00 gets `IDENTICAL_SCHEDULE_ALREADY_CREATED` with the existing schedule id, and after 01:00 creation fails and the payout stays `pending` (§21). Store `schedule_id`, status `scheduled`.
+3. Reset listings on rails with `resetPeriod = 'daily'`: `used_tokens = 0, status = 'active' where status in ('active','exhausted')`. Monthly and non-expiring rails keep their usage; the seller re-lists or raises capacity.
+4. Between 00:00 and 01:00 UTC an operator can cancel a payout with `ScheduleDeleteTransaction`.
+5. 01:05 UTC: mirror `GET /schedules/{id}` → `executed` or `cancelled`.
+
+Schedules pay the numeric account id because resolving an EVM alias inside a scheduled transaction is unverified.
+
+### 10.6 Wallet-signed mutations (`lib/auth.ts`)
+
+```ts
+export type Signed<T> = { address: `0x${string}`; message: string; signature: `0x${string}`; intent: T };
+export function verifySigned<T>(s: Signed<T>, schema: z.ZodType<T>): Promise<T>;
+export function routerKey(request: Request): Promise<KeyRow | null>;
+```
+
+`message = JSON.stringify({ domain: PUBLIC_HOST, issued_at, ...intent })`; viem `verifyMessage`; reject when `issued_at` is older than 300 s or the domain differs; replays blocked by `client_nonce` unique constraints.
+
+### 10.7 Index pipeline (keeper)
+
+1. Every 60 s, per model with fills in the previous minute — `trades` plus `usage` rows whose `charge_usd_micro > 0` — submit one HCS message. A minute that closes with fills wakes the post loop immediately.
+2. When woken, or every 180 s, per market: read the last `INDEX_WINDOW_MIN` minutes of rollups for the model from the mirror node (`/topics/{HCS_TOPIC_ID}/messages`) — the public log is the only input. `INDEX_WINDOW_MIN` is 60 in production and 10 for the demo.
+   - `twap` = mean `vwap` over minutes with fills.
+   - No fills → effective best ask → else `marketPrice(null, reference, rail)`; `null` means the market has no bid.
+   - `index = clamp(twap, blended(reference(model)!.pricing)/2, blended(reference(model)!.pricing))`.
+   - Post when `|Δ| ≥ 10 bps` or 5 min since last post (inside the 600 s staleness window): `IndexOracle.post(market, index, seqFrom, seqTo)`. Each post moves at most `MAX_MOVE_BPS` from the last posted price, so a large move converges over successive posts instead of reverting.
+3. Every 30 s: accounts from `PositionModified` logs; `canLiquidate` → `liquidate`.
+
+```ts
+export type Rollup = {
+  v: 1;
+  model: string;
+  minute: number;
+  fills: number;
+  mixed_tokens: string;
+  charge_usd_micro: string;
+  vwap_micro_per_mtok: string;
+  usage_root: string;
+};
+```
+
+`vwap = charge · 1e6 / mixed_tokens`. `usage_root` = SHA-256 Merkle root over `sha256(id|key_id|charge|mixed_tokens)` of that minute's rows. It commits to the rows; serving inclusion proofs is out of scope (§21). Message < 1024 bytes.
+
+### 10.8 Perps (frontend)
+
+Approve MockUSDC → `modify(market, sizeDelta, marginDelta)`. Position panel reads `positions` and `equity`; liquidation price shown client-side from the same formulas. Testnet faucet: `MockUSDC.mint` (cap 1,000 USDC per call).
+
+### 10.9 Subscription OAuth rails (`lib/oauth.ts`)
+
+```ts
+export function startUrl(rail: Rail, listingId: string): Promise<string>;
+export function complete(rail: Rail, code: string, state: string): Promise<void>;
+export function accessToken(listing: ListingRow): Promise<string>;
+```
+
+1. `startUrl`: PKCE S256 with `node:crypto`; `state = seal({ listing_id, nonce, exp })`; scope `user:inference user:profile` for `claude-code`, the Codex client scope for `codex`. Client ids are the vendors' own published CLI clients, read at implementation time (§21).
+2. `complete`: verify `state`, reject a reused `nonce`, exchange the code for `{ access, refresh, expires_at, account_id }`, store the set sealed in `credential_ciphertext`, `account_ref = account_id`, `status = 'active'`.
+3. `accessToken`: return the cached access token while it lives > 60 s; otherwise refresh, re-seal and update. An in-process `Map<listingId, Promise<string>>` dedupes concurrent refreshes; a cross-instance race loses one refresh and that request fails over.
+4. Request shape: `claude-code` speaks `anthropic-messages`; `codex` speaks `openai-responses` and adds `chatgpt-account-id: <account_ref>`.
+5. Refusal is terminal for the attempt, not a retry loop: 401/403 marks the listing `invalid` per §9 step 10.
+
+### 10.10 Spot fills and prepaid MTokens (`/trade`)
+
+```ts
+export type TradeIntent = { model: string; tokens: string };
+export type Trade = { listing_id: string; tokens: string; price_micro_per_mtok: string; charge_usd_micro: string };
+export function buy(keyId: string, intent: TradeIntent): Promise<{ fills: Trade[] }>;
+```
+
+1. Validate: `tokens > 0` within the per-trade cap, `reference(model)` exists, and the key's balance covers the whole fill — otherwise the same 402 as §9 step 8.
+2. Walk the asks cheapest first, skipping listings throttled into the future, until `tokens` are filled. One statement per listing: lock it, take `min(left, capacity − used − reserved)` of capacity into `used_tokens`, insert the `trades` row at that listing's ask, and debit the buyer's balance. A listing that fails mid-walk loses only its own slice.
+3. Credit the fill as a `prepaid` row per listing: `tokens_remaining = take`, `expires_at` = the end of that rail's period — next 00:00 UTC for `resetPeriod = 'daily'`, `null` otherwise.
+4. The seller is paid at fill time through `trades.seller_earning`, which the nightly payout includes (§10.5).
+5. Requests spend prepaid first (§9 step 6). A request is served entirely from prepaid or entirely at the current ask, never a mix, so `charge = 0` is an unambiguous marker and the VWAP stays exact.
+6. Prepaid MTokens expire with the period they were bought for and are not refunded: the capacity was set aside and the seller was paid. That is the same expiring-credit logic that makes below-list asks rational.
+
+`GET /api/v1/book?model=` returns the asks (`listing_id`, rail, price, tokens left, verifiable) and the last 50 `trades`, which is what `/trade` renders and what its live series reads.
+
+---
+
+## 11. Contracts (Galileo, `contracts/`)
+
+```solidity
+interface IIndexOracle {
+    event IndexPosted(bytes32 indexed market, uint256 priceMicroPerMTok, uint64 hcsSeqFrom, uint64 hcsSeqTo);
+    error PriceMoveTooLarge();
+    error NotKeeper();
+    function post(bytes32 market, uint256 priceMicroPerMTok, uint64 hcsSeqFrom, uint64 hcsSeqTo) external;
+    function latest(bytes32 market) external view returns (uint256 priceMicroPerMTok, uint64 updatedAt);
+    function setKeeper(address keeper) external;
+}
+
+interface IPerpMarket {
+    struct Market {
+        uint256 maxLeverage;
+        uint256 maxOiTokens;
+        int256 fundingK;
+        uint256 longOi;
+        uint256 shortOi;
+        int256 cumFunding;
+        uint64 lastAccrual;
+        bool listed;
+    }
+
+    struct Position {
+        int256 size;
+        uint256 margin;
+        uint256 entryPrice;
+        int256 entryCumFunding;
+    }
+
+    event MarketListed(bytes32 indexed market, uint256 maxLeverage, uint256 maxOiTokens, int256 fundingK);
+    event PositionModified(address indexed account, bytes32 indexed market, int256 size, uint256 margin, uint256 price, int256 realizedPnl, uint256 fee);
+    event Liquidated(address indexed account, bytes32 indexed market, address indexed liquidator, uint256 reward);
+    event VaultFunded(uint256 amount);
+
+    error MarketUnknown();
+    error StalePrice();
+    error FlipNotAllowed();
+    error OiCapExceeded();
+    error InsufficientMargin();
+    error NotLiquidatable();
+    error VaultInsufficient();
+
+    function listMarket(bytes32 market, uint256 maxLeverage, uint256 maxOiTokens, int256 fundingK) external;
+    function fundVault(uint256 amount) external;
+    function modify(bytes32 market, int256 sizeDelta, int256 marginDelta) external;
+    function liquidate(address account, bytes32 market) external;
+    function positions(address account, bytes32 market) external view returns (Position memory);
+    function equity(address account, bytes32 market) external view returns (int256);
+    function canLiquidate(address account, bytes32 market) external view returns (bool);
+}
+```
+
+Base contracts: OZ `Ownable`, `ReentrancyGuardTransient`, `SafeERC20`. `market = keccak256(bytes(modelId))`.
+
+Units: price = USDC micro per MTok (6 dp); size = tokens (int256, 1 MTok = 1e6); `cumFunding` = USDC micro per MTok × 1e18.
+
+| Quantity | Formula |
+|---|---|
+| notional | `abs(size) · price / 1e6` |
+| pnl | `size · (price − entryPrice) / 1e6` |
+| funding rate / s | `clamp(fundingK · (longOi − shortOi) / max(longOi + shortOi, 1e6), −fundingK, fundingK)` |
+| accrual | `cumFunding += rate · (now − lastAccrual) · price` on every `modify`/`liquidate` |
+| funding owed | `size · (cumFunding − entryCumFunding) / (1e18 · 1e6)` (positive = trader pays) |
+| equity | `margin + pnl − fundingOwed` |
+| fee | `ceil(abs(sizeDelta) · price / 1e6 · FEE_BPS / 10_000)` → treasury |
+| initial margin | after modify with `size ≠ 0`: `equity · maxLeverage ≥ notional` |
+| maintenance | liquidatable when `equity · 10_000 < notional · MM_BPS` |
+| liquidation reward | `min(max(equity, 0), notional · LIQ_BPS / 10_000)` → liquidator; rest of equity → vault |
+
+`modify` rules:
+- Accrue funding; read oracle; `now − updatedAt > 600` → `StalePrice`.
+- Increase or open: settle funding owed into margin, weighted-average `entryPrice`, `entryCumFunding = cumFunding`.
+- Reduce: realize `pnl` on the reduced part into margin; entry unchanged.
+- Crossing zero → `FlipNotAllowed`.
+- Close to zero: transfer `max(equity, 0)` to the trader, delete position.
+- `marginDelta > 0` pulls USDC; `< 0` sends USDC, then initial-margin check.
+- OI per side ≤ `maxOiTokens` → else `OiCapExceeded`.
+- Trader gains are paid from `vault` (`VaultInsufficient` if short); losses and funding paid go to `vault`.
+
+Parameters: `MAX_LEVERAGE = 5`, `MM_BPS = 500`, `FEE_BPS = 10`, `LIQ_BPS = 50`, `fundingK` = 0.1%/hour at full skew, oracle `MAX_MOVE_BPS = 1000` (not applied to a market's first post), staleness 600 s.
+
+`MockUSDC`: ERC-20, 6 decimals, public `mint(to, amount)` capped at 1,000e6.
+
+`test/PerpMarket.t.sol`: long/short PnL; fee to treasury; funding sign and magnitude after warp; initial-margin rejection; liquidation boundary and reward; stale oracle revert; flip revert; OI cap; vault insufficient; oracle move guard and first post; underwater close pays the trader 0.
+
+`script/Deploy.s.sol`: deploy MockUSDC, IndexOracle(keeper), PerpMarket(usdc, oracle, treasury); list `glm-5.3`, `deepseek-v4-flash`, `0gm-1.0-35b-a3b`; fund vault 50,000 USDC.
+
+---
+
+## 12. Keeper (`keeper/main.ts`)
+
+Single Node 22 process (`node --env-file=.env keeper/main.ts`). `setInterval` loops from §10.5 and §10.7, plus a 60 s sweep that releases (§9, 11a) `open` usage rows older than 6 min, which exist only when a function died mid-request; each loop catches and logs its own errors and never overlaps itself. Holds `KEEPER_PRIVATE_KEY` (Galileo), `HEDERA_TREASURY_ID/KEY` (HCS, payouts). Idempotency: payouts `(seller_id, day)` unique and linked to their usage rows in the same statement; Hedera deduplicates identical schedules; HCS minute recorded in `usage.hcs_minute` after submit; oracle posts carry seq ranges; settle, release and sweep all require `status = 'open'`.
+
+---
+
+## 13. Demo agent (`agents/demo/main.ts`)
+
+```ts
+type AgentEnv = {
+  ROUTER_URL: string;
+  HEDERA_AGENT_ID: string;
+  HEDERA_AGENT_KEY: string;
+  GALILEO_AGENT_KEY: `0x${string}`;
+  MODEL: string;
+};
+```
+
+1. Signer: `createClientHederaSigner(HEDERA_AGENT_ID, PrivateKey.fromStringECDSA(HEDERA_AGENT_KEY), { network })`; `x402Client.fromConfig({ schemes: [{ network, client: new ExactHederaScheme(signer) }] })`; `pay = wrapFetchWithPayment(fetch, client)`.
+2. `pay(ROUTER_URL + "/api/v1/topup?usd=0.50")` → router key.
+3. `PATCH /keys/settings` → `auto_topup = 0.50`, cap 1.00.
+4. `new OpenAI({ baseURL: ROUTER_URL + "/api/v1", apiKey, fetch: pay })`; stream a loop of tasks; auto top-ups happen inside `pay`.
+5. Cap reached → 403 `approval_required`: print `verification_uri_complete`; poll `/approvals/:id`; retry after approval. Deny path printed when denied.
+6. Hedge: viem wallet on Galileo → MockUSDC `mint`, `approve`, `PerpMarket.modify(market, +size, margin)`.
+7. Print HashScan links for every top-up.
+
+---
+
+## 14. Frontend (`apps/web/app`)
+
+| Page | Who | Contents | Data |
+|---|---|---|---|
+| `/` | everyone | Markets overview and the way in: model, rails, verifiability, best ask, index, discount, 24 h volume, links to `/trade?model=` and `/perps?model=` | DB + `IndexOracle.latest` |
+| `/trade` | spot buyers and sellers | Model picker (`?model=`). **Buy**: the ask book with price, MTokens left, rail and verifiability; size input; fee and total; recent fills. **Sell**: your own asks with amend price, add capacity and cancel, plus a link to `/sell` when you have no source for that model yet | `GET /api/v1/book`, `POST /api/v1/trades`, `PATCH`/`DELETE /api/listings/:id` |
+| `/perps` | traders | Model picker (`?model=`). Index chart and mark price, current funding rate, long/short with size, leverage and margin, previewed liquidation price, Positions tab across all models, MockUSDC balance and faucet, connect-wallet state | `IndexPosted` logs (viem `getLogs`), `PerpMarket` reads, wagmi |
+| `/sell` | sellers, once | Wallet → World verify → source picker (API key or Connect Claude Code / Codex) → new listing → earnings and payouts (HashScan). Setup and accounting, not trading | API, DB |
+| `/keys` | the human behind an agent | Paste the key your agent already has (localStorage) → balance, reserved, auto top-up, daily cap, default model, link human (QR via `qrcode`). Not a login: the key is the credential | `/api/v1/*` |
+| `/receipts` | judges | HCS rollups, top-ups (HashScan), index posts (chainscan), "recompute index" from mirror in the browser | mirror node, Galileo |
+
+Charts use Lightweight Charts **v5**: series come from `chart.addSeries(LineSeries, …)` with the series types imported from the package, times are `UTCTimestamp` in seconds, new points go through `series.update()` (never `setData` on a tick — it resets the visible range), teardown is `chart.remove()`, and the chart renders client-only under Next.js. The v4 names (`addLineSeries`, `series.setMarkers`, the chart-level watermark option) do not exist in v5, and most examples online are v4. `/perps` plots two series: the on-chain index from `IndexPosted`, and the venue's per-minute VWAP from Hedera, polled every 15 s.
+
+States the pages must cover, because the demo hits them:
+- **Buy needs money first.** No browser x402 for Hedera, so `/trade` cannot take a payment: a short balance shows the exact amount needed and copies the agent top-up command.
+- **Empty book** renders "no asks yet" with a link into the Sell form, not an error.
+- **No wallet on `/perps`** hides the ticket until Galileo is connected.
+- **Fee transparency**: ask, 10% take rate and total before submitting.
+- **Risk next to the ticket**: liquidation price and margin ratio from the same formulas as §11.
+- **Cold keeper**: before the first index post, "waiting for the first index post" instead of an empty chart.
+- **Fill feedback**: a completed buy lists its fills and links each to the minute rollup on `/receipts`.
+
+Not built: a mobile layout, an admin page (payout cancellation is an operator script), and a login page (Privy is a modal).
+
+shadcn components: `table`, `card`, `button`, `input`, `select`, `dialog`, `tabs`, `badge`, `sonner`. `providers.tsx`: `PrivyProvider` (Galileo default chain) → `QueryClientProvider` → `WagmiProvider` (`@privy-io/wagmi` `createConfig`).
+
+---
+
+## 15. Environment
+
+| Name | Used by | Value |
+|---|---|---|
+| `DATABASE_URL` | web, keeper | Neon |
+| `SECRETS_KEY` | web, keeper | 32 bytes base64 |
+| `PUBLIC_HOST` | web | deployed host |
+| `OG_ROUTER_URL` | web, keeper | `https://router-api.0g.ai/v1` (dev: testnet URL) |
+| `HEDERA_NETWORK` | web, keeper, agent | `hedera:testnet` |
+| `HEDERA_TREASURY_ID`, `HEDERA_TREASURY_KEY` | web (payTo id only), keeper | ECDSA account associated with USDC |
+| `HEDERA_USDC` | all | `0.0.429274` |
+| `HCS_TOPIC_ID` | web, keeper | created once by setup script |
+| `X402_FACILITATOR_URLS` | web | `https://api.testnet.blocky402.com,https://x402.org/facilitator` |
+| `TAKE_BPS` | web, keeper | `1000` |
+| `WORLD_ISSUER`, `WORLD_CLIENT_ID`, `WORLD_CLIENT_SECRET` | web | Agent Pass app |
+| `WORLD_ENV`, `WORLD_APP_ID`, `WORLD_RP_ID`, `WORLD_RP_SIGNING_KEY` | web | IDKit app |
+| `NEXT_PUBLIC_PRIVY_APP_ID` | web | own app (deploy), 0G's (localhost demo) |
+| `NEXT_PUBLIC_GALILEO_RPC`, `NEXT_PUBLIC_PERP_MARKET`, `NEXT_PUBLIC_INDEX_ORACLE`, `NEXT_PUBLIC_MOCK_USDC` | web | deploy output |
+| `KEEPER_PRIVATE_KEY` | keeper | Galileo EOA |
+| `ENABLE_OAUTH_RAILS` | web | `0`; `1` activates §10.9 |
+| `OAUTH_REDIRECT_BASE` | web | deployed host, used for the callback URL |
+| `CLAUDE_CODE_CLIENT_ID`, `OPENAI_OAUTH_CLIENT_ID` | web | the vendors' published CLI client ids, read at implementation time |
+| `COMMANDCODE_BASE_URL`, `ZEN_BASE_URL` | web | from each provider's docs at kickoff |
+
+---
+
+## 16. Security checklist
+
+- Seller credentials — API keys and OAuth token sets — sealed with AES-256-GCM; decrypted only inside the request that uses them. An OAuth set is account-scoped, so a leak is account takeover, not inference abuse: higher severity than an API key.
+- Router keys stored as SHA-256; plaintext shown once.
+- Upstream max-price headers pin 0G sellers to list price; seller keys on every rail are capped on the provider side.
+- Balance and capacity reservations are conditional updates; constraints make negatives impossible; every reservation is closed exactly once.
+- Top-up credit idempotent on settlement tx id.
+- World approvals: one poll per request, `auth_time` freshness, `sub` match for cap raises.
+- IDKit proofs bound to the seller wallet via `signal`; nullifier unique.
+- Signed mutations: domain, 5-minute freshness, unique nonces.
+- No prompts or completions persisted or logged.
+- Treasury and keeper keys only in server and keeper env.
+
+---
+
+## 17. Milestones and acceptance
+
+| # | Milestone | Done when |
+|---|---|---|
+| M0 | Bootstrap | `apps/web` deploys to Vercel; Neon migrated; forge builds; preflight suite green |
+| M1 | Router core | `rk_` key with manual balance streams GLM/0gm through a seeded listing; `usage` row matches the upstream token counts; balance and capacity exact; a client abort mid-stream leaves no `open` usage row |
+| M2 | x402 top-up | `/topup` creates and credits keys on Hedera; replayed tx id credits nothing |
+| M3 | Auto top-up | Agent with $0 balance completes a streamed request via 402 → pay → retry; HashScan link printed |
+| M4 | Sellers | IDKit verify, signed listing, key probe, market and limit pricing, failover on 401/402/429 |
+| M4b | Spot fills | `POST /api/v1/trades` fills across two asks, debits the balance, writes `prepaid`, and a later request is served at charge 0; the fill enters the rollup and moves the index |
+| M5 | Perps | Contracts deployed with tests green; keeper posts index from HCS; trade, funding, liquidation on Galileo |
+| M6 | Approvals | Link human; cap raise approved and denied paths |
+| M7 | Close | Scheduled payouts execute at 01:00 UTC; listings reset |
+| M8 | Ship | `/receipts` recompute matches on-chain index; video, READMEs, debriefs |
+| M9 | Claude Code rail | `claude-code` listing goes `pending_auth` → `active` through the OAuth callback; a stream is metered from the translated usage; a provider refusal marks it `invalid` on the first request |
+| M10 | Codex rail | Same for `openai-responses`, including `chatgpt-account-id` and refresh |
+
+---
+
+## 18. Schedule (~36 h, kickoff → Sat 09:00 IST)
+
+| Hours | Track A: contracts + keeper | Track B: router | Track C: frontend | Track D: agent + integration |
+|---|---|---|---|---|
+| 0–2 | M0 together | M0 | M0 | M0 |
+| 2–8 | PerpMarket + tests | M1 non-stream → stream | `/`, `/trade`, `/perps` shells (model picker, static book) | Demo agent skeleton, accounts funded |
+| 8–14 | Deploy Galileo, IndexOracle wiring | M2 | `/sell` + IDKit | HCS topic, mirror reads |
+| 14–20 | Keeper rollups → index | M3, M4b, failover | Perp ticket + positions | M3 end to end with agent |
+| 20–26 | Liquidations, daily close | M6 | `/keys`, `/receipts` | M4 with real 0G credits |
+| 26–30 | M7 dry run | Hardening (§16) | Polish | Mainnet 0G run, links collected |
+| 30–34 | Freeze | Freeze | Freeze | Video, READMEs, debriefs |
+| 34–36 | Buffer | Buffer | Buffer | Submit |
+
+Two people: A+C and B+D.
+
+M9 and M10 sit outside this table: two OAuth flows and two protocol translators are roughly 16–20 h together. Fund them from the Wildcard extra, the `/receipts` polish and M6 — never from M1–M3 or M5.
+
+---
+
+## 19. Demo day runbook
+
+- Vercel production with own Privy app; second instance `pnpm dev` on `localhost:3000` with 0G's Privy app id for the credit view.
+- Keeper running ≥ 30 min before judging so the index has history.
+- Seed with `scripts/seed.ts`: two 0G asks on the demo model — a small one 15% under reference and a larger one 3% under — plus a funded router key, vault funding and MockUSDC for judges. Re-running it is idempotent.
+- Agent terminal ready with a fresh Hedera agent account (created ≥ 1 min earlier).
+- `ENABLE_OAUTH_RAILS=0` for the demo and the recording; only the 0G and (optionally) one API-key rail appear on stage.
+
+Video (2:30–2:55, human voice):
+1. 0:00 Expiring credits problem.
+2. 0:20 Seller lists: World verify, capped key, ask below list.
+3. 0:45 Agent with $0 balance: request → 402 → USDC on Hedera → answer streams; HashScan link.
+4. 1:15 On `/trade`: buy MTokens, the book drains past the cheap ask, the minute VWAP jumps and the index steps; the agent then spends those tokens at charge 0.
+5. 1:45 On `/perps`: index from HCS rollups → long on Galileo.
+6. 2:10 Agent hits the cap → World approval: deny, then approve.
+7. 2:35 `/receipts`: recompute index from the public log.
+
+---
+
+## 20. Submission checklists
+
+- ETHGlobal: steady commits; `docs/plan.md`; AI usage section; video 2–4 min at ≥ 720p; no AI voiceover. OAuth rails ship flagged off, so they are not part of the submitted product; API-key rails are product depth and get one line.
+- 0G: name, description, repo, video < 3 min, live link, Galileo addresses, Telegram/X; show credits spent, 0G request ids, daily return loop, and the 0G share of venue volume. Wildcard (optional): upload the daily `usage` export to 0G Storage, store the root hash in a tiny registry contract on Galileo, add the one-sentence "what breaks without 0G".
+- Hedera: README with settled top-up tx ids + HashScan links; architecture; payment flow; video ≤ 5 min; list extras used (spend caps + World approval, HCS log with usage roots, USDC settlement, scheduled payouts).
+- World Agent Pass: journey + denied path + backend validation + debrief (time to first success, friction, missing docs, top improvement).
+- World IDKit: trust moment (one seller per human), why Proof of Human is the minimum, alternative path, debrief.
+
+---
+
+## 21. Known limits
+
+- The router holds seller credentials (custodial, AES-GCM). Upgrade: TEE-sealed keys.
+- Prices are seeded by hand for `anthropic`, `openai`, `commandcode` and `zen`; their catalogs carry no prices. 0G and OpenRouter are fetched live. Re-check the seeds at kickoff and before judging.
+- Failover can move one request between rails with different upstreams and different verifiability. The buyer names a model, not a rail.
+- Cash-denominated credits carry no discount incentive, which is why a rail with `resetPeriod = null` cannot post a market ask.
+- Prompt tokens estimated as `bytes / 3` for reservations; when actual cost exceeds what the reservation plus balance covers, the platform absorbs the rest. Upgrade: tokenizer per model.
+- Reservations swept after a function died are released at zero charge.
+- The daily cap is checked before settlement; concurrent top-ups can overshoot it by one top-up each.
+- Payouts need the seller's EVM address to be new on Hedera or able to receive USDC; otherwise the payout stays `pending`.
+- A payout still `pending` after 01:00 UTC on its pay day needs an operator: check the mirror for a schedule with that memo before paying by hand.
+- `usage_root` inclusion proofs are not served.
+- Facilitator chosen at startup; a signed payment cannot fail over mid-flight.
+- Keeper is a trusted poster; inputs are public and recomputable.
+- House vault is the only counterparty; no LP shares.
+- No per-key rate limiting beyond the rails' own.
+- MockUSDC collateral on Galileo (no official stablecoin on testnet).
+- Seller key caps on every rail are set on the provider side, not verified by us (a secret key cannot read its own limits); OpenRouter's `GET /api/v1/key` is the exception.
+- OAuth rails are refused by the providers for third-party clients: Anthropic blocks subscription tokens outside its own CLI, and Codex's endpoint accepts first-party originators only. Expect 401/403 on the first request, which marks the listing `invalid`; a seller who connects one risks a ban on their personal account.
+- OAuth capacity is advisory: the provider's window is the real limit, `429` sets `throttled_until`, and nothing reads remaining quota.
+- OAuth refresh is deduped in-process only; a cross-instance race costs one request to failover.
+- Monthly credits (Anthropic Max/Team, gateway plans) are not auto-reset: arrival days vary per plan, so capacity moves only when the seller re-lists.
+- Anthropic's OpenAI-compatible layer silently ignores fields it does not implement (`response_format`, `strict`) and does not support prompt caching.
+- `INDEX_WINDOW_MIN` is 10 minutes for the demo and 60 in production; a 60-minute average barely moves on one trade, which would leave the chart flat on stage.
+- Prepaid MTokens expire with the seller's period and are not refunded: the capacity was set aside and the seller was paid at fill time.
+- A spot fill walks the book in one statement per listing; a partially filled order is possible when capacity runs out mid-walk.
+
+---
+
+## 22. Before kickoff
+
+1. Fix the 0G testnet key/account mismatch; rerun the preflight 0G tier.
+2. Associate the Hedera treasury with USDC, request Circle faucet USDC, rerun the Hedera tier in USDC.
+3. Ask 0G: do iAI credits appear as `credit_balance` and get spent by `sk-` keys? Is resale of credit-funded inference acceptable? Does `/v1/auth/privy` work from a third-party localhost app (one-click seller keys)?
+4. World: sandbox World App via TestFlight (allow ~1 h issuance) or confirm mocked proofs for the event; register Agent Pass and IDKit apps.
+5. Accounts: Privy app, Neon, Vercel; stock Galileo 0G from both faucets (index posts cost ≈ 0.13–0.25 0G/day across three markets).
+6. Add preflight checks for the `__probe__` key validation, the settle-before-stream x402 path, a 1 micro-USDC transfer creating an account at a fresh EVM address, and a repeated `ScheduleCreate` returning `IDENTICAL_SCHEDULE_ALREADY_CREATED` with the first schedule id.
+7. Probe both OAuth rails with throwaway accounts: start the flow, stream one request through the translator, confirm usage arrives, and record the exact refusal if there is one (§21).
+8. Confirm each gateway's base URL and whether plan credits are usable through its API key: Command Code, OpenCode Zen, OpenRouter `limit_remaining`.
