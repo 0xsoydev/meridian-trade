@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { z } from "zod";
+import { POST as sellerRpSignature } from "../app/api/sellers/rp-signature/route.ts";
 import { nullifierToDecimal, signalHash, worldEnvironment } from "./world.ts";
 
 test("nullifierToDecimal accepts hex and decimal", () => {
@@ -30,4 +32,22 @@ test("worldEnvironment defaults to production", () => {
   assert.equal(worldEnvironment(), "production");
   if (previous === undefined) delete process.env.WORLD_ENV;
   else process.env.WORLD_ENV = previous;
+});
+
+test("the seller rp-signature carries what IDKit needs", async () => {
+  process.env.WORLD_RP_ID = "rp_test";
+  process.env.WORLD_APP_ID = "app_test";
+  process.env.WORLD_RP_SIGNING_KEY = "11".repeat(32);
+  const response = await sellerRpSignature();
+  assert.equal(response.status, 200);
+  z.object({
+    sig: z.string(),
+    nonce: z.string(),
+    created_at: z.number(),
+    expires_at: z.number(),
+    rp_id: z.literal("rp_test"),
+    app_id: z.literal("app_test"),
+    environment: z.string(),
+    action: z.literal("seller"),
+  }).parse(await response.json());
 });

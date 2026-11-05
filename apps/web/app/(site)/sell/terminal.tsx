@@ -1,6 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { usePrivy } from "@privy-io/react-auth";
+import { IDKitRequestWidget, proofOfHuman, type IDKitResult } from "@worldcoin/idkit";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useConnection, useSignMessage } from "wagmi";
+import { z } from "zod";
 import { charge, formatMicroPerMtok, formatMtok, formatUsd, parseMtok, parseUsd, sellerEarning } from "../../../lib/price";
 import type { ModelRow } from "../../../lib/types";
 
@@ -25,7 +29,33 @@ const RAILS = [
 
 type RailId = (typeof RAILS)[number]["id"];
 
-export function Sell({ privyReady }: { privyReady: boolean }) {
+const worldSchema = z.object({
+  sig: z.string(),
+  nonce: z.string(),
+  created_at: z.number(),
+  expires_at: z.number(),
+  rp_id: z.string(),
+  app_id: z.custom<`app_${string}`>((value) => typeof value === "string" && value.startsWith("app_")),
+  environment: z.enum(["production", "staging", "sandbox"]),
+  action: z.string(),
+});
+const listedSchema = z.object({ listing_id: z.string() });
+const failureSchema = z.object({ error: z.object({ message: z.string() }) });
+
+type Envelope = { address: string; message: string; signature: string };
+
+export function Sell() {
+  const { ready, authenticated, login, logout } = usePrivy();
+  const { address } = useConnection();
+  const { mutateAsync: signMessage } = useSignMessage();
+  const [world, setWorld] = useState<z.infer<typeof worldSchema> | null>(null);
+  const [worldOpen, setWorldOpen] = useState(false);
+  const [sellerEnvelope, setSellerEnvelope] = useState<Envelope | null>(null);
+  const [verified, setVerified] = useState<string | null>(null);
+  const [credential, setCredential] = useState("");
+  const [listed, setListed] = useState<string | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const [models, setModels] = useState<ModelRow[]>([]);
   const [model, setModel] = useState<string | null>(null);
   const [rail, setRail] = useState<RailId>("0g");
@@ -61,19 +91,100 @@ export function Sell({ privyReady }: { privyReady: boolean }) {
   const earning = sellerEarning(notional, TAKE_BPS);
   const fee = notional - earning;
 
-  const blocker = !privyReady
-    ? "connect a wallet first — set NEXT_PUBLIC_PRIVY_APP_ID"
-    : models.length === 0
-      ? "waiting for the model list"
-      : !atMarket && price.trim() !== "" && typed === null
-        ? "that price is not a USD amount"
-        : atMarket && marketAnchor === null
-          ? "market price needs a listing reference for this model"
-          : priceMicro === null || priceMicro === 0n
-            ? "enter a price, or list at market on a daily rail"
-            : capacityTokens === 0n
-              ? "enter a capacity"
-              : "listing is not live yet — waits on /api/listings";
+  const blocker =
+    !authenticated || !address
+      ? "connect a wallet first"
+      : models.length === 0
+        ? "waiting for the model list"
+        : !atMarket && price.trim() !== "" && typed === null
+          ? "that price is not a USD amount"
+          : atMarket && marketAnchor === null
+            ? "market price needs a listing reference for this model"
+            : priceMicro === null || priceMicro === 0n
+              ? "enter a price, or list at market on a daily rail"
+              : !/^\d+$/.test(capacity.trim()) || capacityTokens === 0n
+                ? "enter a whole number of MTokens"
+                : credential.trim() === ""
+                  ? "paste the rail's API key"
+                  : null;
+
+  const signal = (address ?? "").toLowerCase();
+  const preset = useMemo(() => proofOfHuman({ signal }), [signal]);
+
+  const sign = async (fields: Record<string, string | null>): Promise<Envelope> => {
+    if (!address) throw new Error("connect a wallet first");
+    const message = JSON.stringify({ domain: window.location.host, issued_at: new Date().toISOString(), ...fields });
+    return { address, message, signature: await signMessage({ message }) };
+  };
+
+  const startVerify = async () => {
+    setFailure(null);
+    try {
+      const envelope = await sign({ action: "seller" });
+      const res = await fetch("/api/sellers/rp-signature", { method: "POST" });
+      const config = worldSchema.safeParse(await res.json().catch(() => null));
+      if (!res.ok || !config.success) throw new Error("World ID is not configured on the server");
+      setSellerEnvelope(envelope);
+      setWorld(config.data);
+      setWorldOpen(true);
+    } catch (cause) {
+      setFailure(cause instanceof Error ? cause.message : "could not start World ID");
+    }
+  };
+
+  const verify = useCallback(
+    async (result: IDKitResult): Promise<void> => {
+      const res = await fetch("/api/sellers/verify", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ address, signed: sellerEnvelope, idkit: result }),
+      });
+      const body: unknown = await res.json().catch(() => null);
+      if (res.ok) {
+        setVerified("verified: one human, one seller");
+        return;
+      }
+      if (res.status === 409) {
+        setVerified("this human is already a seller");
+        return;
+      }
+      throw new Error(failureSchema.safeParse(body).data?.error.message ?? `verification failed (${res.status})`);
+    },
+    [address, sellerEnvelope],
+  );
+
+  const list = async () => {
+    if (blocker !== null || busy || !selected) return;
+    setBusy(true);
+    setFailure(null);
+    setListed(null);
+    try {
+      const signed = await sign({
+        action: "list",
+        rail,
+        model: selected.id,
+        capacity_mtok: capacity.trim(),
+        price_micro_per_mtok: atMarket ? null : (priceMicro?.toString() ?? null),
+        client_nonce: crypto.randomUUID(),
+      });
+      const res = await fetch("/api/listings", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ signed, credential: { kind: "key", key: credential.trim() } }),
+      });
+      const body: unknown = await res.json().catch(() => null);
+      const created = listedSchema.safeParse(body);
+      if (!res.ok || !created.success) {
+        throw new Error(failureSchema.safeParse(body).data?.error.message ?? `listing failed (${res.status})`);
+      }
+      setListed(created.data.listing_id);
+      setCredential("");
+    } catch (cause) {
+      setFailure(cause instanceof Error ? cause.message : "listing failed");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const pick = (id: string) => {
     setModel(id);
@@ -125,15 +236,19 @@ export function Sell({ privyReady }: { privyReady: boolean }) {
                 </p>
                 <button
                   type="button"
-                  disabled
-                  className="mt-2 border border-[#CECECE] bg-white px-3 py-1.5 text-[13px] text-[#C9C9C9]"
+                  disabled={!ready}
+                  onClick={() => {
+                    if (authenticated) void logout();
+                    else login();
+                  }}
+                  className="mt-2 border border-[#CECECE] bg-white px-3 py-1.5 text-[13px] text-[#1E1E1E] hover:border-[#1743FF] disabled:text-[#C9C9C9]"
                 >
-                  Connect wallet
+                  {authenticated && address ? `${address.slice(0, 6)}…${address.slice(-4)} · disconnect` : "Connect wallet"}
                 </button>
                 <p className={`mt-1.5 text-[12px] ${MUTED}`}>
-                  {privyReady
-                    ? "Privy is configured; the provider mount lands with the seller API."
-                    : "needs NEXT_PUBLIC_PRIVY_APP_ID before the provider can mount."}
+                  {authenticated && address
+                    ? "this address is your seller identity"
+                    : "email gets an embedded wallet; any EVM wallet works"}
                 </p>
               </div>
             </li>
@@ -148,14 +263,36 @@ export function Sell({ privyReady }: { privyReady: boolean }) {
                 </p>
                 <button
                   type="button"
-                  disabled
-                  className="mt-2 border border-[#CECECE] bg-white px-3 py-1.5 text-[13px] text-[#C9C9C9]"
+                  disabled={!address || verified !== null}
+                  onClick={() => void startVerify()}
+                  className="mt-2 border border-[#CECECE] bg-white px-3 py-1.5 text-[13px] text-[#1E1E1E] hover:border-[#1743FF] disabled:text-[#C9C9C9]"
                 >
-                  Verify with World ID
+                  {verified ? "Verified" : "Verify with World ID"}
                 </button>
                 <p className={`mt-1.5 text-[12px] ${MUTED}`}>
-                  waits on /api/sellers/verify — the server check is written, the route is not.
+                  {verified ?? (address ? "World App · Proof of Human, bound to this wallet" : "connect a wallet first")}
                 </p>
+                {world ? (
+                  <IDKitRequestWidget
+                    open={worldOpen}
+                    onOpenChange={setWorldOpen}
+                    app_id={world.app_id}
+                    action={world.action}
+                    environment={world.environment}
+                    rp_context={{
+                      rp_id: world.rp_id,
+                      nonce: world.nonce,
+                      created_at: world.created_at,
+                      expires_at: world.expires_at,
+                      signature: world.sig,
+                    }}
+                    allow_legacy_proofs
+                    preset={preset}
+                    handleVerify={verify}
+                    onSuccess={() => setWorldOpen(false)}
+                    onError={(code) => setFailure(String(code))}
+                  />
+                ) : null}
               </div>
             </li>
 
@@ -356,14 +493,29 @@ export function Sell({ privyReady }: { privyReady: boolean }) {
                 : `capacity ${formatMtok(capacityTokens)} MTok · paid daily at 01:00 UTC`}
             </p>
 
+            <label className="block">
+              <span className={`mb-1 block text-[13px] ${MUTED}`}>Rail API key</span>
+              <input
+                type="password"
+                autoComplete="off"
+                value={credential}
+                onChange={(event) => setCredential(event.target.value)}
+                placeholder={rail === "0g" ? "sk-… from pc.testnet.0g.ai" : "the rail's API key"}
+                className="h-[34px] w-full border border-[#CECECE] bg-white px-2.5 text-[14px] text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF]"
+              />
+            </label>
+
             <button
               type="button"
-              disabled
-              className="h-[34px] w-full bg-black text-[14px] font-semibold text-white disabled:bg-[#D4D4D4] disabled:text-white"
+              disabled={blocker !== null || busy}
+              onClick={() => void list()}
+              className="h-[34px] w-full bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4] disabled:text-white"
             >
-              List capacity
+              {busy ? "Probing the key…" : "List capacity"}
             </button>
-            <p className={`text-center text-[13px] leading-5 ${MUTED}`}>{blocker}</p>
+            <p className={`text-center text-[13px] leading-5 ${MUTED}`}>
+              {failure ?? (listed ? `listed ${listed.slice(0, 8)}…, live in the book` : (blocker ?? "the key is probed once, then sealed"))}
+            </p>
 
             <div className="border border-[#CECECE] bg-white px-3 py-3">
               <p className="text-[14px] text-[#1E1E1E]">Your key never leaves the server.</p>

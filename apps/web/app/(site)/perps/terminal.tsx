@@ -1,16 +1,28 @@
 "use client";
 
-import Link from "next/link";
+import { usePrivy } from "@privy-io/react-auth";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { liquidationPrice, notional } from "../../../lib/perp";
+import { BaseError, type Hash } from "viem";
+import { useConnection, useSwitchChain, useWalletClient } from "wagmi";
+import { mockUsdcAbi } from "../../../lib/abi";
+import { addresses, galileo, publicClient } from "../../../lib/chain";
+import { MARKETS, liquidationPrice, modify, notional, openMargin, readMarket, readPosition } from "../../../lib/perp";
 import { formatMicroPerMtok, formatMtok, formatUsd, parseMtok } from "../../../lib/price";
 import type { Book, ModelRow } from "../../../lib/types";
 import { FillsChart, fillsToPoints, type ScaleMode } from "../trade/chart";
 
-const KEY_STORAGE = "router_key";
 const POLL_MS = 15_000;
 const MAX_LEVERAGE = 5n;
+const STALE_S = 600n;
+const FAUCET_USDC = 100_000_000n;
+
+type Market = Awaited<ReturnType<typeof readMarket>>;
+type Held = Awaited<ReturnType<typeof readPosition>> & { model: string; price: bigint };
+
+function signedUsd(value: bigint): string {
+  return `${value < 0n ? "−" : ""}${formatUsd(value < 0n ? -value : value)}`;
+}
 
 const WINDOWS = [
   { id: "1h", label: "1h", ms: 3_600_000 },
@@ -74,8 +86,17 @@ export function Perps({ initialModel }: { initialModel: string }) {
   const [stripTab, setStripTab] = useState<(typeof STRIP_TABS)[number]>("Positions");
   const [side, setSide] = useState<"long" | "short">("long");
   const [size, setSize] = useState("10");
-  const [key, setKey] = useState<string | null>(null);
-  const [balance, setBalance] = useState<bigint | null>(null);
+  const { ready, authenticated, login } = usePrivy();
+  const { address, chainId } = useConnection();
+  const { data: wallet } = useWalletClient();
+  const { mutateAsync: switchChain } = useSwitchChain();
+  const [market, setMarket] = useState<Market | null>(null);
+  const [held, setHeld] = useState<Held[]>([]);
+  const [usdc, setUsdc] = useState<bigint | null>(null);
+  const [gas, setGas] = useState<bigint | null>(null);
+  const [pending, setPending] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [version, setVersion] = useState(0);
   const [clock, setClock] = useState<string | null>(null);
   const picker = useRef<HTMLDetailsElement | null>(null);
   const nowRef = useRef(Date.now());
@@ -100,10 +121,6 @@ export function Perps({ initialModel }: { initialModel: string }) {
     return () => {
       alive = false;
     };
-  }, []);
-
-  useEffect(() => {
-    setKey(window.localStorage.getItem(KEY_STORAGE));
   }, []);
 
   const refreshBook = useCallback(async (signal?: AbortSignal) => {
@@ -133,19 +150,48 @@ export function Perps({ initialModel }: { initialModel: string }) {
   }, [refreshBook]);
 
   useEffect(() => {
-    const token = window.localStorage.getItem(KEY_STORAGE);
-    if (!token) {
-      setBalance(null);
-      return;
+    let alive = true;
+    const load = async () => {
+      try {
+        const next = await readMarket(model);
+        if (alive) setMarket(next);
+        if (!address) return;
+        const client = publicClient();
+        const [positions, balance, native] = await Promise.all([
+          Promise.all(MARKETS.map(async (id) => ({ model: id, price: (await readMarket(id)).price, ...(await readPosition(id, address)) }))),
+          client.readContract({ address: addresses().mockUsdc, abi: mockUsdcAbi, functionName: "balanceOf", args: [address] }),
+          client.getBalance({ address }),
+        ]);
+        if (!alive) return;
+        setHeld(positions.filter((row) => row.size !== 0n));
+        setUsdc(balance);
+        setGas(native);
+      } catch {
+        if (alive) setNotice("the Galileo RPC did not answer; retrying");
+      }
+    };
+    void load();
+    const id = window.setInterval(() => void load(), POLL_MS);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, [model, address, version]);
+
+  const send = async (run: () => Promise<Hash>) => {
+    setPending(true);
+    setNotice(null);
+    try {
+      const hash = await run();
+      const receipt = await publicClient().waitForTransactionReceipt({ hash });
+      setNotice(`${receipt.status === "success" ? "confirmed" : "reverted"} ${hash.slice(0, 10)}…`);
+      setVersion((value) => value + 1);
+    } catch (cause) {
+      setNotice(cause instanceof BaseError ? cause.shortMessage : cause instanceof Error ? cause.message : "the transaction failed");
+    } finally {
+      setPending(false);
     }
-    fetch("/api/v1/balance", {
-      cache: "no-store",
-      headers: { authorization: `Bearer ${token}` },
-    })
-      .then((res) => (res.ok ? (res.json() as Promise<{ balance_usd_micro: string }>) : null))
-      .then((body) => setBalance(body ? BigInt(body.balance_usd_micro) : null))
-      .catch(() => setBalance(null));
-  }, []);
+  };
 
   const selected = models.find((row) => row.id === model);
   const asks = book?.asks ?? [];
@@ -183,10 +229,15 @@ export function Perps({ initialModel }: { initialModel: string }) {
   const last24 = points24.at(-1)?.value ?? null;
   const delta = last24 !== null && first24 !== null ? (last24 - first24) / first24 : null;
   const volume24 = points24.reduce((total, point) => total + point.volume, 0);
-  const index = selected?.index_micro_per_mtok ? BigInt(selected.index_micro_per_mtok) : null;
+  const index = market && market.updatedAt > 0n ? market.price : null;
+  const stale =
+    !market || market.updatedAt === 0n || BigInt(Math.floor(nowRef.current / 1000)) - market.updatedAt > STALE_S;
   const mark = index ?? lastPrice ?? bestAsk;
   const orderValue = wanted > 0n && mark !== null ? notional(wanted, mark) : 0n;
-  const margin = orderValue / MAX_LEVERAGE;
+  const margin = wanted > 0n && mark !== null ? openMargin(wanted, mark, MAX_LEVERAGE) : 0n;
+  const current = held.find((row) => row.model === model) ?? null;
+  const equityTotal = held.reduce((sum, row) => sum + row.equity, 0n);
+  const pnlTotal = held.reduce((sum, row) => sum + (row.size * (row.price - row.entryPrice)) / 1_000_000n, 0n);
   const liqPreview =
     wanted > 0n && mark !== null
       ? liquidationPrice({
@@ -219,8 +270,8 @@ export function Perps({ initialModel }: { initialModel: string }) {
       tone: delta === null ? undefined : delta >= 0 ? "up" : "down",
     },
     { label: "volume, 24h", value: volume24 > 0 ? `${volume24.toFixed(2)} MTok` : "—" },
-    { label: "open interest", value: "—" },
-    { label: "funding / countdown", value: "—" },
+    { label: "open interest", value: market ? `${formatMtok(market.longOi)} / ${formatMtok(market.shortOi)} MTok` : "—" },
+    { label: "funding / hour", value: market ? `${(Number(market.fundingRatePerHour) / 1e16).toFixed(4)}%` : "—" },
   ];
 
   return (
@@ -272,14 +323,16 @@ export function Perps({ initialModel }: { initialModel: string }) {
         </details>
 
         <div className="flex items-center gap-5 text-[14px]">
-          {key && balance !== null ? (
+          {address ? (
             <span className="tabular-nums text-[#1E1E1E]">
-              balance <span className="font-semibold">{formatUsd(balance)}</span>
+              {address.slice(0, 6)}…{address.slice(-4)} ·{" "}
+              <span className="font-semibold">{usdc !== null ? formatUsd(usdc) : "—"}</span> USDC
             </span>
-          ) : null}
-          <Link href="/keys" className="text-[#1743FF] hover:underline">
-            {key ? "manage keys" : "connect your agent"}
-          </Link>
+          ) : (
+            <button type="button" disabled={!ready} onClick={() => login()} className="text-[#1743FF] hover:underline">
+              connect a wallet
+            </button>
+          )}
         </div>
       </div>
 
@@ -545,11 +598,15 @@ export function Perps({ initialModel }: { initialModel: string }) {
           <div className="mt-4 space-y-4">
             <div className="flex justify-between text-[14px]">
               <span className={MUTED}>Available to trade</span>
-              <span className="tabular-nums text-[#1E1E1E]">{balance !== null ? formatUsd(balance) : "—"}</span>
+              <span className="tabular-nums text-[#1E1E1E]">{usdc !== null ? formatUsd(usdc) : "—"}</span>
             </div>
             <div className="flex justify-between text-[14px]">
               <span className={MUTED}>Current position</span>
-              <span className="tabular-nums text-[#1E1E1E]">0.00 MTok</span>
+              <span className="tabular-nums text-[#1E1E1E]">
+                {current
+                  ? `${current.size > 0n ? "long" : "short"} ${formatMtok(current.size < 0n ? -current.size : current.size)} MTok`
+                  : "none"}
+              </span>
             </div>
 
             <label className="block">
@@ -618,51 +675,75 @@ export function Perps({ initialModel }: { initialModel: string }) {
               </div>
             </dl>
 
-            {key === null ? (
-              <div className="border border-[#CECECE] bg-white px-3 py-3">
-                <p className="text-[14px] text-[#1E1E1E]">Trading needs a router key.</p>
-                <p className="mt-1 text-[13px] leading-5 text-[#757575]">
-                  Paste your agent&apos;s key once. It stays in this browser, never in a URL.
-                </p>
-              </div>
-            ) : null}
-
-            {key === null ? (
-              <Link
-                href="/keys"
-                className="flex h-[34px] items-center justify-center bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E]"
+            {!authenticated || !address ? (
+              <button
+                type="button"
+                disabled={!ready}
+                onClick={() => login()}
+                className="h-[34px] w-full bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4]"
               >
-                Connect your agent
-              </Link>
+                Connect wallet
+              </button>
+            ) : chainId !== galileo.id ? (
+              <button
+                type="button"
+                onClick={() => void switchChain({ chainId: galileo.id })}
+                className="h-[34px] w-full bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E]"
+              >
+                Switch to 0G Galileo
+              </button>
             ) : (
-              <>
-                <button
-                  type="button"
-                  disabled
-                  title="waits on the wallet provider — providers.tsx (Privy + wagmi) lands next"
-                  className="h-[34px] w-full bg-black text-[14px] font-semibold text-white disabled:bg-[#D4D4D4] disabled:text-white"
-                >
-                  {side === "long" ? "Long" : "Short"} {wanted > 0n ? `${formatMtok(wanted)} MTok` : ""}
-                </button>
-                <p className={`text-center text-[13px] ${MUTED}`}>
-                  orders settle after the keeper posts the index
-                </p>
-              </>
+              <button
+                type="button"
+                disabled={!wallet || pending || stale || orderValue === 0n || (usdc ?? 0n) < margin || gas === 0n}
+                onClick={() => {
+                  if (wallet) void send(() => modify(wallet, model, side === "long" ? wanted : -wanted, margin));
+                }}
+                className="h-[34px] w-full bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4] disabled:text-white"
+              >
+                {pending ? "Confirming…" : `${side === "long" ? "Long" : "Short"} ${wanted > 0n ? `${formatMtok(wanted)} MTok` : ""}`}
+              </button>
             )}
-
-            <Link
-              href="/keys"
-              className="flex h-[34px] items-center justify-center border border-[#CECECE] bg-white text-[13px] text-[#1E1E1E] hover:border-[#1743FF]"
-            >
-              Deposit
-            </Link>
+            <p className={`text-center text-[13px] ${MUTED}`}>
+              {notice ??
+                (!address
+                  ? "trades sign with your own wallet on 0G Galileo"
+                  : stale
+                    ? "the index is stale; trading reopens after the keeper's next post"
+                    : gas === 0n
+                      ? "this wallet needs 0G gas: faucet.0g.ai"
+                      : (usdc ?? 0n) < margin
+                        ? "not enough test USDC; mint some below"
+                        : "margin and fee settle in MockUSDC")}
+            </p>
+            {address ? (
+              <button
+                type="button"
+                disabled={!wallet || pending}
+                onClick={() => {
+                  if (wallet) {
+                    void send(() =>
+                      wallet.writeContract({
+                        address: addresses().mockUsdc,
+                        abi: mockUsdcAbi,
+                        functionName: "mint",
+                        args: [wallet.account.address, FAUCET_USDC],
+                      }),
+                    );
+                  }
+                }}
+                className="flex h-[34px] w-full items-center justify-center border border-[#CECECE] bg-white text-[13px] text-[#1E1E1E] hover:border-[#1743FF] disabled:text-[#C9C9C9]"
+              >
+                Get 100 test USDC
+              </button>
+            ) : null}
 
             <div className="border-t border-[#D9D9D9] pt-4">
               <p className="text-[13px] text-[#1E1E1E]">[ account summary ]</p>
               <dl className="mt-2">
                 {[
-                  ["Portfolio value", balance !== null ? formatUsd(balance) : "$0.00"],
-                  ["Unrealized PNL", "—"],
+                  ["Portfolio value", usdc !== null ? formatUsd(usdc + equityTotal) : "$0.00"],
+                  ["Unrealized PNL", held.length > 0 ? signedUsd(pnlTotal) : "—"],
                   ["Account ratio", "—"],
                 ].map(([label, value]) => (
                   <div key={label} className="flex justify-between py-1 text-[13px]">
@@ -704,7 +785,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
           ))}
           <span className={`text-[13px] ${MUTED}`}>
             {stripTab === "Positions"
-              ? "nothing open"
+              ? `${held.length} open`
               : stripTab === "Fills"
                 ? `${book?.fills.length ?? 0} on ${model}`
                 : "nothing accrued"}
@@ -723,9 +804,53 @@ export function Perps({ initialModel }: { initialModel: string }) {
                   ),
                 )}
               </div>
-              <p className="border-t border-[#CECECE] py-5 text-[14px] text-[#757575] md:border-t-0">
-                No open positions yet.
-              </p>
+              {held.length === 0 ? (
+                <p className="border-t border-[#CECECE] py-5 text-[14px] text-[#757575] md:border-t-0">
+                  No open positions yet.
+                </p>
+              ) : (
+                held.map((row) => {
+                  const size = row.size < 0n ? -row.size : row.size;
+                  const pnl = (row.size * (row.price - row.entryPrice)) / 1_000_000n;
+                  const funding = row.margin + pnl - row.equity;
+                  return (
+                    <div
+                      key={row.model}
+                      className="grid grid-cols-3 gap-y-1 border-t border-[#CECECE] py-3 text-[13px] tabular-nums text-[#1E1E1E] md:grid-cols-9"
+                    >
+                      <span className="pr-2">{row.model}</span>
+                      <span className={`text-right ${row.size > 0n ? "text-[#2EBD85]" : "text-[#F6465D]"}`}>
+                        {row.size > 0n ? "+" : "−"}
+                        {formatMtok(size)}
+                      </span>
+                      <span className="text-right">{formatUsd(notional(row.size, row.price))}</span>
+                      <span className="text-right">{formatMicroPerMtok(row.entryPrice)}</span>
+                      <span className="text-right">{formatMicroPerMtok(row.price)}</span>
+                      <span className="text-right">
+                        {signedUsd(pnl)} /{" "}
+                        {row.margin > 0n ? `${(Number((pnl * 10_000n) / row.margin) / 100).toFixed(2)}%` : "—"}
+                      </span>
+                      <span className="text-right">
+                        {row.liquidationPrice > 0n ? formatMicroPerMtok(row.liquidationPrice) : "—"}
+                      </span>
+                      <span className="text-right">{formatUsd(row.margin)}</span>
+                      <span className="text-right">
+                        {signedUsd(-funding)}
+                        <button
+                          type="button"
+                          disabled={!wallet || pending}
+                          onClick={() => {
+                            if (wallet) void send(() => modify(wallet, row.model, -row.size, 0n));
+                          }}
+                          className="ml-2 underline disabled:text-[#C9C9C9]"
+                        >
+                          close
+                        </button>
+                      </span>
+                    </div>
+                  );
+                })
+              )}
             </>
           ) : null}
 

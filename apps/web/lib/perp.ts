@@ -43,6 +43,13 @@ export function liquidationPrice(p: PositionMath): bigint {
   return liq;
 }
 
+export function openMargin(sizeDelta: bigint, price: bigint, maxLeverage: bigint): bigint {
+  const size = sizeDelta < 0n ? -sizeDelta : sizeDelta;
+  const value = notional(size, price);
+  const fee = (size * price * 10n + 9_999_999_999n) / 10_000_000_000n;
+  return value / maxLeverage + value / 100n + fee + 1n;
+}
+
 export async function readMarket(model: string) {
   const client = publicClient();
   const { perpMarket, indexOracle } = addresses();

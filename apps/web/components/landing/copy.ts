@@ -1,4 +1,4 @@
-export const DEMO_HREF = "/trade?model=glm-5.3";
+export const DEMO_HREF = "/trade?model=0gm-1.0-35b-a3b";
 
 export const CARDS = [
   { card: 589, label: 613, body: 613, sphere: 631, sphereTop: 1052, title: "01/ expiring supply", bodyText: "0G credits reset at midnight, plan allowances monthly. Sell what expires — always under list price, by rule.", art: { src: "/images/1st.svg", w: 252, h: 248 } },

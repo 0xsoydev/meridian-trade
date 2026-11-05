@@ -1,16 +1,27 @@
 "use client";
 
+import { usePrivy } from "@privy-io/react-auth";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useConnection, useSignMessage } from "wagmi";
+import { z } from "zod";
 import { formatMicroPerMtok, formatUsd, parseUsd } from "../../../lib/price";
-import type { Balance, DepositResult, ModelRow, RouterError } from "../../../lib/types";
+import type { ApprovalStart, Balance, DepositResult, ModelRow, RouterError } from "../../../lib/types";
 
 const KEY_STORAGE = "router_key";
 const MUTED = "text-[#757575]";
 const TOPUP_PRESETS = ["0.50", "1.00", "5.00"];
 
 const maskKey = (key: string) => `${key.slice(0, 7)}…${key.slice(-4)}`;
+const createdSchema = z.object({ key: z.string().startsWith("rk_"), key_id: z.string() });
+const failureSchema = z.object({ error: z.object({ message: z.string() }) });
 
-export function Keys({ privyReady }: { privyReady: boolean }) {
+export function Keys() {
+  const { ready, authenticated, login, logout } = usePrivy();
+  const { address } = useConnection();
+  const { mutateAsync: signMessage } = useSignMessage();
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [approval, setApproval] = useState<ApprovalStart | null>(null);
   const [key, setKey] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [balance, setBalance] = useState<Balance | null>(null);
@@ -125,6 +136,33 @@ export function Keys({ privyReady }: { privyReady: boolean }) {
     setSaved(false);
   };
 
+  const createKey = async () => {
+    if (!address || creating) return;
+    setCreating(true);
+    setCreateError(null);
+    try {
+      const message = JSON.stringify({ domain: window.location.host, action: "create_key", issued_at: new Date().toISOString() });
+      const signature = await signMessage({ message });
+      const res = await fetch("/api/v1/keys", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ address, message, signature }),
+      });
+      const body: unknown = await res.json().catch(() => null);
+      const created = createdSchema.safeParse(body);
+      if (!res.ok || !created.success) {
+        setCreateError(failureSchema.safeParse(body).data?.error.message ?? `create failed (${res.status})`);
+        return;
+      }
+      window.localStorage.setItem(KEY_STORAGE, created.data.key);
+      setKey(created.data.key);
+    } catch (cause) {
+      setCreateError(cause instanceof Error ? cause.message : "the wallet did not sign");
+    } finally {
+      setCreating(false);
+    }
+  };
+
   const deposit = async () => {
     if (!key || depositing) return;
     const tx = depositTx.trim();
@@ -192,10 +230,12 @@ export function Keys({ privyReady }: { privyReady: boolean }) {
           setAccountError("rejected");
           setSaveError("router key rejected — paste it again");
         } else {
+          setApproval(body?.approval ?? null);
           setSaveError(body?.error?.message ?? `save failed (${res.status})`);
         }
         return;
       }
+      setApproval(null);
       setBalance((await res.json()) as Balance);
       setSaved(true);
     } catch {
@@ -393,27 +433,47 @@ export function Keys({ privyReady }: { privyReady: boolean }) {
 
           <div className="mt-5 border-t border-[#D9D9D9] pt-4">
             <p className="text-[13px] text-[#1E1E1E]">[ wallet ]</p>
-            <button
-              type="button"
-              disabled
-              className="mt-2 h-[34px] w-full border border-[#CECECE] bg-white text-[14px] text-[#C9C9C9]"
-            >
-              Create a key with your wallet
-            </button>
+            {authenticated && address ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => void createKey()}
+                  disabled={creating}
+                  className="mt-2 h-[34px] w-full bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4]"
+                >
+                  {creating ? "Waiting for the signature…" : "Create a key with your wallet"}
+                </button>
+                <p className={`mt-1.5 text-[13px] leading-5 ${MUTED}`}>
+                  {createError ?? `${address.slice(0, 6)}…${address.slice(-4)} signs once; the key stays in this browser.`}{" "}
+                  <button type="button" onClick={() => void logout()} className="underline">
+                    disconnect
+                  </button>
+                </p>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => login()}
+                disabled={!ready}
+                className="mt-2 h-[34px] w-full bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4]"
+              >
+                Connect wallet
+              </button>
+            )}
+            {approval ? (
+              <a
+                href={approval.verification_uri_complete}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-3 flex h-[34px] w-full items-center justify-center border border-[#1743FF] bg-white text-[14px] text-[#1743FF]"
+              >
+                Approve with World ID · {approval.user_code}
+              </a>
+            ) : null}
             <p className={`mt-1.5 text-[13px] leading-5 ${MUTED}`}>
-              {privyReady
-                ? "Privy is configured; the provider mount lands next."
-                : "needs NEXT_PUBLIC_PRIVY_APP_ID before the provider can mount."}
-            </p>
-            <button
-              type="button"
-              disabled
-              className="mt-3 h-[34px] w-full border border-[#CECECE] bg-white text-[14px] text-[#C9C9C9]"
-            >
-              Raise the daily cap with World
-            </button>
-            <p className={`mt-1.5 text-[13px] leading-5 ${MUTED}`}>
-              waits on the approvals API — the route is not.
+              {approval
+                ? "Approve in the new tab, then save the settings again."
+                : "Raising the daily cap asks for a World ID approval."}
             </p>
           </div>
         </div>
@@ -463,7 +523,7 @@ export function Keys({ privyReady }: { privyReady: boolean }) {
               />
             </label>
             <p className={`text-[13px] leading-5 ${MUTED}`}>
-              Lowering is free. Raising needs a World approval — the route lands next.
+              Lowering is free. Raising asks for a World ID approval first.
             </p>
 
             <div>
@@ -519,7 +579,7 @@ export function Keys({ privyReady }: { privyReady: boolean }) {
             </button>
 
             {!key ? (
-              <p className={`text-center text-[13px] ${MUTED}`}>paste a key first</p>
+              <p className={`text-center text-[13px] ${MUTED}`}>create or paste a key first</p>
             ) : saved ? (
               <p className="text-center text-[13px] text-[#2EBD85]">Saved.</p>
             ) : saveError ? (

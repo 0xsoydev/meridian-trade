@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { liquidatable, liquidationPrice, marketId, notional } from "./perp.ts";
+import { liquidatable, liquidationPrice, marketId, notional, openMargin } from "./perp.ts";
 
 test("marketId matches keccak256(bytes(model)) in Solidity", () => {
   assert.equal(marketId("glm-5.3"), "0x1125a5e4cc6d2592878c0498f3e69b293bc43718b5b92377c10c1f3defb7d1ba");
@@ -9,6 +9,13 @@ test("marketId matches keccak256(bytes(model)) in Solidity", () => {
 test("notional matches PerpMarket's abs(size) · price / 1e6", () => {
   assert.equal(notional(1_000_000n, 3_400_000n), 3_400_000n);
   assert.equal(notional(-2_000_000n, 1_500_000n), 3_000_000n);
+});
+
+test("openMargin clears PerpMarket's initial margin after the fee", () => {
+  assert.equal(openMargin(10_000_000n, 153_000n, 5n), 322_831n);
+  assert.ok((322_831n - 1_530n) * 5n >= notional(10_000_000n, 153_000n));
+  assert.equal(openMargin(-10_000_000n, 153_000n, 5n), 322_831n);
+  assert.equal(openMargin(1n, 1n, 5n), 2n);
 });
 
 test("long liquidation price matches test_LiquidationBoundaryAndReward", () => {

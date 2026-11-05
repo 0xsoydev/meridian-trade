@@ -14,7 +14,7 @@ import { Receipts } from "./terminal";
 export const metadata: Metadata = { title: "Receipts — LLM Token Exchange" };
 export const dynamic = "force-dynamic";
 
-const DEMO_MODEL = "glm-5.3";
+const DEMO_MODEL = "0gm-1.0-35b-a3b";
 const POST_LIMIT = 8;
 const SCAN_BLOCKS = 50_000n;
 const SCAN_CHUNK = 10_000n;
