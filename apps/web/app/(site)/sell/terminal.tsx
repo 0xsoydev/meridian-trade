@@ -391,3 +391,64 @@ export function Sell({ privyReady }: { privyReady: boolean }) {
           </div>
         </div>
       </div>
+
+      <div className="mt-10 border-t border-[#CECECE] pt-8">
+        <p className="text-[13px] text-[#1E1E1E]">[ your listings ]</p>
+        <h2 className="mt-3 font-serif text-[32px] leading-[1.1] text-[#1E1E1E]">
+          Capacity, on the record.
+        </h2>
+
+        <div className="mt-4 flex items-center gap-5">
+          {(["listings", "payouts"] as const).map((item) => (
+            <button
+              key={item}
+              type="button"
+              onClick={() => setTab(item)}
+              aria-pressed={tab === item}
+              className={`text-[14px] ${
+                tab === item
+                  ? "text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
+                  : "text-[#757575] hover:text-[#1E1E1E]"
+              }`}
+            >
+              {item}
+            </button>
+          ))}
+          <span className={`text-[13px] ${MUTED}`}>
+            {tab === "listings" ? "0 listed" : "paid daily, 00:00 UTC"}
+          </span>
+        </div>
+
+        <div className="mt-4">
+          {tab === "listings" ? (
+            <>
+              <div className={`hidden border-y border-[#CECECE] py-2 text-[12px] md:grid md:grid-cols-5 ${MUTED}`}>
+                {["Market", "Rail", "Price", "Left", "Status"].map((head, i) => (
+                  <span key={head} className={i === 0 ? "pr-2" : "text-right"}>
+                    {head}
+                  </span>
+                ))}
+              </div>
+              <p className="border-t border-[#CECECE] py-5 text-[14px] text-[#757575] md:border-t-0">
+                Nothing listed for this seller yet.
+              </p>
+            </>
+          ) : (
+            <>
+              <div className={`hidden border-y border-[#CECECE] py-2 text-[12px] md:grid md:grid-cols-4 ${MUTED}`}>
+                {["Day", "Amount", "Schedule", "Status"].map((head, i) => (
+                  <span key={head} className={i === 0 ? "pr-2" : "text-right"}>
+                    {head}
+                  </span>
+                ))}
+              </div>
+              <p className="border-t border-[#CECECE] py-5 text-[14px] text-[#757575] md:border-t-0">
+                No payouts yet. The keeper closes the day at 00:00 UTC; schedules land by 01:00.
+              </p>
+            </>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
