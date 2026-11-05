@@ -3,18 +3,19 @@ import { and, desc, eq, gt } from "drizzle-orm";
 import { db } from "./db.ts";
 import { approvals, keys, type ApprovalRow } from "./schema.ts";
 import { seal } from "./secrets.ts";
-import { verifyWorld, worldEnvironment } from "./world.ts";
+import { verifyWorld } from "./world.ts";
 import type { ApprovalStart, ApprovalStatus } from "./types.ts";
 
 const TTL_MS = 600_000;
 const INTERVAL_S = 3;
+const STATUSES = ["pending", "approved", "denied", "expired"] as const;
 
 export function approvalAction(): string {
-  return process.env.WORLD_APPROVAL_ACTION ?? "approve";
+  return process.env.WORLD_APPROVAL_ACTION ?? "seller";
 }
 
-export function approvalEnvironment(): string {
-  return worldEnvironment();
+function approvalStatus(value: string): ApprovalStatus["status"] {
+  return STATUSES.find((status) => status === value) ?? "expired";
 }
 
 function pageUrl(id: string): string {
@@ -102,7 +103,7 @@ export async function pollApproval(keyId: string, id: string): Promise<ApprovalS
     .limit(1);
   if (!found) return null;
   const row = await expire(found);
-  return { status: row.status as ApprovalStatus["status"] };
+  return { status: approvalStatus(row.status) };
 }
 
 export type ApprovalOutcome = { approved: true } | { approved: false; httpStatus: number; error: string };
@@ -146,4 +147,17 @@ export async function approveWithProof(id: string, idkit: unknown): Promise<Appr
     .set({ status: "approved" })
     .where(and(eq(approvals.id, id), eq(approvals.keyId, keyId), eq(approvals.status, "pending")));
   return { approved: true };
+}
+
+export async function denyApproval(id: string): Promise<boolean> {
+  const [found] = await db().select().from(approvals).where(eq(approvals.id, id)).limit(1);
+  if (!found) return false;
+  const row = await expire(found);
+  if (row.status !== "pending") return false;
+  const [updated] = await db()
+    .update(approvals)
+    .set({ status: "denied" })
+    .where(and(eq(approvals.id, id), eq(approvals.status, "pending")))
+    .returning({ id: approvals.id });
+  return updated !== undefined;
 }

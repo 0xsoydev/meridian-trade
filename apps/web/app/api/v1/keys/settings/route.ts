@@ -38,6 +38,10 @@ export async function PATCH(request: Request): Promise<Response> {
   if (input.daily_topup_cap_usd_micro !== undefined) {
     const value = BigInt(input.daily_topup_cap_usd_micro);
     if (value > key.dailyTopupCapUsdMicro) {
+      if (key.worldSub === null) {
+        const approval = await startApproval(key.id, "link_human", null);
+        return fail(403, "approval_required", "link a human to this key first", {}, approval);
+      }
       const approval = await startApproval(key.id, "raise_cap", value);
       return fail(403, "approval_required", "raising the daily cap needs World approval", {}, approval);
     }

@@ -151,6 +151,15 @@ export async function paymentDue(request: Request, keyId: string, neededMicro: b
   }
   const topped = await toppedUpToday(keyId);
   if (topped + amount > row.dailyTopupCapUsdMicro) {
+    if (row.worldSub === null) {
+      return fail(
+        403,
+        "approval_required",
+        "link a human to this key first",
+        {},
+        await startApproval(keyId, "link_human", null),
+      );
+    }
     const approval = await startApproval(keyId, "raise_cap", topped + amount);
     return fail(
       403,

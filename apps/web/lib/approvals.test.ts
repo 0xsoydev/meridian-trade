@@ -4,6 +4,7 @@ import { createServer } from "node:http";
 import { after, before, test } from "node:test";
 import { eq, inArray } from "drizzle-orm";
 import { GET as getApproval } from "../app/api/v1/approvals/[id]/route.ts";
+import { POST as denyApprovalRoute } from "../app/api/v1/approvals/[id]/deny/route.ts";
 import { POST as verifyApproval } from "../app/api/v1/approvals/[id]/verify/route.ts";
 import { POST as startApprovalRoute } from "../app/api/v1/approvals/route.ts";
 import { PATCH as patchSettings } from "../app/api/v1/keys/settings/route.ts";
@@ -15,19 +16,20 @@ import { signalHash } from "./world.ts";
 
 let verifier: ReturnType<typeof createServer> | null = null;
 let nullifier = "111111111";
+let verifyAction = "seller";
 const keyIds: string[] = [];
 
 before(async () => {
   if (!hasDb) return;
   process.env.PUBLIC_HOST = "http://localhost";
   process.env.WORLD_ENV = "production";
-  process.env.WORLD_APPROVAL_ACTION = "approve";
+  process.env.WORLD_APPROVAL_ACTION = "seller";
   process.env.WORLD_RP_ID = "rp_test";
   verifier = createServer((request, response) => {
     request.resume();
     request.on("end", () => {
       response.writeHead(200, { "content-type": "application/json" });
-      response.end(JSON.stringify({ success: true, action: "approve", environment: "production", nullifier }));
+      response.end(JSON.stringify({ success: true, action: verifyAction, environment: "production", nullifier }));
     });
   });
   verifier.listen(0, "127.0.0.1");
@@ -62,6 +64,12 @@ function getCall(raw: string, id: string): Promise<Response> {
 
 function verifyCall(raw: string, id: string, idkit: unknown): Promise<Response> {
   return verifyApproval(jsonRequest(`http://localhost/api/v1/approvals/${id}/verify`, raw, { idkit }), {
+    params: Promise.resolve({ id }),
+  });
+}
+
+function denyCall(id: string): Promise<Response> {
+  return denyApprovalRoute(new Request(`http://localhost/api/v1/approvals/${id}/deny`, { method: "POST" }), {
     params: Promise.resolve({ id }),
   });
 }
@@ -127,16 +135,55 @@ test("the linked human can approve a cap raise", { skip }, async () => {
   assert.deepEqual((await polled.json()) as ApprovalStatus, { status: "approved" });
 });
 
-test("a cap raise needs a linked human", { skip }, async () => {
+test("a cap raise without a linked human starts a link approval, not a raise", { skip }, async () => {
   const key = await newKey();
 
   const denied = await patchCall(key.raw, "10000000");
   assert.equal(denied.status, 403);
   const body = (await denied.json()) as RouterError;
   assert.ok(body.approval);
+  assert.equal(body.approval.user_code.length, 6);
 
+  const [before] = await db().select().from(keys).where(eq(keys.id, key.id)).limit(1);
+  assert.equal(before?.dailyTopupCapUsdMicro, 5_000_000n);
+
+  nullifier = "555555555";
   const verified = await verifyCall(key.raw, body.approval.approval_id, proof(body.approval.approval_id));
-  assert.equal(verified.status, 403);
+  assert.equal(verified.status, 200);
+
+  const [afterLink] = await db().select().from(keys).where(eq(keys.id, key.id)).limit(1);
+  assert.equal(afterLink?.worldSub, "555555555");
+  assert.equal(afterLink?.dailyTopupCapUsdMicro, 5_000_000n);
+});
+
+test("a denied approval is refused and cannot be replayed", { skip }, async () => {
+  const key = await newKey();
+  const started = await startCall(key.raw);
+  const approval = (await started.json()) as ApprovalStart;
+
+  const denied = await denyCall(approval.approval_id);
+  assert.equal(denied.status, 200);
+  assert.deepEqual((await denied.json()) as ApprovalStatus, { status: "denied" });
+
+  const polled = await getCall(key.raw, approval.approval_id);
+  assert.deepEqual((await polled.json()) as ApprovalStatus, { status: "denied" });
+
+  const replayed = await verifyCall(key.raw, approval.approval_id, proof(approval.approval_id));
+  assert.equal(replayed.status, 409);
+
+  const again = await denyCall(approval.approval_id);
+  assert.equal(again.status, 409);
+});
+
+test("a proof for another action is refused", { skip }, async () => {
+  const key = await newKey();
+  const started = await startCall(key.raw);
+  const approval = (await started.json()) as ApprovalStart;
+
+  verifyAction = "not-seller";
+  const verified = await verifyCall(key.raw, approval.approval_id, proof(approval.approval_id));
+  assert.equal(verified.status, 400);
+  verifyAction = "seller";
 });
 
 test("a different human cannot raise the cap", { skip }, async () => {

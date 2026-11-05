@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { approvalAction, approvalEnvironment, pendingApproval } from "../../../../../../lib/approvals.ts";
+import { approvalAction, pendingApproval } from "../../../../../../lib/approvals.ts";
 import { fail } from "../../../../../../lib/errors.ts";
-import { rpSignature } from "../../../../../../lib/world.ts";
+import { rpSignature, worldEnvironment } from "../../../../../../lib/world.ts";
 
 const idSchema = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
 
@@ -23,7 +23,7 @@ export async function POST(
       ...rpSignature(approvalAction()),
       rp_id: rpId,
       app_id: process.env.WORLD_APP_ID ?? null,
-      environment: approvalEnvironment(),
+      environment: worldEnvironment(),
       action: approvalAction(),
     });
   } catch {

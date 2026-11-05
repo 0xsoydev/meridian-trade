@@ -40,8 +40,8 @@ export function worldEnvironment(): string {
   return process.env.WORLD_ENV ?? "production";
 }
 
-export function signalHash(signal: string): `0x${string}` {
-  return hashSignal(signal) as `0x${string}`;
+export function signalHash(signal: string): string {
+  return hashSignal(signal);
 }
 
 export function nullifierToDecimal(value: string): string | null {
@@ -85,7 +85,11 @@ export async function verifyWorld(payload: unknown, options: WorldOptions = {}):
     const response = await fetch(`${base}/${rpId}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ ...(payload as Record<string, unknown>), environment: expectedEnvironment }),
+      body: JSON.stringify({
+        ...request.data,
+        environment: expectedEnvironment,
+        ...(options.action === undefined ? {} : { action: options.action }),
+      }),
       signal: AbortSignal.timeout(10_000),
     });
     if (!response.ok) return { error: `world verification answered ${response.status}` };
@@ -97,7 +101,7 @@ export async function verifyWorld(payload: unknown, options: WorldOptions = {}):
     if (parsed.data.environment !== undefined && parsed.data.environment !== expectedEnvironment) {
       return { error: "world verification environment mismatch" };
     }
-    if (options.action !== undefined && parsed.data.action !== undefined && parsed.data.action !== options.action) {
+    if (options.action !== undefined && parsed.data.action !== options.action) {
       return { error: "world verification action mismatch" };
     }
 
