@@ -28,3 +28,11 @@ test("unleveraged long is never liquidated and empty position has no price", () 
   assert.equal(liquidationPrice({ size: 100_000_000n, margin: 600_000_000n, entryPrice: 5_000_000n, fundingOwed: 0n }), 0n);
   assert.equal(liquidationPrice({ size: 0n, margin: 0n, entryPrice: 0n, fundingOwed: 0n }), 0n);
 });
+
+test("a short already underwater at every price reads as liquidatable, not as never", () => {
+  const p = { size: -100_000_000n, margin: 10_000_000n, entryPrice: 5_000_000n, fundingOwed: 600_000_000n };
+  const price = liquidationPrice(p);
+  assert.ok(price > 0n);
+  assert.equal(liquidatable(p, 1n), true);
+  assert.equal(liquidatable(p, price), true);
+});

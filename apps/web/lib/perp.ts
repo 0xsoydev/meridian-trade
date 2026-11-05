@@ -26,7 +26,8 @@ export function liquidatable(p: PositionMath, price: bigint): boolean {
 export function liquidationPrice(p: PositionMath): bigint {
   if (p.size === 0n) return 0n;
   const long = p.size > 0n;
-  if (long ? !liquidatable(p, 0n) : liquidatable(p, 0n)) return 0n;
+  if (long && !liquidatable(p, 0n)) return 0n;
+  if (!long && liquidatable(p, 0n)) return SEARCH_CEILING;
   let safe = long ? SEARCH_CEILING : 0n;
   let liq = long ? 0n : SEARCH_CEILING;
   while ((long ? safe - liq : liq - safe) > 1n) {
@@ -53,10 +54,11 @@ export async function readPosition(model: string, account: Address) {
   const client = publicClient();
   const { perpMarket, indexOracle } = addresses();
   const id = marketId(model);
+  const blockNumber = await client.getBlockNumber({ cacheTime: 0 });
   const [position, equity, [price]] = await Promise.all([
-    client.readContract({ address: perpMarket, abi: perpMarketAbi, functionName: "positions", args: [account, id] }),
-    client.readContract({ address: perpMarket, abi: perpMarketAbi, functionName: "equity", args: [account, id] }),
-    client.readContract({ address: indexOracle, abi: indexOracleAbi, functionName: "latest", args: [id] }),
+    client.readContract({ address: perpMarket, abi: perpMarketAbi, functionName: "positions", args: [account, id], blockNumber }),
+    client.readContract({ address: perpMarket, abi: perpMarketAbi, functionName: "equity", args: [account, id], blockNumber }),
+    client.readContract({ address: indexOracle, abi: indexOracleAbi, functionName: "latest", args: [id], blockNumber }),
   ]);
   const fundingOwed = position.margin + pnl(position.size, position.entryPrice, price) - equity;
   return {
