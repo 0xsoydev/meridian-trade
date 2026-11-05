@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Fragment } from "react";
+import { Hero } from "../components/landing/hero";
 import { Navbar, NavLinks } from "../components/site-nav";
 
 const DEMO_HREF = "/trade?model=glm-5.3";
@@ -39,26 +40,7 @@ export default function Home() {
           <NavLinks />
         </nav>
 
-        <section className="px-6 pt-10">
-          <div
-            className="h-[210px] w-full bg-cover bg-top"
-            style={{ backgroundImage: "url(/images/colosseum.svg)", filter: COLOSSEUM_FILTER }}
-          />
-          <h1 className="mt-9 font-serif text-[44px] leading-[1.06] text-[#1E1E1E]">
-            Compute expires. Markets don't.
-          </h1>
-          <p className="mt-5 text-[16px] leading-[24px] text-black">
-            A spot market and a perp curve for spare LLM capacity. Sellers list
-            what they can't cash out; agents pay in USDC and stream on, without
-            a human in the loop.
-          </p>
-          <Link
-            href={DEMO_HREF}
-            className="mt-7 inline-flex h-[46px] items-center rounded-[6px] bg-black px-9 text-[16px] text-white"
-          >
-            Enter the market
-          </Link>
-        </section>
+        <Hero variant="page" />
 
         <section className="mt-16 border-t border-[#CECECE] px-6 pt-10">
           <p className="text-[15px] text-black">[ what we do ]</p>
