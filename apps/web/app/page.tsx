@@ -6,11 +6,6 @@ import { Proof } from "../components/landing/proof";
 import { WhatWeDo } from "../components/landing/what-we-do";
 import { Navbar, NavLinks } from "../components/site-nav";
 
-const HOW_IT_WORKS = `01 A seller lists capacity: World-verified, key capped, ask below list.
-02 An agent with $0 asks for a completion; the venue answers with what it needs; the agent pays USDC; it streams.
-03 Traders clear the book — fills print to the public log, the index moves.
-04 The index becomes a market: short to lock tomorrow's revenue, or long to cap cost.`;
-
 export default function Home() {
   return (
     <main className="bg-white">
@@ -62,12 +57,7 @@ export default function Home() {
 
           <Panorama variant="canvas" />
 
-          <h2 className="absolute left-[103px] top-[2846px] whitespace-pre font-serif text-[60px] font-normal leading-[72px] text-black">
-            How it works
-          </h2>
-          <p className="absolute left-[103px] top-[2952px] w-[1449px] whitespace-pre-wrap text-[25px] font-medium leading-[30px] text-[#757575]">
-            {HOW_IT_WORKS}
-          </p>
+          <HowItWorks variant="canvas" />
 
           <div className="absolute left-[413px] top-[3427px] h-[658px] w-[1315px] bg-cover bg-center" style={{ backgroundImage: "url(/images/goddess.png)" }} />
           <div className="absolute left-[138px] top-[3384px] flex w-[119px] flex-col gap-[5px] text-[20px] text-[#1E1E1E]">
