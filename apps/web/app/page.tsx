@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Hero } from "../components/landing/hero";
+import { HowItWorks } from "../components/landing/how-it-works";
 import { Panorama } from "../components/landing/panorama";
 import { Proof } from "../components/landing/proof";
 import { WhatWeDo } from "../components/landing/what-we-do";
@@ -26,12 +27,7 @@ export default function Home() {
 
         <Panorama variant="page" />
 
-        <section className="mt-16 border-t border-[#CECECE] px-6 pb-14 pt-10">
-          <h2 className="font-serif text-[34px] leading-[1.1] text-black">How it works</h2>
-          <p className="mt-6 whitespace-pre-wrap text-[16px] leading-[26px] text-[#757575]">
-            {HOW_IT_WORKS}
-          </p>
-        </section>
+        <HowItWorks variant="page" />
 
         <footer className="border-t border-[#CECECE] bg-[#EBEBEB] px-6 pb-10 pt-12">
           <div className="flex gap-16 text-[16px] text-[#1E1E1E]">
