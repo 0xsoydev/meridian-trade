@@ -189,6 +189,15 @@ contract PerpMarketTest is Test {
         assertSolvent();
     }
 
+    function test_ShortLiquidationBoundary() public {
+        trade(bob, -100e6, 101e6);
+        post(M, 5_500_000);
+        post(M, 5_719_047);
+        assertFalse(pm.canLiquidate(bob, M));
+        post(M, 5_719_048);
+        assertTrue(pm.canLiquidate(bob, M));
+    }
+
     function test_StalePriceReverts() public {
         skip(600);
         trade(alice, 10e6, 20e6);
