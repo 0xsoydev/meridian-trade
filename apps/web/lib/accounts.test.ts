@@ -5,10 +5,12 @@ import { after, before, test } from "node:test";
 import { eq } from "drizzle-orm";
 import { generatePrivateKey, privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
 import { GET, POST } from "../app/api/v1/keys/route.ts";
+import { approvalAction } from "./approvals.ts";
 import { db } from "./db.ts";
 import { accounts, keys } from "./schema.ts";
 import { cleanup, hasDb, skip } from "./testkit.ts";
 import type { CreateKeyResult, KeySummary } from "./types";
+import { signalHash } from "./world.ts";
 
 const addresses: string[] = [];
 let verifier: ReturnType<typeof createServer> | null = null;
@@ -21,7 +23,7 @@ before(async () => {
     request.resume();
     request.on("end", () => {
       response.writeHead(200, { "content-type": "application/json" });
-      response.end(JSON.stringify({ success: true, nullifier }));
+      response.end(JSON.stringify({ success: true, nullifier, action: approvalAction() }));
     });
   });
   verifier.listen(0, "127.0.0.1");
@@ -64,6 +66,10 @@ function createKeyCall(envelope: Envelope, world?: unknown): Promise<Response> {
 function listCall(envelope: Envelope): Promise<Response> {
   const query = new URLSearchParams(envelope).toString();
   return GET(new Request(`http://localhost/api/v1/keys?${query}`));
+}
+
+function proofFor(account: PrivateKeyAccount): { responses: Array<{ signal_hash: string }> } {
+  return { responses: [{ signal_hash: signalHash(account.address.toLowerCase()) }] };
 }
 
 test("a wallet signature creates a key bound to the account", { skip }, async () => {
@@ -123,11 +129,17 @@ test("one human cannot open a second account", { skip }, async () => {
   const second = privateKeyToAccount(generatePrivateKey());
   addresses.push(first.address.toLowerCase());
 
-  const created = await createKeyCall(await sign(first, "create_key"), { proof: "stub" });
+  const created = await createKeyCall(await sign(first, "create_key"), proofFor(first));
   assert.equal(created.status, 200);
 
-  const clash = await createKeyCall(await sign(second, "create_key"), { proof: "stub" });
+  const clash = await createKeyCall(await sign(second, "create_key"), proofFor(second));
   assert.equal(clash.status, 409);
   const none = await db().select().from(accounts).where(eq(accounts.address, second.address.toLowerCase()));
   assert.equal(none.length, 0);
+});
+
+test("a World proof bound to another wallet is refused", { skip }, async () => {
+  const signer = privateKeyToAccount(generatePrivateKey());
+  const response = await createKeyCall(await sign(signer, "create_key"), proofFor(privateKeyToAccount(generatePrivateKey())));
+  assert.equal(response.status, 400);
 });

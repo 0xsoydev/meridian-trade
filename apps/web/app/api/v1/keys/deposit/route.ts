@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { routerKey } from "../../../../../lib/auth.ts";
 import { fail } from "../../../../../lib/errors.ts";
-import { balanceOf, credit } from "../../../../../lib/ledger.ts";
+import { credit } from "../../../../../lib/ledger.ts";
 import { verifyDeposit } from "../../../../../lib/mirror.ts";
 import { TOPUP_MAX_MICRO } from "../../../../../lib/x402.ts";
 import type { DepositResult } from "../../../../../lib/types";
