@@ -144,14 +144,14 @@ export async function dailyClose(): Promise<void> {
   const yesterday = utcDay(now - 86_400_000);
   const created = await closeDay(yesterday);
   if (created > 0) console.log(`[payout] closed ${yesterday}: ${created} payouts pending`);
-  resetDay ??= today;
-  if (resetDay !== today) {
-    console.log(`[reset] ${await resetDailyListings()} daily listings reset for ${today}`);
-    resetDay = today;
-  }
   for (const line of [...(await payPending()), ...(await checkScheduled())]) {
     if (printed.has(line)) continue;
     printed.add(line);
     console.log(line);
+  }
+  resetDay ??= today;
+  if (resetDay !== today) {
+    console.log(`[reset] ${await resetDailyListings()} daily listings reset for ${today}`);
+    resetDay = today;
   }
 }

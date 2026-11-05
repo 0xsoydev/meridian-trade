@@ -132,10 +132,7 @@ async function schedulePayout(payoutId: string, day: string, amount: bigint, acc
     if (!receipt.scheduleId) throw new Error(`no schedule id for payout ${payoutId}`);
     return receipt.scheduleId.toString();
   } catch (error) {
-    const existing = error instanceof ReceiptStatusError ? error.transactionReceipt.scheduleId : null;
-    if (error instanceof ReceiptStatusError && error.status === Status.IdenticalScheduleAlreadyCreated && existing) {
-      return existing.toString();
-    }
+    if (error instanceof ReceiptStatusError && error.status === Status.IdenticalScheduleAlreadyCreated && error.transactionReceipt.scheduleId) return error.transactionReceipt.scheduleId.toString();
     throw error;
   }
 }
@@ -182,7 +179,10 @@ export async function checkScheduled(): Promise<string[]> {
     .where(eq(payouts.status, "scheduled"));
   for (const row of rows) {
     if (!row.scheduleId || Date.now() < payAt(row.day).getTime() + 5 * 60_000) continue;
-    const state = await scheduleState(row.scheduleId);
+    const state = await scheduleState(row.scheduleId).catch((error: unknown): "waiting" => {
+      lines.push(`[payout] ${row.id}: ${error instanceof Error ? error.message : String(error)}`);
+      return "waiting";
+    });
     if (state === "waiting") continue;
     if (state === "failed") {
       lines.push(`[payout] ${row.id}: schedule ${row.scheduleId} ran but the transfer failed, needs an operator`);

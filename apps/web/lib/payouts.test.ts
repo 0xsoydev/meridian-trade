@@ -4,7 +4,7 @@ import { createServer } from "node:http";
 import { after, before, test } from "node:test";
 import { eq, inArray } from "drizzle-orm";
 import { db } from "./db.ts";
-import { closeDay, mirrorAccount, payAt, scheduleState, utcDay } from "./payouts.ts";
+import { checkScheduled, closeDay, mirrorAccount, payAt, scheduleState, utcDay } from "./payouts.ts";
 import { payouts, trades, usage } from "./schema.ts";
 import { cleanup, first, hasDb, makeKey, makeListing, makeSeller, skip, suffix } from "./testkit.ts";
 
@@ -111,4 +111,37 @@ test("closeDay sums a seller's unpaid earnings once and links exactly those rows
   assert.equal(await closeDay(DAY), 0);
   const again = await db().select().from(payouts).where(eq(payouts.sellerId, sellerId));
   assert.deepEqual(again.map((p) => p.amountUsdMicro), [1_500n]);
+});
+
+test("one mirror error does not stop checkScheduled from settling the other schedules", { skip }, async () => {
+  const [broken, fine] = await db()
+    .insert(payouts)
+    .values([
+      { sellerId, day: "2001-03-01", amountUsdMicro: 1n, scheduleId: "0.0.900001", status: "scheduled" },
+      { sellerId, day: "2001-03-02", amountUsdMicro: 1n, scheduleId: "0.0.900002", status: "scheduled" },
+    ])
+    .returning({ id: payouts.id });
+  const server = createServer((request, response) => {
+    const url = request.url ?? "";
+    const send = (code: number, body: unknown) => {
+      response.writeHead(code, { "content-type": "application/json" });
+      response.end(JSON.stringify(body));
+    };
+    if (url.endsWith("/schedules/0.0.900002")) return send(200, { executed_timestamp: "9.0", deleted: false });
+    if (url.endsWith("timestamp=9.0")) return send(200, { transactions: [{ result: "SUCCESS", scheduled: true }] });
+    send(503, {});
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  process.env.MIRROR_NODE_URL = `http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}`;
+  try {
+    const lines = await checkScheduled();
+    assert.ok(lines.some((l) => l.startsWith(`[payout] ${broken?.id}: mirror returned 503`)));
+    assert.ok(lines.includes(`[payout] ${fine?.id}: schedule 0.0.900002 executed`));
+    const rows = await db().select({ id: payouts.id, status: payouts.status }).from(payouts).where(inArray(payouts.id, [broken?.id ?? "", fine?.id ?? ""]));
+    assert.deepEqual(new Map(rows.map((r) => [r.id, r.status])), new Map([[broken?.id, "scheduled"], [fine?.id, "executed"]]));
+  } finally {
+    server.close();
+  }
 });
