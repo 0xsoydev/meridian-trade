@@ -3,8 +3,6 @@ import { Fragment } from "react";
 import { Hero } from "../components/landing/hero";
 import { Navbar, NavLinks } from "../components/site-nav";
 
-const DEMO_HREF = "/trade?model=glm-5.3";
-
 const CARDS = [
   { card: 589, label: 613, body: 613, sphere: 631, sphereTop: 1052, title: "01/ expiring supply", bodyText: "0G credits reset at midnight, plan allowances monthly. Sell what expires — always under list price, by rule.", art: { src: "/images/1st.svg", w: 252, h: 248 } },
   { card: 947, label: 970, body: 972, sphere: 987, sphereTop: 1052, title: "02/ agents pay", bodyText: "No account, no card. A request that can't be covered answers with a price; the agent pays USDC on Hedera and streams on.", art: { src: "/images/2nd.svg", w: 257, h: 247 } },
@@ -29,8 +27,6 @@ const HOW_IT_WORKS = `01 A seller lists capacity: World-verified, key capped, as
 04 The index becomes a market: short to lock tomorrow's revenue, or long to cap cost.`;
 
 const LINE = "bg-[#CECECE]";
-
-const COLOSSEUM_FILTER = "brightness(112%) contrast(92%)";
 
 export default function Home() {
   return (
@@ -120,33 +116,9 @@ export default function Home() {
 
       <div className="desktop-wrap hidden lg:block">
         <div className="desktop-canvas relative h-[4081px] w-[1728px] overflow-hidden bg-white">
-          <div
-            className="absolute left-0 top-0 h-[1184px] w-[1728px]"
-            style={{
-              backgroundImage: "url(/images/colosseum.svg)",
-              backgroundSize: "100% 100%",
-              filter: COLOSSEUM_FILTER,
-            }}
-          />
-
-          <Navbar variant="canvas" />
-          <div className={`absolute left-[1049px] top-[92px] h-px w-[623px] ${LINE}`} />
-          <div className={`absolute left-[1048px] top-[92px] h-[92px] w-px ${LINE}`} />
+          <Hero variant="canvas" nav={<Navbar variant="canvas" />} />
 
           <div className="absolute left-[55px] top-[3351px] h-[286px] w-[1617px] border border-[#CECECE] bg-[#EBEBEB]" />
-
-          <h1 className="absolute left-[641px] top-[175px] whitespace-pre font-serif text-[100px] font-normal leading-[100px] text-[#1E1E1E]">
-            {"Compute expires.\nMarkets don't."}
-          </h1>
-          <p className="absolute left-[641px] top-[384px] w-[494px] whitespace-pre-wrap text-[20px] leading-[24px] text-black">
-            {"A spot market and a perp curve for spare LLM capacity. Sellers list what they can't cash out; agents pay in USDC and stream on, without a human in the loop."}
-          </p>
-          <Link
-            href={DEMO_HREF}
-            className="absolute left-[717px] top-[488px] flex h-[43px] w-[294px] items-center justify-center rounded-[6px] bg-black"
-          >
-            <span className="text-[20px] leading-[24px] text-white">Enter the market</span>
-          </Link>
 
           <div className="absolute left-[575px] top-[726px] h-[821px] w-[1080px] bg-white" />
 
