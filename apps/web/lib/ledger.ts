@@ -290,6 +290,8 @@ export async function balanceOf(keyId: string): Promise<Balance | null> {
   const row = (await db().select().from(keys).where(eq(keys.id, keyId)).limit(1))[0];
   if (!row) return null;
   return {
+    memo: keyId,
+    treasury: process.env.HEDERA_TREASURY_ID ?? null,
     balance_usd_micro: row.balanceUsdMicro.toString(),
     reserved_usd_micro: row.reservedUsdMicro.toString(),
     topped_up_today_usd_micro: (await toppedUpToday(keyId)).toString(),

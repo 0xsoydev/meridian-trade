@@ -99,6 +99,8 @@ export type DepositResult = {
 };
 
 export type Balance = {
+  memo: string;
+  treasury: string | null;
   balance_usd_micro: string;
   reserved_usd_micro: string;
   topped_up_today_usd_micro: string;
@@ -165,3 +167,27 @@ export type Rollup = {
   vwap_micro_per_mtok: string;
   usage_root: string;
 };
+
+export type ReceiptsConfig =
+  | { ok: true; mirrorUrl: string; topicId: string; payer: string; network: "testnet" | "mainnet" }
+  | { ok: false; reason: string };
+
+export type TopupReceipt = {
+  txId: string;
+  amountUsdMicro: string;
+  payer: string;
+  keyId: string;
+  createdAt: string;
+};
+
+export type IndexPostReceipt = {
+  model: string;
+  priceMicroPerMtok: string;
+  hcsSeqFrom: string;
+  hcsSeqTo: string;
+  txHash: string;
+  blockNumber: string;
+  loggedAt: string | null;
+};
+
+export type MarketIndex = { model: string; priceMicroPerMtok: string };

@@ -19,6 +19,10 @@ function pnl(size: bigint, entryPrice: bigint, price: bigint): bigint {
   return (size * (price - entryPrice)) / 1_000_000n;
 }
 
+export function notional(size: bigint, price: bigint): bigint {
+  return ((size < 0n ? -size : size) * price) / 1_000_000n;
+}
+
 export function liquidatable(p: PositionMath, price: bigint): boolean {
   const equity = p.margin + pnl(p.size, p.entryPrice, price) - p.fundingOwed;
   const notional = ((p.size < 0n ? -p.size : p.size) * price) / 1_000_000n;

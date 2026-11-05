@@ -1,14 +1,6 @@
 import Link from "next/link";
 import { Fragment } from "react";
-
-const NAV_LINKS = [
-  { label: "Home", href: "/" },
-  { label: "Trade", href: "/trade" },
-  { label: "Perps", href: "/perps" },
-  { label: "Sell", href: "/sell" },
-  { label: "Keys", href: "/keys" },
-  { label: "Receipts", href: "/receipts" },
-];
+import { Navbar, NavLinks } from "../components/site-nav";
 
 const DEMO_HREF = "/trade?model=glm-5.3";
 
@@ -44,11 +36,7 @@ export default function Home() {
     <main className="bg-white">
       <div className="lg:hidden">
         <nav className="flex flex-wrap items-center justify-center gap-x-7 gap-y-2 border-b border-[#CECECE] px-6 py-4 text-[15px] leading-[20px] text-[#1E1E1E]">
-          {NAV_LINKS.map((link) => (
-            <Link key={link.label} href={link.href}>
-              {link.label}
-            </Link>
-          ))}
+          <NavLinks />
         </nav>
 
         <section className="px-6 pt-10">
@@ -159,20 +147,11 @@ export default function Home() {
             }}
           />
 
-          <nav className="absolute right-[56px] top-[37px] flex h-[24px] items-center gap-[39px] text-[20px] leading-[24px] text-[#1E1E1E]">
-            {NAV_LINKS.map((link) => (
-              <Link key={link.label} href={link.href}>
-                {link.label}
-              </Link>
-            ))}
-          </nav>
+          <Navbar variant="canvas" />
           <div className={`absolute left-[1049px] top-[92px] h-px w-[623px] ${LINE}`} />
           <div className={`absolute left-[1048px] top-[92px] h-[92px] w-px ${LINE}`} />
 
           <div className="absolute left-[55px] top-[3351px] h-[286px] w-[1617px] border border-[#CECECE] bg-[#EBEBEB]" />
-
-          <div className={`absolute left-[54px] top-0 h-[4081px] w-px ${LINE}`} />
-          <div className={`absolute left-[1671px] top-[90px] h-[3991px] w-px ${LINE}`} />
 
           <h1 className="absolute left-[641px] top-[175px] whitespace-pre font-serif text-[100px] font-normal leading-[100px] text-[#1E1E1E]">
             {"Compute expires.\nMarkets don't."}
