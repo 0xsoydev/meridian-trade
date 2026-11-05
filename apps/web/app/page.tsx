@@ -1,28 +1,13 @@
 import Link from "next/link";
-import { Fragment } from "react";
 import { Hero } from "../components/landing/hero";
 import { Proof } from "../components/landing/proof";
 import { WhatWeDo } from "../components/landing/what-we-do";
 import { Navbar, NavLinks } from "../components/site-nav";
 
-const DIVIDER_X = [138, 428, 718, 1008, 1298, 1588];
-const TICKS = Array.from({ length: 24 }, (_, k) => 196 + 58 * k).filter(
-  (x) => !DIVIDER_X.includes(x),
-);
-const COLUMN_COPY = [
-  { x: 171, head: "Every fill names its rail", bodyText: "0G runs the demo rail, with request ids in the receipts." },
-  { x: 461, head: "Every payment is public", bodyText: "Top-ups settle as USDC transfers on Hedera with a HashScan link." },
-  { x: 757, head: "Supply stays human", bodyText: "One seller per World-verified person; denials are shown too." },
-  { x: 1047, head: "The index recomputes", bodyText: "Per-minute public rollups; rebuild them on /receipts yourself." },
-  { x: 1344, head: "The curve is settled", bodyText: "Perps clear against the house vault at 5x, funding on skew." },
-];
-
 const HOW_IT_WORKS = `01 A seller lists capacity: World-verified, key capped, ask below list.
 02 An agent with $0 asks for a completion; the venue answers with what it needs; the agent pays USDC; it streams.
 03 Traders clear the book — fills print to the public log, the index moves.
 04 The index becomes a market: short to lock tomorrow's revenue, or long to cap cost.`;
-
-const LINE = "bg-[#CECECE]";
 
 export default function Home() {
   return (
@@ -86,33 +71,7 @@ export default function Home() {
 
           <WhatWeDo variant="canvas" />
 
-          <p className="absolute left-[96px] top-[1575px] w-[876px] whitespace-pre-wrap font-serif text-[60px] font-normal leading-[60px] text-black">
-            Proof over marketing. Recompute our index in your browser.
-          </p>
-
-          <div className={`absolute left-[55px] top-[2078px] h-px w-[1618px] ${LINE}`} />
-          {DIVIDER_X.map((x) => (
-            <div key={x} className={`absolute top-[1814px] h-[265px] w-px ${LINE}`} style={{ left: x - 1 }} />
-          ))}
-          {TICKS.map((x) => (
-            <div key={x} className={`absolute top-[2039px] h-[40px] w-px ${LINE}`} style={{ left: x - 1 }} />
-          ))}
-          {COLUMN_COPY.map((c) => (
-            <Fragment key={c.x}>
-              <p
-                className="absolute whitespace-pre text-[20px] leading-[24px] text-[#1E1E1E]"
-                style={{ left: c.x, top: 1816 }}
-              >
-                {c.head}
-              </p>
-              <p
-                className="absolute w-[199px] whitespace-pre-wrap text-[20px] leading-[24px] text-black"
-                style={{ left: c.x, top: 1850 }}
-              >
-                {c.bodyText}
-              </p>
-            </Fragment>
-          ))}
+          <Proof variant="canvas" />
 
           <div
             className="absolute left-[55px] top-[2151px] h-[539px] w-[1617px] bg-cover"
