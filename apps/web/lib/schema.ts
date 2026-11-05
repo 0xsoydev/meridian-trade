@@ -134,6 +134,7 @@ export const usage = pgTable(
     listingId: uuid("listing_id")
       .notNull()
       .references(() => listings.id),
+    prepaidId: uuid("prepaid_id").references(() => prepaid.id),
     priceMicroPerMtok: bigint("price_micro_per_mtok", { mode: "bigint" }).notNull(),
     reservedTokens: bigint("reserved_tokens", { mode: "bigint" }).notNull().default(sql`0`),
     reservedUsdMicro: bigint("reserved_usd_micro", { mode: "bigint" }).notNull().default(sql`0`),
