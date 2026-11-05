@@ -40,9 +40,20 @@ const server = createServer((request, response) => {
   }
   if (request.url?.endsWith("/chat/completions")) {
     const expected = process.env.STUB_EXPECT_AUTH;
-    if (expected && request.headers.authorization !== expected) {
+    const authorization = request.headers.authorization ?? "";
+    if (expected && authorization !== expected) {
       response.writeHead(401, { "content-type": "application/json" });
       response.end(JSON.stringify({ error: { message: "wrong bearer" } }));
+      return;
+    }
+    if (authorization.endsWith("-policy")) {
+      response.writeHead(403, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: { message: "content policy refused", type: "invalid_request_error", code: "content_policy_refused" } }));
+      return;
+    }
+    if (authorization.endsWith("-upgrade")) {
+      response.writeHead(403, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: { message: "this plan has no API access", type: "permission_error", code: "upgrade_required" } }));
       return;
     }
     let raw = "";

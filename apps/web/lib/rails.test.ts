@@ -10,7 +10,7 @@ test("seeded rails exist without any catalog request", async () => {
   const rails = await catalog();
   assert.deepEqual(
     rails.map((rail) => rail.id).sort(),
-    ["anthropic", "openai"],
+    ["anthropic", "commandcode", "openai", "opencode-go", "zen"],
   );
 
   const anthropic = rails.find((rail) => rail.id === "anthropic");
@@ -41,10 +41,35 @@ test("seeded rails exist without any catalog request", async () => {
   );
 });
 
+test("the gateway rails are seeded from their published prices", async () => {
+  const rails = await catalog();
+  const commandcode = rails.find((rail) => rail.id === "commandcode");
+  assert.ok(commandcode);
+  assert.equal(commandcode.maxTokensField, "max_completion_tokens");
+  assert.deepEqual(
+    commandcode.models.map((model) => model.canonical),
+    ["gpt-6-sol", "gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-luna"],
+  );
+
+  const zen = rails.find((rail) => rail.id === "zen");
+  assert.ok(zen);
+  assert.equal(zen.maxTokensField, undefined);
+  assert.equal(zen.models.find((model) => model.canonical === "claude-opus-5.5")?.upstream, "claude-opus-5-5");
+  assert.equal(zen.models.find((model) => model.canonical === "glm-5.3")?.listCompletion, 4_400_000n);
+
+  const go = rails.find((rail) => rail.id === "opencode-go");
+  assert.ok(go);
+  assert.deepEqual(
+    go.models.map((model) => model.canonical),
+    ["claude-haiku-5.5", "gpt-6-luna", "glm-5.3", "deepseek-v4.1-flash"],
+  );
+});
+
 test("reference resolves through the seeded rails", async () => {
   const cheapest = await reference("claude-opus-5.5");
-  assert.equal(cheapest?.railId, "anthropic");
-  assert.equal(cheapest?.pricing.prompt, 4_000_000n);
-  assert.equal(cheapest?.pricing.completion, 20_000_000n);
+  assert.ok(cheapest);
+  assert.ok(["anthropic", "zen"].includes(cheapest.railId), `unexpected rail ${cheapest.railId}`);
+  assert.equal(cheapest.pricing.prompt, 4_000_000n);
+  assert.equal(cheapest.pricing.completion, 20_000_000n);
   assert.equal(await reference("no-such-model"), null);
 });

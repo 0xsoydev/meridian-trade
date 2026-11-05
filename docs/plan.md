@@ -61,8 +61,9 @@ export type Rail = {
 | `anthropic` | openai-chat | `ANTHROPIC_BASE_URL` (default `https://api.anthropic.com/v1`) | key | Anthropic's OpenAI-compatible layer; Console workspace key; Max/Team API credits are monthly; prices seeded as USD per MTok in `rails.ts`; no catalog request |
 | `openai` | openai-chat | `OPENAI_BASE_URL` (default `https://api.openai.com/v1`) | key | project key with a budget; `maxTokensField: max_completion_tokens`; prices seeded as USD per MTok; no catalog request |
 | `openrouter` | openai-chat | `https://openrouter.ai/api/v1` | key | prices from `/models`; `GET /api/v1/key` returns remaining credits; no expiry |
-| `commandcode` | openai-chat | `COMMANDCODE_BASE_URL` | key | their Provider API; plan credits are monthly |
-| `zen` | openai-chat | `ZEN_BASE_URL` | key | OpenCode Zen; no expiry |
+| `commandcode` | openai-chat | `COMMANDCODE_BASE_URL` (default `https://api.commandcode.ai/provider/v1`) | key | prices seeded at provider rates; `maxTokensField: max_completion_tokens`; Claude is `/messages`-only and excluded; the Go plan has no API access |
+| `zen` | openai-chat | `ZEN_BASE_URL` (default `https://opencode.ai/inference/openai/v1`) | key | Console translates every text model to OpenAI-chat, so Claude works here; prices seeded; `maxTokensField: max_tokens`; no expiry |
+| `opencode-go` | openai-chat | `OPENCODE_GO_BASE_URL` (default `https://opencode.ai/inference/go/openai/v1`) | key | monthly per-model dollar allowance; single-member workspace; traffic monitored for abuse |
 | `claude-code` | anthropic-messages | `https://api.anthropic.com/v1` | oauth | §10.9, flagged off |
 | `codex` | openai-responses | `https://chatgpt.com/backend-api/codex` | oauth | §10.9, flagged off |
 
@@ -362,7 +363,7 @@ export type ApprovalStatus = { status: "pending" | "approved" | "denied" | "expi
    - Body: `openai-chat` → the body with `model = rail upstream id`; `anthropic-messages` → `translate.chatToAnthropic(body)`; `openai-responses` → `translate.chatToResponses(body)`.
    - Headers: `rail.extraHeaders`, plus 0G's `X-0G-Provider-Trust-Mode: verified` and `X-0G-Provider-Max-Price-Usd-Prompt/Completion` = the rail's list price.
    - Timeout 120 s until response headers, abort on client disconnect, abort at the deadline (`maxDuration − 20 s` after the request arrived).
-10. Upstream status before first byte: 401/403 → listing `invalid` (revoked key, or an OAuth token the provider refuses), release, next candidate. 402 → listing `exhausted`, release, next. 429 → `throttled_until = now + (retry-after || 60 s)`, release, next. 5xx/529/header timeout → release, next. 400/404 → release, return the upstream error mapped to the OpenAI shape.
+10. Upstream status before first byte: 401 → listing `invalid`, release, next candidate. 403 → `invalid` only when the body says `upgrade_required` or an authentication error; a content-policy or per-request refusal returns 400 and leaves the listing active. 402 → listing `exhausted`, release, next. 429 → `throttled_until = now + (retry-after || 60 s)`, release, next. 5xx/529/header timeout → release, next. 400/404 → release, return the upstream error mapped to the OpenAI shape.
 11. Non-stream: `openai-chat` returns the upstream JSON unchanged; the two translated protocols map it with `translate.*ToChat`. Read `usage`, settle (11a) in a `finally` (abort → §7 fallback), return the OpenAI chat shape.
 12. Stream: `openai-chat` forwards bytes untouched; `anthropic-messages` and `openai-responses` map their events to OpenAI chat chunks (`translate.*SseToChat`), which also yields the final usage. Settle (11a) in a `finally` that runs on normal end, upstream error, client cancel (which aborts upstream) and the deadline; a `TransformStream` `flush` alone never runs on cancel. Missing usage → §7 fallback.
 
@@ -802,6 +803,9 @@ Video (2:30–2:55, human voice):
 - No per-key rate limiting beyond the rails' own.
 - MockUSDC collateral on Galileo (no official stablecoin on testnet).
 - Seller key caps on every rail are set on the provider side, not verified by us (a secret key cannot read its own limits); OpenRouter's `GET /api/v1/key` is the exception.
+- Command Code sells no API access on its Go plan: sellers need GOAT, Pro, Max, Team or Provider, or every request returns `upgrade_required`.
+- OpenCode Go is a single-member workspace with a monthly per-model dollar allowance (5h 20%, weekly 50%, monthly 100%) and monitored traffic; a listing there is rate-limited by allowance, not by the capacity the seller declared.
+- The `maxTokensField` choice for the Command Code and Zen rails is unverified without a seller key; a wrong field shows up as a 400 on the first real request.
 - OAuth rails are refused by the providers for third-party clients: Anthropic blocks subscription tokens outside its own CLI, and Codex's endpoint accepts first-party originators only. Expect 401/403 on the first request, which marks the listing `invalid`; a seller who connects one risks a ban on their personal account.
 - OAuth capacity is advisory: the provider's window is the real limit, `429` sets `throttled_until`, and nothing reads remaining quota.
 - OAuth refresh is deduped in-process only; a cross-instance race costs one request to failover.

@@ -8,6 +8,7 @@ import { estimatePromptTokens } from "./price.ts";
 import {
   chunks,
   cleanup,
+  errorJson,
   first,
   hasDb,
   jsonRequest,
@@ -32,6 +33,8 @@ const MODEL = {
   cancel: name("cancel"),
   failover: name("failover"),
   throttle: name("throttle"),
+  policy: name("policy"),
+  upgrade: name("upgrade"),
 };
 const CHAT_URL = "http://localhost/api/v1/chat/completions";
 const ping = [{ role: "user", content: "ping" }];
@@ -48,6 +51,16 @@ before(async () => {
     if (call.auth === "Bearer sk-500") return status(response, 500);
     if (call.auth === "Bearer sk-429") return status(response, 429, { "retry-after": "120" });
     if (call.auth === "Bearer sk-401") return status(response, 401);
+    if (call.auth === "Bearer sk-403-policy") {
+      return errorJson(response, 403, {
+        error: { message: "content policy refused", type: "invalid_request_error", code: "content_policy_refused" },
+      });
+    }
+    if (call.auth === "Bearer sk-403-upgrade") {
+      return errorJson(response, 403, {
+        error: { message: "this plan has no API access", type: "permission_error", code: "upgrade_required" },
+      });
+    }
     if (call.body.stream !== true) return reply(response, id);
     if (call.auth === "Bearer sk-slow") {
       return void sse(response, chunks(id, ["one ", "two ", "three ", "four "], { prompt_tokens: 10, completion_tokens: 40 }), 400);
@@ -56,6 +69,9 @@ before(async () => {
   });
   process.env.ANTHROPIC_BASE_URL = process.env.STUB_RAIL_URL;
   process.env.OPENAI_BASE_URL = process.env.STUB_RAIL_URL;
+  process.env.COMMANDCODE_BASE_URL = process.env.STUB_RAIL_URL;
+  process.env.ZEN_BASE_URL = process.env.STUB_RAIL_URL;
+  process.env.OPENCODE_GO_BASE_URL = process.env.STUB_RAIL_URL;
   sellerId = await makeSeller();
 });
 
@@ -275,6 +291,101 @@ test("a 401 from a seeded rail invalidates only that listing", { skip }, async (
   const rows = await usageOf(key.id);
   assert.equal(rows.find((row) => row.listingId === bad)?.status, "released");
   assert.equal(rows.find((row) => row.listingId === good)?.status, "settled");
+});
+
+test("the commandcode rail is seeded and uses max_completion_tokens", { skip }, async () => {
+  await makeListing({
+    sellerId,
+    model: "gpt-6.1-terra",
+    rail: "commandcode",
+    credential: "sk-cc",
+    price: 2_000_000n,
+    capacity: 1_000_000n,
+  });
+  const key = await makeKey(1_000_000n);
+
+  const response = await chat(key.raw, { model: "gpt-6.1-terra", messages: ping, max_tokens: 16 });
+  assert.equal(response.status, 200);
+
+  const forwarded = lastCall();
+  assert.equal(forwarded.auth, "Bearer sk-cc");
+  assert.equal(forwarded.body.max_completion_tokens, 16);
+  assert.equal(forwarded.body.max_tokens, undefined);
+  assert.equal(first(await usageOf(key.id)).rail, "commandcode");
+});
+
+test("the zen rail maps the canonical model to its hyphenated id", { skip }, async () => {
+  await makeListing({
+    sellerId,
+    model: "claude-opus-5.5",
+    rail: "zen",
+    credential: "sk-zen",
+    price: 2_000_000n,
+    capacity: 1_000_000n,
+  });
+  const key = await makeKey(1_000_000n);
+
+  const response = await chat(key.raw, { model: "claude-opus-5.5", messages: ping, max_tokens: 16 });
+  assert.equal(response.status, 200);
+
+  const forwarded = lastCall();
+  assert.equal(forwarded.auth, "Bearer sk-zen");
+  assert.equal(forwarded.body.model, "claude-opus-5-5");
+  assert.equal(forwarded.body.max_tokens, 16);
+  assert.equal(first(await usageOf(key.id)).rail, "zen");
+});
+
+test("the opencode-go rail dispatches with max_tokens", { skip }, async () => {
+  await makeListing({
+    sellerId,
+    model: "gpt-6-luna",
+    rail: "opencode-go",
+    credential: "sk-go",
+    price: 1_000_000n,
+    capacity: 1_000_000n,
+  });
+  const key = await makeKey(1_000_000n);
+
+  const response = await chat(key.raw, { model: "gpt-6-luna", messages: ping, max_tokens: 16 });
+  assert.equal(response.status, 200);
+
+  const forwarded = lastCall();
+  assert.equal(forwarded.auth, "Bearer sk-go");
+  assert.equal(forwarded.body.max_tokens, 16);
+  assert.equal(forwarded.body.max_completion_tokens, undefined);
+  assert.equal(first(await usageOf(key.id)).rail, "opencode-go");
+});
+
+test("a policy 403 leaves the listing active", { skip }, async () => {
+  const listingId = await makeListing({
+    sellerId,
+    model: MODEL.policy,
+    credential: "sk-403-policy",
+    price: 1_500_000n,
+    capacity: 1_000_000n,
+  });
+  const key = await makeKey(1_000_000n);
+
+  const response = await chat(key.raw, { model: MODEL.policy, messages: ping, max_tokens: 16 });
+  assert.equal(response.status, 400);
+  assert.equal((await listingRow(listingId)).status, "active");
+  assert.equal(first(await usageOf(key.id)).status, "released");
+});
+
+test("an upgrade 403 marks the listing invalid", { skip }, async () => {
+  const listingId = await makeListing({
+    sellerId,
+    model: MODEL.upgrade,
+    credential: "sk-403-upgrade",
+    price: 1_500_000n,
+    capacity: 1_000_000n,
+  });
+  const key = await makeKey(1_000_000n);
+
+  const response = await chat(key.raw, { model: MODEL.upgrade, messages: ping, max_tokens: 16 });
+  assert.equal(response.status, 502);
+  assert.equal((await listingRow(listingId)).status, "invalid");
+  assert.equal(first(await usageOf(key.id)).status, "released");
 });
 
 test("a 429 throttles the listing and the next ask serves", { skip }, async () => {

@@ -76,6 +76,11 @@ export function status(response: ServerResponse, code: number, headers: Record<s
   response.end(JSON.stringify({ error: { message: `stub ${code}` } }));
 }
 
+export function errorJson(response: ServerResponse, code: number, body: unknown): void {
+  response.writeHead(code, { "content-type": "application/json" });
+  response.end(JSON.stringify(body));
+}
+
 export function chunks(id: string, words: string[], usage: StubUsage | null): unknown[] {
   const list: unknown[] = [{ id, object: "chat.completion.chunk", choices: [{ index: 0, delta: { role: "assistant", content: "" } }] }];
   for (const word of words) list.push({ id, object: "chat.completion.chunk", choices: [{ index: 0, delta: { content: word } }] });

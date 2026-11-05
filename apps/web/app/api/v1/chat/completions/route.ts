@@ -49,7 +49,9 @@ const replySchema = z.object({
   choices: z.array(z.object({ delta: z.unknown().optional(), message: z.unknown().optional() })).nullish(),
 });
 
-const upstreamErrorSchema = z.object({ error: z.object({ message: z.string() }) });
+const upstreamErrorSchema = z.object({
+  error: z.object({ message: z.string(), type: z.string().optional(), code: z.string().optional() }),
+});
 
 type Body = z.infer<typeof bodySchema>;
 type Usage = z.infer<typeof usageSchema>;
@@ -352,18 +354,18 @@ function fetchUpstream(candidate: Candidate, payload: Record<string, unknown>, s
 
 async function rejected(candidate: Candidate, response: Response): Promise<Response | null> {
   const { status } = response;
-  if (status === 401 || status === 403 || status === 402 || status === 429 || status >= 500) {
+  if (status === 401) {
     await response.body?.cancel().catch(() => undefined);
-  }
-  if (status === 401 || status === 403) {
     await db().update(listings).set({ status: "invalid" }).where(eq(listings.id, candidate.listingId));
     return null;
   }
   if (status === 402) {
+    await response.body?.cancel().catch(() => undefined);
     await db().update(listings).set({ status: "exhausted" }).where(eq(listings.id, candidate.listingId));
     return null;
   }
   if (status === 429) {
+    await response.body?.cancel().catch(() => undefined);
     const retryAfter = Number(response.headers.get("retry-after"));
     const seconds = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : 60;
     await db()
@@ -372,12 +374,25 @@ async function rejected(candidate: Candidate, response: Response): Promise<Respo
       .where(eq(listings.id, candidate.listingId));
     return null;
   }
-  if (status >= 500) return null;
-  const message = await upstreamMessage(response);
-  return status === 404 ? fail(404, "model_not_found", message) : fail(400, "invalid_request", message);
+  if (status >= 500) {
+    await response.body?.cancel().catch(() => undefined);
+    return null;
+  }
+
+  const error = await upstreamError(response);
+  if (status === 403) {
+    if (error.code === "upgrade_required" || error.type === "authentication_error") {
+      await db().update(listings).set({ status: "invalid" }).where(eq(listings.id, candidate.listingId));
+      return null;
+    }
+    return fail(400, "invalid_request", error.message);
+  }
+  return status === 404 ? fail(404, "model_not_found", error.message) : fail(400, "invalid_request", error.message);
 }
 
-async function upstreamMessage(response: Response): Promise<string> {
+type UpstreamError = { message: string; type: string; code: string };
+
+async function upstreamError(response: Response): Promise<UpstreamError> {
   const text = await response.text().catch(() => "");
   let parsed: unknown = null;
   try {
@@ -386,7 +401,14 @@ async function upstreamMessage(response: Response): Promise<string> {
     parsed = null;
   }
   const shaped = upstreamErrorSchema.safeParse(parsed);
-  return (shaped.success ? shaped.data.error.message : text).slice(0, 300) || `upstream returned ${response.status}`;
+  if (shaped.success) {
+    return {
+      message: shaped.data.error.message.slice(0, 300),
+      type: shaped.data.error.type ?? "",
+      code: shaped.data.error.code ?? "",
+    };
+  }
+  return { message: text.slice(0, 300) || `upstream returned ${response.status}`, type: "", code: "" };
 }
 
 function streamed(

@@ -6,6 +6,7 @@ export type RailId =
   | "openrouter"
   | "commandcode"
   | "zen"
+  | "opencode-go"
   | "claude-code"
   | "codex";
 
