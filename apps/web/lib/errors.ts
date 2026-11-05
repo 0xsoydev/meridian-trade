@@ -1,4 +1,4 @@
-import type { RouterError, RouterErrorCode } from "./types";
+import type { ApprovalStart, RouterError, RouterErrorCode } from "./types";
 
 const TYPES: Record<RouterErrorCode, RouterError["error"]["type"]> = {
   invalid_api_key: "authentication_error",
@@ -10,7 +10,14 @@ const TYPES: Record<RouterErrorCode, RouterError["error"]["type"]> = {
   upstream_failed: "server_error",
 };
 
-export function fail(status: number, code: RouterErrorCode, message: string, headers: HeadersInit = {}): Response {
+export function fail(
+  status: number,
+  code: RouterErrorCode,
+  message: string,
+  headers: HeadersInit = {},
+  approval?: ApprovalStart,
+): Response {
   const body: RouterError = { error: { message, type: TYPES[code], code } };
+  if (approval) body.approval = approval;
   return Response.json(body, { status, headers });
 }

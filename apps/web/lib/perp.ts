@@ -2,7 +2,7 @@ import { keccak256, toBytes, type Account, type Address, type Chain, type Hash, 
 import { indexOracleAbi, mockUsdcAbi, perpMarketAbi } from "./abi.ts";
 import { addresses, publicClient } from "./chain.ts";
 
-export const MARKETS = ["glm-5.3", "deepseek-v4.1-flash"] as const;
+export const MARKETS = ["glm-5.3", "0gm-1.0-35b-a3b", "deepseek-v4.1-flash"] as const;
 
 const MM_BPS = 500n;
 const SEARCH_CEILING = 1n << 128n;

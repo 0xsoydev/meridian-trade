@@ -5,7 +5,7 @@ import { inArray } from "drizzle-orm";
 import { z } from "zod";
 import { hashKey } from "./auth.ts";
 import { db } from "./db.ts";
-import { keys, listings, prepaid, sellers, topups, trades, usage } from "./schema.ts";
+import { approvals, keys, listings, prepaid, sellers, topups, trades, usage } from "./schema.ts";
 import { seal } from "./secrets.ts";
 
 export const hasDb = Boolean(process.env.DATABASE_URL && process.env.SECRETS_KEY);
@@ -197,6 +197,7 @@ export async function cleanup(): Promise<void> {
     await d.delete(trades).where(inArray(trades.listingId, listingIds));
     await d.delete(listings).where(inArray(listings.id, listingIds));
   }
+  if (keyIds.length > 0) await d.delete(approvals).where(inArray(approvals.keyId, keyIds));
   if (keyIds.length > 0) await d.delete(keys).where(inArray(keys.id, keyIds));
   if (sellerIds.length > 0) await d.delete(sellers).where(inArray(sellers.id, sellerIds));
 }
