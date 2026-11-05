@@ -8,9 +8,9 @@ import { useConnection, useSwitchChain, useWalletClient } from "wagmi";
 import { mockUsdcAbi } from "../../../lib/abi";
 import { addresses, galileo, publicClient } from "../../../lib/chain";
 import { MARKETS, liquidationPrice, modify, notional, openMargin, readMarket, readPosition } from "../../../lib/perp";
-import { formatMicroPerMtok, formatMtok, formatUsd, parseMtok } from "../../../lib/price";
+import { fillsToPoints, formatMicroPerMtok, formatMtok, formatUsd, parseMtok } from "../../../lib/price";
 import type { Book, ModelRow } from "../../../lib/types";
-import { FillsChart, fillsToPoints, type ScaleMode } from "../trade/chart";
+import { FillsChart, INTERVALS, type ScaleMode } from "../trade/chart";
 
 const POLL_MS = 15_000;
 const MAX_LEVERAGE = 5n;
@@ -23,14 +23,6 @@ type Held = Awaited<ReturnType<typeof readPosition>> & { model: string; price: b
 function signedUsd(value: bigint): string {
   return `${value < 0n ? "−" : ""}${formatUsd(value < 0n ? -value : value)}`;
 }
-
-const WINDOWS = [
-  { id: "1h", label: "1h", ms: 3_600_000 },
-  { id: "6h", label: "6h", ms: 6 * 3_600_000 },
-  { id: "24h", label: "24h", ms: 86_400_000 },
-  { id: "all", label: "All", ms: null },
-] as const;
-type WindowId = (typeof WINDOWS)[number]["id"];
 
 const PRESETS = [
   { label: "1", value: "1" },
@@ -80,7 +72,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
   const [book, setBook] = useState<Book | null>(null);
   const [bookFailed, setBookFailed] = useState<"unknown" | "down" | null>(null);
   const [chartTab, setChartTab] = useState<"Chart" | "Funding">("Chart");
-  const [windowId, setWindowId] = useState<WindowId>("all");
+  const [bucket, setBucket] = useState(60);
   const [scale, setScale] = useState<ScaleMode>("linear");
   const [bookTab, setBookTab] = useState<(typeof BOOK_TABS)[number]>("Order Book");
   const [stripTab, setStripTab] = useState<(typeof STRIP_TABS)[number]>("Positions");
@@ -209,19 +201,8 @@ export function Perps({ initialModel }: { initialModel: string }) {
     return rows;
   }, [asks]);
 
-  const points = useMemo(
-    () =>
-      fillsToPoints(
-        book?.fills ?? [],
-        WINDOWS.find((w) => w.id === windowId)?.ms ?? null,
-        nowRef.current,
-      ),
-    [book, windowId],
-  );
-  const points24 = useMemo(
-    () => fillsToPoints(book?.fills ?? [], 86_400_000, nowRef.current),
-    [book],
-  );
+  const points = useMemo(() => fillsToPoints(book?.fills ?? []), [book]);
+  const points24 = useMemo(() => fillsToPoints(book?.fills ?? [], nowRef.current - 86_400_000), [book]);
 
   const bestAsk = asks[0] ? BigInt(asks[0].price_micro_per_mtok) : null;
   const lastFill = book?.fills.at(-1);
@@ -383,15 +364,15 @@ export function Perps({ initialModel }: { initialModel: string }) {
               ))}
             </div>
             {chartTab === "Chart" ? (
-              <div className="flex gap-5">
-                {WINDOWS.map((item) => (
+              <div role="group" aria-label="candle interval" className="flex gap-5">
+                {INTERVALS.map((item) => (
                   <button
-                    key={item.id}
+                    key={item.label}
                     type="button"
-                    onClick={() => setWindowId(item.id)}
-                    aria-pressed={windowId === item.id}
+                    onClick={() => setBucket(item.seconds)}
+                    aria-pressed={bucket === item.seconds}
                     className={`text-[14px] ${
-                      windowId === item.id
+                      bucket === item.seconds
                         ? "text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
                         : "text-[#757575] hover:text-[#1E1E1E]"
                     }`}
@@ -433,6 +414,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
 
               <FillsChart
                 points={points}
+                bucket={bucket}
                 scale={scale}
                 emptyNote="waiting for the first index post — the venue's fills seed the curve"
               />

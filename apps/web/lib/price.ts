@@ -1,4 +1,5 @@
-import type { BookAsk, Micro, MicroPerMTok, Pricing, Rail, RailId } from "./types";
+import type { UTCTimestamp } from "lightweight-charts";
+import type { BookAsk, BookFill, Micro, MicroPerMTok, Pricing, Rail, RailId } from "./types";
 
 const MICRO_PER_MTOK = 1_000_000n;
 const PRICE_SCALE = 12;
@@ -145,4 +146,36 @@ export function reservation(
 ): { tokens: bigint; micro: Micro } {
   const tokens = mixedTokens(estimatePromptTokens(utf8Bytes), maxTokens);
   return { tokens, micro: charge(tokens, ask) };
+}
+
+export type ChartPoint = { time: UTCTimestamp; value: number; volume: number };
+
+export type CandlePoint = { time: UTCTimestamp; open: number; high: number; low: number; close: number; volume: number };
+
+export function fillsToPoints(fills: BookFill[], sinceMs = Number.NEGATIVE_INFINITY): ChartPoint[] {
+  return fills
+    .filter((fill) => Date.parse(fill.created_at) >= sinceMs)
+    .reverse()
+    .map((fill) => ({
+      time: Math.floor(Date.parse(fill.created_at) / 1000) as UTCTimestamp,
+      value: Number(fill.price_micro_per_mtok) / 1e6,
+      volume: Number(fill.tokens) / 1e6,
+    }));
+}
+
+export function candlesFromPoints(points: ChartPoint[], bucket: number): CandlePoint[] {
+  const candles: CandlePoint[] = [];
+  for (const point of points) {
+    const time = (Math.floor(point.time / bucket) * bucket) as UTCTimestamp;
+    const last = candles.at(-1);
+    if (last && last.time === time) {
+      last.high = Math.max(last.high, point.value);
+      last.low = Math.min(last.low, point.value);
+      last.close = point.value;
+      last.volume += point.volume;
+    } else {
+      candles.push({ time, open: point.value, high: point.value, low: point.value, close: point.value, volume: point.volume });
+    }
+  }
+  return candles;
 }
