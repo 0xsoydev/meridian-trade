@@ -34,12 +34,13 @@ const cancelIntent = z
 const signedBody = z.object({ signed: z.unknown() }).strict();
 
 function isUniqueViolation(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    (error as { code?: unknown }).code === "23505"
-  );
+  let current: unknown = error;
+  for (let depth = 0; depth < 3; depth++) {
+    if (typeof current !== "object" || current === null) return false;
+    if ("code" in current && current.code === "23505") return true;
+    current = "cause" in current ? current.cause : undefined;
+  }
+  return false;
 }
 
 async function ownedListing(id: string, address: string) {
@@ -100,6 +101,7 @@ export async function PATCH(
         priceMicroPerMtok: price,
         capacityTokens,
         clientNonce: intent.data.client_nonce,
+        status: sql`case when ${listings.status} = 'exhausted' and ${listings.usedTokens} + ${listings.reservedTokens} < ${capacityTokens} then 'active' else ${listings.status} end`,
       })
       .where(
         and(

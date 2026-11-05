@@ -8,10 +8,11 @@ import { db } from "./db.ts";
 import { listingPriceError, parseCapacityMtok } from "./listings.ts";
 import { listings, sellers } from "./schema.ts";
 import { open } from "./secrets.ts";
-import { cleanup, hasDb, makeSeller, reply, skip, stubRail, suffix, type ChatCall } from "./testkit.ts";
+import { cleanup, hasDb, makeSeller, reply, skip, status, stubRail, suffix, type ChatCall } from "./testkit.ts";
 
 const own = { prompt: 1_400_000n, completion: 4_400_000n };
 const MODEL = `t-${suffix}-listing`;
+const PROBE_MODEL = "0gm-1.0-35b-a3b";
 const account: PrivateKeyAccount = privateKeyToAccount(generatePrivateKey());
 
 test("capacity converts mtok to tokens", () => {
@@ -49,7 +50,13 @@ const created: string[] = [];
 before(async () => {
   if (!hasDb) return;
   process.env.PUBLIC_HOST = "http://localhost";
-  rail = await stubRail([MODEL], (_call, response) => reply(response, `chatcmpl-${suffix}-listing`));
+  rail = await stubRail([MODEL, PROBE_MODEL], (call, response) => {
+    if (call.body.model === "__probe__") {
+      status(response, call.auth === "Bearer sk-bad" ? 401 : 404);
+      return;
+    }
+    reply(response, `chatcmpl-${suffix}-listing`);
+  });
   sellerId = await makeSeller();
   await db().update(sellers).set({ address: account.address.toLowerCase() }).where(eq(sellers.id, sellerId));
 });
@@ -66,12 +73,12 @@ async function sign(fields: Record<string, unknown>): Promise<Envelope> {
   return { address: account.address, message, signature: await account.signMessage({ message }) };
 }
 
-function createCall(envelope: Envelope): Promise<Response> {
+function createCall(envelope: Envelope, key = "sk-test"): Promise<Response> {
   return POST(
     new Request("http://localhost/api/listings", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ signed: envelope, credential: { kind: "key", key: "sk-test" } }),
+      body: JSON.stringify({ signed: envelope, credential: { kind: "key", key } }),
     }),
   );
 }
@@ -125,6 +132,34 @@ test("a signed listing is stored sealed and active", { skip }, async () => {
   assert.equal(row.capacityTokens, 10_000_000n);
   assert.equal(row.sellerId, sellerId);
   assert.equal(open(row.credentialCiphertext), "sk-test");
+});
+
+test("the 0g credential probe accepts model_not_found and rejects a bad key", { skip }, async () => {
+  const accepted = await createCall(
+    await sign({
+      rail: "0g",
+      model: PROBE_MODEL,
+      capacity_mtok: "1",
+      price_micro_per_mtok: "2000000",
+      client_nonce: `n-${suffix}-12`,
+    }),
+  );
+  assert.equal(accepted.status, 200);
+  const body = (await accepted.json()) as { listing_id: string; status: string };
+  created.push(body.listing_id);
+  assert.equal(body.status, "active");
+
+  const rejected = await createCall(
+    await sign({
+      rail: "0g",
+      model: PROBE_MODEL,
+      capacity_mtok: "1",
+      price_micro_per_mtok: "2000000",
+      client_nonce: `n-${suffix}-13`,
+    }),
+    "sk-bad",
+  );
+  assert.equal(rejected.status, 401);
 });
 
 test("a price at or above the list price is refused", { skip }, async () => {
@@ -198,6 +233,70 @@ test("amend re-prices and cannot cut below committed tokens", { skip }, async ()
   );
   assert.equal(atFloor.status, 200);
   assert.equal((await listingRow(id))?.capacityTokens, 19_000_000n);
+});
+
+test("an amend that reuses another listing's nonce is refused", { skip }, async () => {
+  const id = created[0];
+  assert.ok(id);
+
+  const other = await createCall(
+    await sign({
+      rail: "stub",
+      model: MODEL,
+      capacity_mtok: "10",
+      price_micro_per_mtok: "2000000",
+      client_nonce: `n-${suffix}-11`,
+    }),
+  );
+  assert.equal(other.status, 200);
+  const second = (await other.json()) as { listing_id: string };
+  created.push(second.listing_id);
+
+  const response = await amendCall(
+    id,
+    await sign({
+      action: "amend",
+      listing_id: id,
+      price_micro_per_mtok: "2100000",
+      capacity_mtok: "19",
+      client_nonce: `n-${suffix}-11`,
+    }),
+  );
+  assert.equal(response.status, 409);
+});
+
+test("raising capacity revives an exhausted listing, the floor does not", { skip }, async () => {
+  const id = created[0];
+  assert.ok(id);
+
+  await db().update(listings).set({ status: "exhausted" }).where(eq(listings.id, id));
+
+  const atFloor = await amendCall(
+    id,
+    await sign({
+      action: "amend",
+      listing_id: id,
+      price_micro_per_mtok: "2100000",
+      capacity_mtok: "19",
+      client_nonce: `n-${suffix}-9`,
+    }),
+  );
+  assert.equal(atFloor.status, 200);
+  assert.equal((await listingRow(id))?.status, "exhausted");
+
+  const raised = await amendCall(
+    id,
+    await sign({
+      action: "amend",
+      listing_id: id,
+      price_micro_per_mtok: "2100000",
+      capacity_mtok: "25",
+      client_nonce: `n-${suffix}-10`,
+    }),
+  );
+  assert.equal(raised.status, 200);
+  assert.equal((await listingRow(id))?.status, "active");
+  assert.equal((await listingRow(id))?.capacityTokens, 25_000_000n);
 });
 
 test("cancel refuses an open reservation and then cancels once", { skip }, async () => {
