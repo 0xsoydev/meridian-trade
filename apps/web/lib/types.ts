@@ -1,0 +1,131 @@
+export type RailId =
+  | "0g"
+  | "anthropic"
+  | "openai"
+  | "openrouter"
+  | "commandcode"
+  | "zen"
+  | "claude-code"
+  | "codex";
+
+export type RailProtocol = "openai-chat" | "anthropic-messages" | "openai-responses";
+
+export type RailModel = {
+  canonical: string;
+  upstream: string;
+  listPrompt: bigint;
+  listCompletion: bigint;
+};
+
+export type Rail = {
+  id: RailId;
+  protocol: RailProtocol;
+  baseUrl: string;
+  auth: "key" | "oauth";
+  extraHeaders: Record<string, string>;
+  models: ReadonlyArray<RailModel>;
+  resetPeriod: "daily" | "monthly" | null;
+  enabled: boolean;
+};
+
+export type Micro = bigint;
+export type MicroPerMTok = bigint;
+export type Pricing = { prompt: MicroPerMTok; completion: MicroPerMTok };
+
+export type RouterErrorCode =
+  | "invalid_api_key"
+  | "model_not_found"
+  | "no_liquidity"
+  | "insufficient_balance"
+  | "approval_required"
+  | "upstream_failed"
+  | "invalid_request";
+
+export type ApprovalStart = {
+  approval_id: string;
+  user_code: string;
+  verification_uri_complete: string;
+  expires_at: string;
+};
+
+export type RouterError = {
+  error: {
+    message: string;
+    type:
+      | "invalid_request_error"
+      | "authentication_error"
+      | "payment_error"
+      | "permission_error"
+      | "server_error";
+    code: RouterErrorCode;
+  };
+  approval?: ApprovalStart;
+};
+
+export type ModelRow = {
+  id: string;
+  rails: RailId[];
+  verifiability: "TeeML" | "TeeTLS" | null;
+  list_prompt_micro_per_mtok: string;
+  list_completion_micro_per_mtok: string;
+  reference_blended_micro_per_mtok: string;
+  best_ask_micro_per_mtok: string | null;
+  index_micro_per_mtok: string | null;
+  available_tokens: string;
+};
+
+export type TopupResult = {
+  key?: string;
+  key_id: string;
+  balance_usd_micro: string;
+  tx_id: string;
+};
+
+export type Balance = {
+  balance_usd_micro: string;
+  reserved_usd_micro: string;
+  topped_up_today_usd_micro: string;
+  daily_topup_cap_usd_micro: string;
+  auto_topup_usd_micro: string;
+  default_model: string | null;
+  human_linked: boolean;
+};
+
+export type KeySettings = {
+  auto_topup_usd_micro?: string;
+  daily_topup_cap_usd_micro?: string;
+  default_model?: string | null;
+};
+
+export type ApprovalStatus = { status: "pending" | "approved" | "denied" | "expired" };
+
+export type ListingIntent = {
+  action: "list";
+  rail: RailId;
+  model: string;
+  capacity_mtok: string;
+  price_micro_per_mtok: string | null;
+  client_nonce: string;
+};
+
+export type Credential = { kind: "key"; key: string } | { kind: "oauth" };
+
+export type TradeIntent = { model: string; tokens: string };
+
+export type Trade = {
+  listing_id: string;
+  tokens: string;
+  price_micro_per_mtok: string;
+  charge_usd_micro: string;
+};
+
+export type Rollup = {
+  v: 1;
+  model: string;
+  minute: number;
+  fills: number;
+  mixed_tokens: string;
+  charge_usd_micro: string;
+  vwap_micro_per_mtok: string;
+  usage_root: string;
+};

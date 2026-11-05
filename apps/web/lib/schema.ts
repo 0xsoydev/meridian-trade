@@ -1,0 +1,241 @@
+import { sql } from "drizzle-orm";
+import {
+  bigint,
+  check,
+  customType,
+  date,
+  index,
+  integer,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
+
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType: () => "bytea",
+});
+
+const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
+
+export const sellers = pgTable("sellers", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  address: text("address").notNull().unique(),
+  worldNullifier: numeric("world_nullifier", { precision: 78, scale: 0 }).notNull().unique(),
+  hederaAccount: text("hedera_account"),
+  createdAt: createdAt(),
+});
+
+export const keys = pgTable(
+  "keys",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    hash: bytea("hash").notNull().unique(),
+    balanceUsdMicro: bigint("balance_usd_micro", { mode: "bigint" }).notNull(),
+    reservedUsdMicro: bigint("reserved_usd_micro", { mode: "bigint" }).notNull().default(sql`0`),
+    autoTopupUsdMicro: bigint("auto_topup_usd_micro", { mode: "bigint" }).notNull().default(sql`0`),
+    dailyTopupCapUsdMicro: bigint("daily_topup_cap_usd_micro", { mode: "bigint" })
+      .notNull()
+      .default(sql`5000000`),
+    defaultModel: text("default_model"),
+    worldSub: text("world_sub"),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    check("keys_balance_non_negative", sql`${t.balanceUsdMicro} >= 0`),
+    check("keys_reserved_non_negative", sql`${t.reservedUsdMicro} >= 0`),
+  ],
+);
+
+export const listings = pgTable(
+  "listings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sellerId: uuid("seller_id")
+      .notNull()
+      .references(() => sellers.id),
+    rail: text("rail").notNull(),
+    model: text("model").notNull(),
+    authKind: text("auth_kind").notNull(),
+    credentialCiphertext: text("credential_ciphertext").notNull(),
+    accountRef: text("account_ref"),
+    priceMicroPerMtok: bigint("price_micro_per_mtok", { mode: "bigint" }),
+    capacityTokens: bigint("capacity_tokens", { mode: "bigint" }).notNull(),
+    usedTokens: bigint("used_tokens", { mode: "bigint" }).notNull().default(sql`0`),
+    reservedTokens: bigint("reserved_tokens", { mode: "bigint" }).notNull().default(sql`0`),
+    throttledUntil: timestamp("throttled_until", { withTimezone: true }),
+    status: text("status").notNull(),
+    clientNonce: text("client_nonce").notNull().unique(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    check("listings_capacity_positive", sql`${t.capacityTokens} > 0`),
+    check(
+      "listings_capacity_bound",
+      sql`${t.usedTokens} + ${t.reservedTokens} <= ${t.capacityTokens}`,
+    ),
+    check("listings_auth_kind", sql`${t.authKind} in ('key','oauth')`),
+    check(
+      "listings_status",
+      sql`${t.status} in ('active','exhausted','invalid','cancelled','pending_auth')`,
+    ),
+    index("listings_model_status_price_idx").on(t.model, t.status, t.priceMicroPerMtok),
+  ],
+);
+
+export const payouts = pgTable(
+  "payouts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sellerId: uuid("seller_id")
+      .notNull()
+      .references(() => sellers.id),
+    day: date("day", { mode: "string" }).notNull(),
+    amountUsdMicro: bigint("amount_usd_micro", { mode: "bigint" }).notNull(),
+    scheduleId: text("schedule_id"),
+    status: text("status").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex("payouts_seller_day_key").on(t.sellerId, t.day),
+    check(
+      "payouts_status",
+      sql`${t.status} in ('pending','scheduled','executed','cancelled')`,
+    ),
+  ],
+);
+
+export const topups = pgTable(
+  "topups",
+  {
+    txId: text("tx_id").primaryKey(),
+    keyId: uuid("key_id")
+      .notNull()
+      .references(() => keys.id),
+    amountUsdMicro: bigint("amount_usd_micro", { mode: "bigint" }).notNull(),
+    payer: text("payer").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("topups_key_created_idx").on(t.keyId, t.createdAt)],
+);
+
+export const usage = pgTable(
+  "usage",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    status: text("status").notNull(),
+    rail: text("rail").notNull(),
+    upstreamRequestId: text("upstream_request_id"),
+    keyId: uuid("key_id")
+      .notNull()
+      .references(() => keys.id),
+    listingId: uuid("listing_id")
+      .notNull()
+      .references(() => listings.id),
+    priceMicroPerMtok: bigint("price_micro_per_mtok", { mode: "bigint" }).notNull(),
+    reservedTokens: bigint("reserved_tokens", { mode: "bigint" }).notNull().default(sql`0`),
+    reservedUsdMicro: bigint("reserved_usd_micro", { mode: "bigint" }).notNull().default(sql`0`),
+    promptTokens: integer("prompt_tokens").notNull().default(0),
+    completionTokens: integer("completion_tokens").notNull().default(0),
+    listCostUsdMicro: bigint("list_cost_usd_micro", { mode: "bigint" }).notNull().default(sql`0`),
+    mixedTokens: bigint("mixed_tokens", { mode: "bigint" }).notNull().default(sql`0`),
+    chargeUsdMicro: bigint("charge_usd_micro", { mode: "bigint" }).notNull().default(sql`0`),
+    sellerEarningUsdMicro: bigint("seller_earning_usd_micro", { mode: "bigint" })
+      .notNull()
+      .default(sql`0`),
+    payoutId: uuid("payout_id").references(() => payouts.id),
+    hcsMinute: bigint("hcs_minute", { mode: "bigint" }),
+    createdAt: createdAt(),
+    settledAt: timestamp("settled_at", { withTimezone: true }),
+  },
+  (t) => [
+    check("usage_status", sql`${t.status} in ('open','settled','released')`),
+    uniqueIndex("usage_upstream_request_id_key")
+      .on(t.upstreamRequestId)
+      .where(sql`${t.upstreamRequestId} is not null`),
+    index("usage_status_created_idx").on(t.status, t.createdAt),
+    index("usage_settled_at_idx").on(t.settledAt),
+    index("usage_listing_payout_idx").on(t.listingId, t.payoutId),
+  ],
+);
+
+export const trades = pgTable(
+  "trades",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    keyId: uuid("key_id")
+      .notNull()
+      .references(() => keys.id),
+    listingId: uuid("listing_id")
+      .notNull()
+      .references(() => listings.id),
+    model: text("model").notNull(),
+    tokens: bigint("tokens", { mode: "bigint" }).notNull(),
+    priceMicroPerMtok: bigint("price_micro_per_mtok", { mode: "bigint" }).notNull(),
+    chargeUsdMicro: bigint("charge_usd_micro", { mode: "bigint" }).notNull(),
+    sellerEarningUsdMicro: bigint("seller_earning_usd_micro", { mode: "bigint" }).notNull(),
+    payoutId: uuid("payout_id").references(() => payouts.id),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    check("trades_tokens_positive", sql`${t.tokens} > 0`),
+    index("trades_created_idx").on(t.createdAt),
+    index("trades_listing_payout_idx").on(t.listingId, t.payoutId),
+    index("trades_key_created_idx").on(t.keyId, t.createdAt),
+  ],
+);
+
+export const prepaid = pgTable(
+  "prepaid",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    keyId: uuid("key_id")
+      .notNull()
+      .references(() => keys.id),
+    listingId: uuid("listing_id")
+      .notNull()
+      .references(() => listings.id),
+    model: text("model").notNull(),
+    tokensRemaining: bigint("tokens_remaining", { mode: "bigint" }).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    check("prepaid_tokens_non_negative", sql`${t.tokensRemaining} >= 0`),
+    index("prepaid_key_model_expires_idx").on(t.keyId, t.model, t.expiresAt),
+  ],
+);
+
+export const approvals = pgTable(
+  "approvals",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    keyId: uuid("key_id")
+      .notNull()
+      .references(() => keys.id),
+    kind: text("kind").notNull(),
+    capUsdMicro: bigint("cap_usd_micro", { mode: "bigint" }),
+    deviceCodeCiphertext: text("device_code_ciphertext").notNull(),
+    userCode: text("user_code").notNull(),
+    verificationUriComplete: text("verification_uri_complete").notNull(),
+    intervalS: integer("interval_s").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    status: text("status").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    check("approvals_kind", sql`${t.kind} in ('link_human','raise_cap')`),
+    check("approvals_status", sql`${t.status} in ('pending','approved','denied','expired')`),
+  ],
+);
+
+export type SellerRow = typeof sellers.$inferSelect;
+export type ListingRow = typeof listings.$inferSelect;
+export type KeyRow = typeof keys.$inferSelect;
+export type UsageRow = typeof usage.$inferSelect;
+export type TradeRow = typeof trades.$inferSelect;
+export type PrepaidRow = typeof prepaid.$inferSelect;
+export type PayoutRow = typeof payouts.$inferSelect;
+export type ApprovalRow = typeof approvals.$inferSelect;
