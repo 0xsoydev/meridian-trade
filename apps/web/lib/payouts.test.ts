@@ -35,7 +35,7 @@ test("utcDay and payAt pin the payout to 01:00 UTC the next day", () => {
   assert.equal(payAt("2026-12-31").toISOString(), "2027-01-01T01:00:00.000Z");
 });
 
-test("mirror lookups map accounts and schedule states", async () => {
+test("mirror lookups map accounts and schedule states, and a failed transfer is not executed", async () => {
   const server = createServer((request, response) => {
     const url = request.url ?? "";
     const send = (code: number, body: unknown) => {
@@ -47,6 +47,9 @@ test("mirror lookups map accounts and schedule states", async () => {
     if (url.endsWith("/schedules/0.0.1")) return send(200, { executed_timestamp: "1.0", deleted: false });
     if (url.endsWith("/schedules/0.0.2")) return send(200, { executed_timestamp: null, deleted: true });
     if (url.endsWith("/schedules/0.0.3")) return send(200, { executed_timestamp: null, deleted: false });
+    if (url.endsWith("/schedules/0.0.4")) return send(200, { executed_timestamp: "4.0", deleted: false });
+    if (url.endsWith("timestamp=1.0")) return send(200, { transactions: [{ result: "SUCCESS", scheduled: true }] });
+    if (url.endsWith("timestamp=4.0")) return send(200, { transactions: [{ result: "INSUFFICIENT_TOKEN_BALANCE", scheduled: true }] });
     send(500, {});
   });
   server.listen(0, "127.0.0.1");
@@ -60,6 +63,7 @@ test("mirror lookups map accounts and schedule states", async () => {
     assert.equal(await scheduleState("0.0.1"), "executed");
     assert.equal(await scheduleState("0.0.2"), "cancelled");
     assert.equal(await scheduleState("0.0.3"), "waiting");
+    assert.equal(await scheduleState("0.0.4"), "failed");
   } finally {
     server.close();
   }

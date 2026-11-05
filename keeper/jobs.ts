@@ -136,7 +136,7 @@ export async function sweepStale(): Promise<void> {
 }
 
 let resetDay: string | null = null;
-const warnedOverdue = new Set<string>();
+const printed = new Set<string>();
 
 export async function dailyClose(): Promise<void> {
   const now = Date.now();
@@ -149,10 +149,10 @@ export async function dailyClose(): Promise<void> {
     console.log(`[reset] ${await resetDailyListings()} daily listings reset for ${today}`);
     resetDay = today;
   }
-  for (const line of [...(await payPending()), ...(await checkScheduled())]) console.log(line);
-  for (const id of await overduePending()) {
-    if (warnedOverdue.has(id)) continue;
-    warnedOverdue.add(id);
-    console.log(`[payout] ${id}: still pending after 01:00 UTC, needs an operator`);
+  const overdue = (await overduePending()).map((id) => `[payout] ${id}: still pending after 01:00 UTC, needs an operator`);
+  for (const line of [...(await payPending()), ...(await checkScheduled()), ...overdue]) {
+    if (printed.has(line)) continue;
+    printed.add(line);
+    console.log(line);
   }
 }

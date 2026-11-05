@@ -18,6 +18,7 @@ const DAY_MS = 86_400_000;
 
 const accountSchema = z.object({ account: z.string().regex(/^\d+\.\d+\.\d+$/) });
 const scheduleSchema = z.object({ executed_timestamp: z.string().nullable(), deleted: z.boolean() });
+const transactionsSchema = z.object({ transactions: z.array(z.object({ result: z.string(), scheduled: z.boolean() })) });
 
 export function utcDay(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
@@ -38,11 +39,15 @@ export async function mirrorAccount(evmAddress: string): Promise<string | null> 
   return accountSchema.parse(await response.json()).account;
 }
 
-export async function scheduleState(scheduleId: string): Promise<"executed" | "cancelled" | "waiting"> {
+export async function scheduleState(scheduleId: string): Promise<"executed" | "failed" | "cancelled" | "waiting"> {
   const response = await fetch(mirrorUrl(`/api/v1/schedules/${scheduleId}`));
   if (!response.ok) throw new Error(`mirror returned ${response.status} for schedule ${scheduleId}`);
   const schedule = scheduleSchema.parse(await response.json());
-  return schedule.executed_timestamp ? "executed" : schedule.deleted ? "cancelled" : "waiting";
+  if (!schedule.executed_timestamp) return schedule.deleted ? "cancelled" : "waiting";
+  const executed = await fetch(mirrorUrl(`/api/v1/transactions?timestamp=${schedule.executed_timestamp}`));
+  if (!executed.ok) throw new Error(`mirror returned ${executed.status} for schedule ${scheduleId} execution`);
+  const { transactions } = transactionsSchema.parse(await executed.json());
+  return transactions.some((t) => t.scheduled && t.result === "SUCCESS") ? "executed" : "failed";
 }
 
 export async function closeDay(day: string): Promise<number> {
@@ -184,6 +189,10 @@ export async function checkScheduled(): Promise<string[]> {
     if (!row.scheduleId || Date.now() < payAt(row.day).getTime() + 5 * 60_000) continue;
     const state = await scheduleState(row.scheduleId);
     if (state === "waiting") continue;
+    if (state === "failed") {
+      lines.push(`[payout] ${row.id}: schedule ${row.scheduleId} ran but the transfer failed, needs an operator`);
+      continue;
+    }
     await db()
       .update(payouts)
       .set({ status: state })
