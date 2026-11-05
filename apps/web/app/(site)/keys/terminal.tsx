@@ -317,3 +317,80 @@ export function Keys({ privyReady }: { privyReady: boolean }) {
               </dd>
             </div>
           </dl>
+
+          <div className="mt-5 border-t border-[#D9D9D9] pt-4">
+            <p className="text-[13px] text-[#1E1E1E]">[ deposit ]</p>
+            <p className={`mt-2 text-[13px] leading-5 ${MUTED}`}>
+              Send USDC to the venue treasury on Hedera, then paste the transaction id. The mirror
+              verifies the transfer before it credits.
+            </p>
+            <label className="mt-3 block">
+              <span className={`mb-1 block text-[13px] ${MUTED}`}>Hedera transaction id</span>
+              <input
+                value={depositTx}
+                onChange={(event) => setDepositTx(event.target.value)}
+                placeholder="0.0.12345@1700000000.000000000"
+                className="h-[34px] w-full border border-[#CECECE] bg-white px-2.5 text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF]"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => void deposit()}
+              disabled={!key || !depositTx.trim() || depositing}
+              className="mt-2 h-[34px] w-full bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4] disabled:text-white"
+            >
+              {depositing ? "Verifying…" : "Deposit"}
+            </button>
+            {depositResult ? (
+              depositResult.ok ? (
+                <p className="mt-2 text-[13px] leading-5 text-[#2EBD85]">
+                  credited {usd(BigInt(depositResult.result.amount_usd_micro))} — balance{" "}
+                  {usd(BigInt(depositResult.result.balance_usd_micro))}
+                </p>
+              ) : (
+                <p className="mt-2 text-[13px] leading-5 text-[#F6465D]">{depositResult.message}</p>
+              )
+            ) : null}
+          </div>
+
+          <div className="mt-5 border-t border-[#D9D9D9] pt-4">
+            <p className="text-[13px] text-[#1E1E1E]">[ top up from the agent ]</p>
+            <p className={`mt-2 text-[13px] leading-5 ${MUTED}`}>
+              Your agent pays the x402 quote. With your key attached the credit lands here; with no
+              key the call mints a fresh funded key.
+            </p>
+            <button
+              type="button"
+              onClick={() => void copy("topup", `POST ${origin}/api/v1/topup?usd=1.00`)}
+              className="mt-2 w-full border border-[#CECECE] bg-white px-3 py-2 text-left text-[13px] tabular-nums text-[#1E1E1E] hover:border-[#1743FF]"
+            >
+              {copied === "topup" ? "Copied — run it from your agent." : "Copy top-up call"}
+            </button>
+          </div>
+
+          <div className="mt-5 border-t border-[#D9D9D9] pt-4">
+            <p className="text-[13px] text-[#1E1E1E]">[ wallet ]</p>
+            <button
+              type="button"
+              disabled
+              className="mt-2 h-[34px] w-full border border-[#CECECE] bg-white text-[14px] text-[#C9C9C9]"
+            >
+              Create a key with your wallet
+            </button>
+            <p className={`mt-1.5 text-[13px] leading-5 ${MUTED}`}>
+              {privyReady
+                ? "Privy is configured; the provider mount lands next."
+                : "needs NEXT_PUBLIC_PRIVY_APP_ID before the provider can mount."}
+            </p>
+            <button
+              type="button"
+              disabled
+              className="mt-3 h-[34px] w-full border border-[#CECECE] bg-white text-[14px] text-[#C9C9C9]"
+            >
+              Raise the daily cap with World
+            </button>
+            <p className={`mt-1.5 text-[13px] leading-5 ${MUTED}`}>
+              waits on /api/v1/approvals — the device-code flow is written, the route is not.
+            </p>
+          </div>
+        </div>
