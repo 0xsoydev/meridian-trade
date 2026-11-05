@@ -638,7 +638,7 @@ Parameters: `MAX_LEVERAGE = 5`, `MM_BPS = 500`, `FEE_BPS = 10`, `LIQ_BPS = 50`, 
 
 `test/PerpMarket.t.sol`: long/short PnL; fee to treasury; funding sign and magnitude after warp; initial-margin rejection; liquidation boundary and reward; stale oracle revert; flip revert; OI cap; vault insufficient; oracle move guard and first post; underwater close pays the trader 0.
 
-`script/Deploy.s.sol`: deploy MockUSDC, IndexOracle(keeper), PerpMarket(usdc, oracle, treasury); list `glm-5.3`, `deepseek-v4-flash`, `0gm-1.0-35b-a3b`; fund vault 50,000 USDC.
+`script/Deploy.s.sol`: deploy MockUSDC, IndexOracle(keeper), PerpMarket(usdc, oracle, treasury); list `glm-5.3` and `deepseek-v4.1-flash`; fund vault 50,000 USDC. The demo model's market, `0gm-1.0-35b-a3b`, is listed by the seed.
 
 ---
 
@@ -788,6 +788,7 @@ M9 and M10 sit outside this table: two OAuth flows and two protocol translators 
 - Vercel production with own Privy app; second instance `pnpm dev` on `localhost:3000` with 0G's Privy app id for the credit view.
 - Keeper running ≥ 30 min before judging so the index has history.
 - Seed with `scripts/seed.ts`: two 0G asks on the demo model — a small one 15% under reference and a larger one 3% under — plus a funded router key, vault funding and MockUSDC for judges. Re-running it is idempotent.
+- The demo model is `0gm-1.0-35b-a3b`, the only model the 0G testnet router serves. The seed, the keeper's `MARKETS` and the frontend defaults must all use it. If its provider is unhealthy the day before judging, switch all of them to `glm-5.3` at once.
 - Agent terminal ready with a fresh Hedera agent account (created ≥ 1 min earlier).
 - `ENABLE_OAUTH_RAILS=0` for the demo and the recording; only the 0G and (optionally) one API-key rail appear on stage.
 
@@ -825,6 +826,9 @@ Video (2:30–2:55, human voice):
 - A payout needs the seller's Hedera account to be able to receive USDC. If the scheduled transfer fails at 01:00 UTC (no balance, account not associated), the payout stays `scheduled`; the keeper re-checks it every minute and logs it for an operator.
 - The daily listing reset runs only if the keeper is up when the UTC day changes; a missed day waits for the next reset or a manual run.
 - After keeper downtime longer than `INDEX_WINDOW_MIN`, minutes older than the window are never published to HCS: the index ignores them and `/receipts` cannot show them.
+- An older signed amend can be replayed inside its 5-minute window after a newer one: a listing keeps only its latest `client_nonce`.
+- Each over-cap request starts its own approval; unanswered ones simply expire.
+- Whoever completes an approval link first becomes the key's human (`link_human`); the link and its user code are bearer secrets until they expire.
 - A payout still `pending` after 01:00 UTC on its pay day needs an operator: check the mirror for a schedule with that memo before paying by hand.
 - `usage_root` inclusion proofs are not served.
 - Facilitator chosen at startup; a signed payment cannot fail over mid-flight.
