@@ -154,7 +154,8 @@ async function PostsLedger() {
         toBlock: to,
       });
       for (let i = chunk.length - 1; i >= 0 && found.length < POST_LIMIT; i--) {
-        const log = chunk[i]!;
+        const log = chunk[i];
+        if (!log) continue;
         const model = modelById.get(log.args.market);
         if (!model) continue;
         const key = log.blockNumber.toString();
@@ -163,7 +164,6 @@ async function PostsLedger() {
             const block = await client.getBlock({ blockNumber: log.blockNumber });
             stamps.set(key, new Date(Number(block.timestamp) * 1000).toISOString());
           } catch {
-            // block timestamps are optional; the row falls back to the block number
             stamps.set(key, null);
           }
         }
@@ -182,7 +182,7 @@ async function PostsLedger() {
     }
     rows = found;
   } catch (error) {
-    rows = { error: `0G Chainscan did not answer: ${error instanceof Error ? error.message : "unknown error"}` };
+    rows = { error: `the Galileo RPC did not answer: ${error instanceof Error ? error.message : "unknown error"}` };
   }
 
   return (
@@ -254,7 +254,7 @@ function LedgerFallback({ label }: { label: string }) {
 
 export default async function ReceiptsPage({ searchParams }: { searchParams: Promise<{ model?: string }> }) {
   const { model } = await searchParams;
-  const picked = model && (MARKETS as readonly string[]).includes(model) ? model : DEMO_MODEL;
+  const picked = MARKETS.find((id) => id === model) ?? DEMO_MODEL;
   const config = receiptsConfig();
   const latest = await marketIndexes();
   const configured = Number(process.env.INDEX_WINDOW_MIN ?? 60);
@@ -271,8 +271,8 @@ export default async function ReceiptsPage({ searchParams }: { searchParams: Pro
         </Suspense>
       </div>
       <p className="mt-8 border-t border-[#CECECE] pt-5 text-[13px] leading-[18px] text-[#757575]">
-        Sources: Hedera mirror, HashScan, 0G Chainscan. The recompute runs in your browser. Nothing here trusts our
-        API.
+        Rollups and the recompute read the public Hedera mirror in your browser; the reference price and the
+        on-chain index come from our API and the chain.
       </p>
     </>
   );
