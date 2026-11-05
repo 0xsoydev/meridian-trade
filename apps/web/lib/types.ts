@@ -29,6 +29,7 @@ export type Rail = {
   extraHeaders: Record<string, string>;
   models: ReadonlyArray<RailModel>;
   resetPeriod: "daily" | "monthly" | null;
+  maxTokensField?: "max_tokens" | "max_completion_tokens";
   enabled: boolean;
 };
 

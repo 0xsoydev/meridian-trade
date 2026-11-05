@@ -58,8 +58,8 @@ export type Rail = {
 | Rail | Protocol | Base URL | Auth | Notes |
 |---|---|---|---|---|
 | `0g` | openai-chat | `OG_ROUTER_URL` | key | trust and max-price headers; prices from `/models`; credits reset daily |
-| `anthropic` | openai-chat | `https://api.anthropic.com/v1` | key | Anthropic's OpenAI-compatible layer; Console workspace key; Max/Team API credits are monthly; prices seeded |
-| `openai` | openai-chat | `https://api.openai.com/v1` | key | project key with a budget; no expiry; prices seeded |
+| `anthropic` | openai-chat | `ANTHROPIC_BASE_URL` (default `https://api.anthropic.com/v1`) | key | Anthropic's OpenAI-compatible layer; Console workspace key; Max/Team API credits are monthly; prices seeded as USD per MTok in `rails.ts`; no catalog request |
+| `openai` | openai-chat | `OPENAI_BASE_URL` (default `https://api.openai.com/v1`) | key | project key with a budget; `maxTokensField: max_completion_tokens`; prices seeded as USD per MTok; no catalog request |
 | `openrouter` | openai-chat | `https://openrouter.ai/api/v1` | key | prices from `/models`; `GET /api/v1/key` returns remaining credits; no expiry |
 | `commandcode` | openai-chat | `COMMANDCODE_BASE_URL` | key | their Provider API; plan credits are monthly |
 | `zen` | openai-chat | `ZEN_BASE_URL` | key | OpenCode Zen; no expiry |
@@ -787,6 +787,7 @@ Video (2:30–2:55, human voice):
 
 - The router holds seller credentials (custodial, AES-GCM). Upgrade: TEE-sealed keys.
 - Prices are seeded by hand for `anthropic`, `openai`, `commandcode` and `zen`; their catalogs carry no prices. 0G and OpenRouter are fetched live. Re-check the seeds at kickoff and before judging.
+- Seeded prices are the standard short-context tier. OpenAI doubles prices past 272K input tokens and Claude Haiku 5.5 is five times dearer past 100K, so a flat $/MTok listing priced at the short-context rate loses money on a very large prompt.
 - Failover can move one request between rails with different upstreams and different verifiability. The buyer names a model, not a rail.
 - Cash-denominated credits carry no discount incentive, which is why a rail with `resetPeriod = null` cannot post a market ask.
 - Prompt tokens estimated as `bytes / 3` for reservations; when actual cost exceeds what the reservation plus balance covers, the platform absorbs the rest. Upgrade: tokenizer per model.

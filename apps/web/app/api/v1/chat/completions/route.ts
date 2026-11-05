@@ -253,7 +253,7 @@ async function attempt(input: Attempt): Promise<Response | null> {
   try {
     response = await fetchUpstream(
       candidate,
-      upstreamPayload(input.body, candidate.upstream, input.maxTokens),
+      upstreamPayload(input.body, candidate.upstream, input.maxTokens, candidate.rail.maxTokensField ?? "max_tokens"),
       controller.signal,
     );
   } catch {
@@ -317,9 +317,14 @@ function settlement(input: Attempt, seen: Seen): SettleInput {
   };
 }
 
-function upstreamPayload(body: Body, upstream: string, maxTokens: number): Record<string, unknown> {
+function upstreamPayload(
+  body: Body,
+  upstream: string,
+  maxTokens: number,
+  field: "max_tokens" | "max_completion_tokens",
+): Record<string, unknown> {
   const { stream_options: streamOptions, max_tokens: _maxTokens, max_completion_tokens: _maxCompletion, ...rest } = body;
-  const limit = body.max_completion_tokens === undefined ? { max_tokens: maxTokens } : { max_completion_tokens: maxTokens };
+  const limit = field === "max_completion_tokens" ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens };
   if (body.stream === true) {
     return { ...rest, ...limit, model: upstream, stream: true, stream_options: { ...streamOptions, include_usage: true } };
   }

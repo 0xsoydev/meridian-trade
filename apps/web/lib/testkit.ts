@@ -129,13 +129,14 @@ export async function makeListing(input: {
   credential: string;
   price: bigint | null;
   capacity: bigint;
+  rail?: string;
 }): Promise<string> {
   const row = first(
     await db()
       .insert(listings)
       .values({
         sellerId: input.sellerId,
-        rail: "stub",
+        rail: input.rail ?? "stub",
         model: input.model,
         authKind: "key",
         credentialCiphertext: seal(input.credential),

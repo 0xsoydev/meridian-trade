@@ -39,12 +39,23 @@ const server = createServer((request, response) => {
     return;
   }
   if (request.url?.endsWith("/chat/completions")) {
+    const expected = process.env.STUB_EXPECT_AUTH;
+    if (expected && request.headers.authorization !== expected) {
+      response.writeHead(401, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: { message: "wrong bearer" } }));
+      return;
+    }
     let raw = "";
     request.on("data", (chunk) => {
       raw += String(chunk);
     });
     request.on("end", () => {
-      const id = `chatcmpl-stub-${Date.now()}`;
+      const seen: unknown = raw ? JSON.parse(raw) : null;
+      const fields = typeof seen === "object" && seen !== null ? (seen as Record<string, unknown>) : {};
+      const id =
+        process.env.STUB_ECHO === "1"
+          ? `seen:${String(fields.model)}:mt=${String(fields.max_tokens ?? "-")}:mct=${String(fields.max_completion_tokens ?? "-")}`
+          : `chatcmpl-stub-${Date.now()}`;
       if (wantsStream(raw)) {
         void stream(response, id, request.headers.authorization === "Bearer sk-slow");
         return;

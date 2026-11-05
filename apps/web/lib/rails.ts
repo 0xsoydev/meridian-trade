@@ -1,7 +1,12 @@
-import { parseUsdPerToken, referenceFor } from "./price.ts";
+import { parseUsd, parseUsdPerToken, referenceFor } from "./price.ts";
 import type { Pricing, Rail, RailId, RailModel, RailProtocol, Verifiability } from "./types";
 
-type ModelSpec = { canonical: string; upstream: string };
+type ModelSpec = {
+  canonical: string;
+  upstream: string;
+  listPrompt?: string;
+  listCompletion?: string;
+};
 
 type RailConfig = {
   id: RailId;
@@ -10,6 +15,7 @@ type RailConfig = {
   auth: "key" | "oauth";
   extraHeaders: Record<string, string>;
   resetPeriod: "daily" | "monthly" | null;
+  maxTokensField?: "max_tokens" | "max_completion_tokens";
   models: ReadonlyArray<ModelSpec> | "all";
 };
 
@@ -52,6 +58,35 @@ function configs(): RailConfig[] {
         { canonical: "gpt-6-sol", upstream: "openai/gpt-6-sol" },
       ],
     },
+    {
+      id: "anthropic",
+      protocol: "openai-chat",
+      baseUrl: process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com/v1",
+      auth: "key",
+      extraHeaders: {},
+      resetPeriod: null,
+      models: [
+        { canonical: "claude-opus-5.5", upstream: "claude-opus-5.5", listPrompt: "4", listCompletion: "20" },
+        { canonical: "claude-sonnet-5.5", upstream: "claude-sonnet-5.5", listPrompt: "2", listCompletion: "10" },
+        { canonical: "claude-haiku-5.5", upstream: "claude-haiku-5.5", listPrompt: "0.10", listCompletion: "0.50" },
+        { canonical: "claude-fable-5.1", upstream: "claude-fable-5.1", listPrompt: "10", listCompletion: "50" },
+      ],
+    },
+    {
+      id: "openai",
+      protocol: "openai-chat",
+      baseUrl: process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1",
+      auth: "key",
+      extraHeaders: {},
+      resetPeriod: null,
+      maxTokensField: "max_completion_tokens",
+      models: [
+        { canonical: "gpt-6-sol", upstream: "gpt-6-sol", listPrompt: "2", listCompletion: "10" },
+        { canonical: "gpt-6.1-sol", upstream: "gpt-6.1-sol", listPrompt: "2", listCompletion: "10" },
+        { canonical: "gpt-6.1-terra", upstream: "gpt-6.1-terra", listPrompt: "1", listCompletion: "5" },
+        { canonical: "gpt-6-luna", upstream: "gpt-6-luna", listPrompt: "0.10", listCompletion: "0.50" },
+      ],
+    },
   ];
   const stub = process.env.STUB_RAIL_URL;
   if (stub) {
@@ -81,7 +116,30 @@ function verifiabilityOf(raw: RawModel): Verifiability {
   return raw.verifiability === "TeeML" || raw.verifiability === "TeeTLS" ? raw.verifiability : null;
 }
 
+function seededModels(models: ReadonlyArray<ModelSpec>): RailModel[] | null {
+  const result: RailModel[] = [];
+  for (const spec of models) {
+    if (spec.listPrompt === undefined || spec.listCompletion === undefined) return null;
+    const prompt = parseUsd(spec.listPrompt);
+    const completion = parseUsd(spec.listCompletion);
+    if (prompt === null || completion === null || prompt <= 0n || completion <= 0n) return null;
+    result.push({
+      canonical: spec.canonical,
+      upstream: spec.upstream,
+      listPrompt: prompt,
+      listCompletion: completion,
+      verifiability: null,
+    });
+  }
+  return result.length > 0 ? result : null;
+}
+
 async function loadRail(config: RailConfig): Promise<Rail | null> {
+  if (config.models !== "all" && config.models.some((spec) => spec.listPrompt !== undefined || spec.listCompletion !== undefined)) {
+    const models = seededModels(config.models);
+    return models ? { ...config, models, enabled: true } : null;
+  }
+
   const response = await fetch(`${config.baseUrl}/models`, { signal: AbortSignal.timeout(8000) });
   if (!response.ok) return null;
   const body = (await response.json()) as { data?: RawModel[] };

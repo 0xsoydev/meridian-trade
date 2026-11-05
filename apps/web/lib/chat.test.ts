@@ -47,12 +47,15 @@ before(async () => {
     const id = `chatcmpl-${suffix}-${sequence}`;
     if (call.auth === "Bearer sk-500") return status(response, 500);
     if (call.auth === "Bearer sk-429") return status(response, 429, { "retry-after": "120" });
+    if (call.auth === "Bearer sk-401") return status(response, 401);
     if (call.body.stream !== true) return reply(response, id);
     if (call.auth === "Bearer sk-slow") {
       return void sse(response, chunks(id, ["one ", "two ", "three ", "four "], { prompt_tokens: 10, completion_tokens: 40 }), 400);
     }
     void sse(response, chunks(id, ["po", "ng"], { prompt_tokens: 10, completion_tokens: 5 }));
   });
+  process.env.ANTHROPIC_BASE_URL = process.env.STUB_RAIL_URL;
+  process.env.OPENAI_BASE_URL = process.env.STUB_RAIL_URL;
   sellerId = await makeSeller();
 });
 
@@ -198,6 +201,80 @@ test("a failing cheapest ask fails over to the next one", { skip }, async () => 
   assert.equal((await keyRow(key.id)).balanceUsdMicro, 1_000_000n - 14n);
   assert.equal((await listingRow(bad)).reservedTokens, 0n);
   assert.equal((await listingRow(bad)).status, "active");
+});
+
+test("the anthropic rail is seeded and sends the seller key", { skip }, async () => {
+  const listingId = await makeListing({
+    sellerId,
+    model: "claude-opus-5.5",
+    rail: "anthropic",
+    credential: "sk-anthropic",
+    price: 3_000_000n,
+    capacity: 1_000_000n,
+  });
+  const key = await makeKey(1_000_000n);
+
+  const response = await chat(key.raw, { model: "claude-opus-5.5", messages: ping, max_tokens: 16 });
+  assert.equal(response.status, 200);
+
+  const forwarded = lastCall();
+  assert.equal(forwarded.auth, "Bearer sk-anthropic");
+  assert.equal(forwarded.body.model, "claude-opus-5.5");
+  assert.equal(forwarded.body.max_tokens, 16);
+  assert.equal(forwarded.body.max_completion_tokens, undefined);
+
+  const row = first(await usageOf(key.id));
+  assert.equal(row.rail, "anthropic");
+  assert.equal(row.status, "settled");
+  assert.equal(row.chargeUsdMicro, 27n);
+  assert.equal((await listingRow(listingId)).usedTokens, 9n);
+});
+
+test("the openai rail asks for max_completion_tokens", { skip }, async () => {
+  await makeListing({
+    sellerId,
+    model: "gpt-6-sol",
+    rail: "openai",
+    credential: "sk-openai",
+    price: 3_000_000n,
+    capacity: 1_000_000n,
+  });
+  const key = await makeKey(1_000_000n);
+
+  const response = await chat(key.raw, { model: "gpt-6-sol", messages: ping, max_tokens: 16 });
+  assert.equal(response.status, 200);
+
+  const forwarded = lastCall();
+  assert.equal(forwarded.auth, "Bearer sk-openai");
+  assert.equal(forwarded.body.max_completion_tokens, 16);
+  assert.equal(forwarded.body.max_tokens, undefined);
+});
+
+test("a 401 from a seeded rail invalidates only that listing", { skip }, async () => {
+  const bad = await makeListing({
+    sellerId,
+    model: "claude-sonnet-5.5",
+    rail: "anthropic",
+    credential: "sk-401",
+    price: 1_000_000n,
+    capacity: 1_000_000n,
+  });
+  const good = await makeListing({
+    sellerId,
+    model: "claude-sonnet-5.5",
+    rail: "anthropic",
+    credential: "sk-ok",
+    price: 1_500_000n,
+    capacity: 1_000_000n,
+  });
+  const key = await makeKey(1_000_000n);
+
+  const response = await chat(key.raw, { model: "claude-sonnet-5.5", messages: ping, max_tokens: 16 });
+  assert.equal(response.status, 200);
+  assert.equal((await listingRow(bad)).status, "invalid");
+  const rows = await usageOf(key.id);
+  assert.equal(rows.find((row) => row.listingId === bad)?.status, "released");
+  assert.equal(rows.find((row) => row.listingId === good)?.status, "settled");
 });
 
 test("a 429 throttles the listing and the next ask serves", { skip }, async () => {
