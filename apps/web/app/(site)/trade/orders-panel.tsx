@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { BaseError } from "viem";
 import { useConnection, useSignMessage } from "wagmi";
 import { z } from "zod";
-import { charge, formatMicroPerMtok, formatMtok, formatUsd, parseUsd } from "../../../lib/price.ts";
+import { charge, formatMicroPerMtok, formatMtok, formatUsd, parseUsd, stampFormat } from "../../../lib/price.ts";
 import type { Balance, BookFill } from "../../../lib/types";
 
 const MUTED = "text-[#757575]";
@@ -48,15 +48,6 @@ const failureSchema = z.object({ error: z.object({ message: text }) });
 
 type Listing = z.infer<typeof listingsSchema>["listings"][number];
 
-const stamp = new Intl.DateTimeFormat("en-GB", {
-  timeZone: "UTC",
-  hour12: false,
-  day: "2-digit",
-  month: "short",
-  hour: "2-digit",
-  minute: "2-digit",
-});
-
 async function getJson<T>(url: string, schema: z.ZodType<T>, routerKey: string | null): Promise<T | null> {
   const res = await fetch(url, {
     cache: "no-store",
@@ -67,7 +58,7 @@ async function getJson<T>(url: string, schema: z.ZodType<T>, routerKey: string |
 }
 
 function expiry(iso: string | null): string {
-  return iso === null ? "no expiry" : `expires ${stamp.format(new Date(iso))}`;
+  return iso === null ? "no expiry" : `expires ${stampFormat.format(new Date(iso))}`;
 }
 
 export function OrdersPanel({
@@ -178,7 +169,7 @@ export function OrdersPanel({
   const needsKey = routerKey === null && tab !== "Venue Fills" && !(tab === "Open Orders" && asks.length > 0);
 
   return (
-    <div className="mt-10 border-t border-[#CECECE] pt-8">
+    <div id="orders" className="mt-10 border-t border-[#CECECE] pt-8">
       <p className="text-[13px] text-[#1E1E1E]">[ your account ]</p>
       <h2 className="mt-3 font-serif text-[32px] leading-[1.1] text-[#1E1E1E]">Balances, orders and fills.</h2>
 
@@ -418,7 +409,7 @@ export function OrdersPanel({
             ) : (
               history.map((row, index) => (
                 <div key={`${row.at}-${index}`} className={ROW}>
-                  <span className={MUTED}>{stamp.format(new Date(row.at))}</span>
+                  <span className={MUTED}>{stampFormat.format(new Date(row.at))}</span>
                   <span>{row.model}</span>
                   <span className={row.side === "buy" ? "text-[#2EBD85]" : "text-[#F6465D]"}>{row.side === "buy" ? "Buy" : "Sell"}</span>
                   <span>{formatMicroPerMtok(BigInt(row.price_micro_per_mtok))}</span>
@@ -439,7 +430,7 @@ export function OrdersPanel({
           ) : (
             venueFills.map((fill) => (
               <div key={`${fill.listing_id}-${fill.created_at}`} className={ROW}>
-                <span className={MUTED}>{stamp.format(new Date(fill.created_at))}</span>
+                <span className={MUTED}>{stampFormat.format(new Date(fill.created_at))}</span>
                 <span>{model}</span>
                 <span>{formatMicroPerMtok(BigInt(fill.price_micro_per_mtok))}</span>
                 <span>{formatMtok(BigInt(fill.tokens))}</span>

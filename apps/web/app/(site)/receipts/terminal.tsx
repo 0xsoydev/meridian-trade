@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { formatMtok, formatUsd } from "../../../lib/price.ts";
+import { clockFormat, formatMtok, formatUsd } from "../../../lib/price.ts";
 import {
   HEARTBEAT_S,
   MAX_MOVE_BPS,
@@ -23,14 +23,6 @@ const minuteFormat = new Intl.DateTimeFormat("en-GB", {
   hour12: false,
   hour: "2-digit",
   minute: "2-digit",
-});
-
-const clockFormat = new Intl.DateTimeFormat("en-GB", {
-  timeZone: "UTC",
-  hour12: false,
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
 });
 
 const LINK = "text-[#1743FF] hover:underline";
@@ -258,7 +250,7 @@ export function Receipts({
           ) : null}
         </div>
         <div className="mt-3 overflow-x-auto">
-          <table className="w-full text-left text-[13px]">
+          <table className="w-full whitespace-nowrap text-left text-[13px] [&_td]:pr-4 [&_th]:pr-4">
             <thead>
               <tr className={MUTED}>
                 <th scope="col" className="pb-2 font-normal">UTC</th>

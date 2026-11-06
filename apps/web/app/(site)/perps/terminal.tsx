@@ -8,8 +8,9 @@ import { useConnection, useSwitchChain, useWalletClient } from "wagmi";
 import { mockUsdcAbi } from "../../../lib/abi";
 import { addresses, galileo, publicClient } from "../../../lib/chain";
 import { MARKETS, liquidationPrice, modify, notional, orderPlan, positionAfter, readMarket, readPosition } from "../../../lib/perp";
-import { fillsToPoints, formatMicroPerMtok, formatMtok, formatUsd, parseMtok, parseUsd } from "../../../lib/price";
-import type { Book, ModelRow, PerpFill } from "../../../lib/types";
+import { clockFormat, fillsToPoints, formatMicroPerMtok, formatMtok, formatUsd, parseMtok, parseUsd, stampFormat } from "../../../lib/price";
+import type { Book, PerpFill } from "../../../lib/types";
+import { useModels } from "../models";
 import { FillsChart, INTERVALS, type ScaleMode } from "../trade/chart";
 
 const POLL_MS = 15_000;
@@ -54,30 +55,13 @@ const PARAMS = "MAX_LEVERAGE 5 · MM_BPS 500 · FEE_BPS 10 · LIQ_BPS 50 · fund
 
 const MUTED = "text-[#757575]";
 
-const clockFormat = new Intl.DateTimeFormat("en-GB", {
-  timeZone: "UTC",
-  hour12: false,
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-});
-
-const historyFormat = new Intl.DateTimeFormat("en-GB", {
-  timeZone: "UTC",
-  hour12: false,
-  day: "2-digit",
-  month: "short",
-  hour: "2-digit",
-  minute: "2-digit",
-});
-
 const BOOK_TABS = ["Order Book", "Trades"] as const;
 const STRIP_TABS = ["Positions", "Trade History"] as const;
 
 export function Perps({ initialModel }: { initialModel: string }) {
   const router = useRouter();
   const [model, setModel] = useState(initialModel);
-  const [models, setModels] = useState<ModelRow[]>([]);
+  const models = useModels();
   const [book, setBook] = useState<Book | null>(null);
   const [bookFailed, setBookFailed] = useState<"unknown" | "down" | null>(null);
   const [chartTab, setChartTab] = useState<"Chart" | "Funding">("Chart");
@@ -112,19 +96,6 @@ export function Perps({ initialModel }: { initialModel: string }) {
     }, 1000);
     setClock(clockFormat.format(new Date()));
     return () => window.clearInterval(id);
-  }, []);
-
-  useEffect(() => {
-    let alive = true;
-    fetch("/api/v1/models")
-      .then((res) => (res.ok ? (res.json() as Promise<{ data: ModelRow[] }>) : null))
-      .then((body) => {
-        if (alive && body) setModels(body.data);
-      })
-      .catch(() => undefined);
-    return () => {
-      alive = false;
-    };
   }, []);
 
   const refreshBook = useCallback(async (signal?: AbortSignal) => {
@@ -655,7 +626,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
                 aria-label="size as a percent of displayed depth"
                 className="h-1 w-full accent-[#1743FF]"
               />
-              <span className={`w-14 text-right text-[12px] leading-4 tabular-nums ${MUTED}`}>
+              <span className={`shrink-0 whitespace-nowrap text-right text-[12px] leading-4 tabular-nums ${MUTED}`}>
                 {sliderPct}% of depth
               </span>
             </div>
@@ -974,7 +945,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
                         rel="noreferrer"
                         className={`pr-2 hover:underline ${MUTED}`}
                       >
-                        {historyFormat.format(new Date(fill.at))}
+                        {stampFormat.format(new Date(fill.at))}
                       </a>
                       <span className="pr-2">
                         {fill.model}
