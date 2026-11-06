@@ -173,7 +173,7 @@ export async function POST(request: Request): Promise<Response> {
     .from(sellers)
     .where(eq(sellers.address, verified.address))
     .limit(1);
-  if (!seller) return fail(403, "invalid_request", "verify the seller wallet first");
+  if (!seller) return fail(403, "invalid_request", "this wallet is not a verified seller yet; verify it once with World ID on /sell");
 
   const rails = await catalog();
   const rail = rails.find((entry) => entry.id === intent.data.rail);

@@ -6,6 +6,7 @@ import {
   PrivateKey,
   TokenAssociateTransaction,
 } from "@hiero-ledger/sdk";
+import { isHex } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 
 const ENV_PATH = ".env";
@@ -109,7 +110,8 @@ async function main(): Promise<void> {
 
   if (lines.length > 0) append(lines);
 
-  const galileoAddress = privateKeyToAccount(galileoKey as `0x${string}`).address;
+  if (!isHex(galileoKey) || galileoKey.length !== 66) throw new Error("GALILEO_AGENT_KEY must be a 0x-prefixed 32-byte hex key");
+  const galileoAddress = privateKeyToAccount(galileoKey).address;
   console.log(`galileo addr  ${galileoAddress}`);
   console.log("");
   console.log("next:");
