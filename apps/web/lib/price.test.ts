@@ -37,7 +37,10 @@ test("MTok inputs and token counts round-trip at the boundary", () => {
   assert.equal(formatMtok(1_500_000n), "1.5");
   assert.equal(formatMtok(1_000n), "0.001");
   assert.equal(formatMtok(1_200_000_000n), "1,200");
-  assert.equal(formatUsd(1_400_000n), "$1.4");
+  assert.equal(formatUsd(1_400_000n), "$1.40");
+  assert.equal(formatUsd(700_000n), "$0.70");
+  assert.equal(formatUsd(0n), "$0.00");
+  assert.equal(formatUsd(5_000n), "$0.005");
 });
 
 test("parseUsdPerToken converts USD per token to micro per MTok", () => {
@@ -47,10 +50,11 @@ test("parseUsdPerToken converts USD per token to micro per MTok", () => {
   assert.equal(parseUsdPerToken("0.0000000000005"), 1n);
 });
 
-test("formatMicroPerMtok prints provider decimals", () => {
-  assert.equal(formatMicroPerMtok(1_400_000n), "1.4");
+test("formatMicroPerMtok prints at least cents and keeps provider decimals", () => {
+  assert.equal(formatMicroPerMtok(1_400_000n), "1.40");
   assert.equal(formatMicroPerMtok(90_000n), "0.09");
-  assert.equal(formatMicroPerMtok(1_000_000n), "1");
+  assert.equal(formatMicroPerMtok(1_000_000n), "1.00");
+  assert.equal(formatMicroPerMtok(158_750n), "0.15875");
 });
 
 test("blended weights input three to one", () => {

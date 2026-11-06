@@ -37,8 +37,8 @@ export function formatMicroPerMtok(value: MicroPerMTok): string {
   const negative = value < 0n;
   const abs = negative ? -value : value;
   const whole = abs / 1_000_000n;
-  const fraction = (abs % 1_000_000n).toString().padStart(6, "0").replace(/0+$/, "");
-  return `${negative ? "-" : ""}${whole}${fraction ? `.${fraction}` : ""}`;
+  const fraction = (abs % 1_000_000n).toString().padStart(6, "0").replace(/0+$/, "").padEnd(2, "0");
+  return `${negative ? "-" : ""}${whole}.${fraction}`;
 }
 
 export const formatUsd = (micro: Micro): string => `$${formatMicroPerMtok(micro)}`;
