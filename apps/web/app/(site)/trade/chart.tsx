@@ -93,10 +93,12 @@ export function FillsChart({
   points,
   scale,
   emptyNote = "no fills yet — the first trade prints here",
+  className = "h-[360px]",
 }: {
   points: ChartPoint[];
   scale: ScaleMode;
   emptyNote?: string;
+  className?: string;
 }) {
   const host = useRef<HTMLDivElement | null>(null);
   const chart = useRef<IChartApi | null>(null);
@@ -229,7 +231,7 @@ export function FillsChart({
   }, [scale]);
 
   return (
-    <div className="relative h-[360px] w-full">
+    <div className={`relative w-full ${className}`}>
       <div ref={host} className="absolute inset-0" />
       {points.length === 0 ? (
         <p className="pointer-events-none absolute inset-0 flex items-center justify-center text-[14px] text-[#757575]">
