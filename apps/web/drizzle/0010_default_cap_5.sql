@@ -1,0 +1,1 @@
+ALTER TABLE "keys" ALTER COLUMN "daily_topup_cap_usd_micro" SET DEFAULT 5000000;
