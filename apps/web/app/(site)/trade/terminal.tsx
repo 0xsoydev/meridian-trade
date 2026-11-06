@@ -400,7 +400,9 @@ export function Trade({ initialModel }: { initialModel: string }) {
   };
 
   return (
-    <section className="-mx-4 -my-4 bg-[#F1F1F1] px-4 py-4 lg:-mx-6 lg:-my-6 lg:px-6 lg:py-6">
+    <section className="relative -mx-4 -my-4 bg-[#F1F1F1] px-4 py-4 lg:-mx-6 lg:-my-6 lg:px-10 lg:py-6">
+      <div aria-hidden className="pointer-events-none absolute inset-y-0 left-6 hidden w-px bg-[#CECECE] lg:block" />
+      <div aria-hidden className="pointer-events-none absolute inset-y-0 right-6 hidden w-px bg-[#CECECE] lg:block" />
       <div className="flex flex-wrap items-center gap-x-8 gap-y-3 border border-[#E4E4E4] bg-white px-4 py-3">
         <p className="w-full text-[10px] font-medium tracking-[0.14em] text-[#757575] uppercase">
           Live book · {model}
