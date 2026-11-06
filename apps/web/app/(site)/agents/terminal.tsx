@@ -5,7 +5,7 @@ import { useState } from "react";
 
 const MUTED = "text-[#757575]";
 const LINK = "text-[#1743FF] hover:underline";
-const SHORTLIST = "cheapest:0gm-1.0-35b-a3b,deepseek-v4.1-flash";
+const SHORTLIST = "cheapest:deepseek-v4-flash,0gm-1.0-35b-a3b";
 
 function prompt(base: string, network: string): string {
   return `You can buy LLM inference from the LLM Token Exchange at ${base}. Pay per use over x402 in USDC on Hedera (${network}) from the Hedera account in HEDERA_ACCOUNT_ID / HEDERA_PRIVATE_KEY. No signup is needed.
@@ -24,9 +24,10 @@ import { ExactHederaScheme, PrivateKey, createClientHederaSigner } from "@x402/h
 import OpenAI from "openai";
 
 const BASE = "${base}";
+const secret = process.env.HEDERA_PRIVATE_KEY!.replace(/^0x/, "");
 const signer = createClientHederaSigner(
   process.env.HEDERA_ACCOUNT_ID!,
-  PrivateKey.fromStringECDSA(process.env.HEDERA_PRIVATE_KEY!),
+  secret.startsWith("30") ? PrivateKey.fromStringDer(secret) : PrivateKey.fromStringECDSA(secret),
   { network: "${network}" },
 );
 const pay = wrapFetchWithPayment(fetch, new x402Client().register("${network}", new ExactHederaScheme(signer)));
