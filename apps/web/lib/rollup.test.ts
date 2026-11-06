@@ -4,13 +4,14 @@ import { once } from "node:events";
 import { createServer } from "node:http";
 import test from "node:test";
 import { buildRollups, merkleRoot, type Fill } from "./hcs.ts";
-import { clampIndex, readRollups, recomputeIndex, shouldPost, stepToward, twap, vwap } from "./rollup.ts";
+import { clampIndex, readRollups, recomputeIndex, shouldPost, stepToward, twap } from "./rollup.ts";
 import type { Rollup } from "./types";
 
-const fill = (id: string, model: string, charge: bigint, tokens: bigint): Fill => ({
+const fill = (id: string, model: string, price: bigint, charge: bigint, tokens: bigint): Fill => ({
   id,
   keyId: "00000000-0000-0000-0000-0000000000aa",
   model,
+  price,
   charge,
   tokens,
   usage: true,
@@ -27,8 +28,7 @@ const rollup = (model: string, minute: number, vwapMicro: string): Rollup => ({
   usage_root: "ab".repeat(32),
 });
 
-test("vwap is charge per MTok and twap is the mean over filled minutes", () => {
-  assert.equal(vwap(2_200_000n, 500_000n), 4_400_000n);
+test("twap is the mean over filled minutes", () => {
   assert.equal(twap([rollup("m", 1, "4000000"), rollup("m", 2, "5000000")]), 4_500_000n);
   assert.equal(twap([]), null);
 });
@@ -94,11 +94,16 @@ test("recomputeIndex replays the keeper's math and reports the pending move", ()
   });
 });
 
+test("a minute's vwap weighs prices by tokens, so rounded-up charges on tiny requests do not inflate it", () => {
+  const [tiny] = buildRollups(29_000_000, [fill("00000000-0000-0000-0000-000000000009", "deepseek-v4.1-flash", 50_000n, 2n, 31n)]);
+  assert.deepEqual([tiny?.charge_usd_micro, tiny?.mixed_tokens, tiny?.vwap_micro_per_mtok], ["2", "31", "50000"]);
+});
+
 test("buildRollups groups by model and commits to the rows", () => {
   const fills = [
-    fill("00000000-0000-0000-0000-000000000001", "glm-5.3", 1_000_000n, 250_000n),
-    fill("00000000-0000-0000-0000-000000000002", "glm-5.3", 1_000_000n, 250_000n),
-    fill("00000000-0000-0000-0000-000000000003", "deepseek-v4.1-flash", 300_000n, 1_000_000n),
+    fill("00000000-0000-0000-0000-000000000001", "glm-5.3", 4_000_000n, 1_000_000n, 250_000n),
+    fill("00000000-0000-0000-0000-000000000002", "glm-5.3", 4_000_000n, 1_000_000n, 250_000n),
+    fill("00000000-0000-0000-0000-000000000003", "deepseek-v4.1-flash", 300_000n, 300_000n, 1_000_000n),
   ];
   const [glm, deepseek] = buildRollups(29_000_000, fills);
   assert.deepEqual(

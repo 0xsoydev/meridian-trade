@@ -37,10 +37,6 @@ export function minuteOf(ms: number): number {
   return Math.floor(ms / 60_000);
 }
 
-export function vwap(chargeMicro: bigint, mixedTokens: bigint): bigint {
-  return (chargeMicro * 1_000_000n) / mixedTokens;
-}
-
 export function twap(rollups: ReadonlyArray<Rollup>): bigint | null {
   if (rollups.length === 0) return null;
   const total = rollups.reduce((sum, r) => sum + BigInt(r.vwap_micro_per_mtok), 0n);

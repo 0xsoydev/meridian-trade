@@ -3,16 +3,16 @@ import { Client, PrivateKey, TopicMessageSubmitTransaction } from "@hiero-ledger
 import { inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "./db.ts";
-import { vwap } from "./rollup.ts";
 import { usage } from "./schema.ts";
 import type { Rollup } from "./types";
 
-export type Fill = { id: string; keyId: string; model: string; charge: bigint; tokens: bigint; usage: boolean };
+export type Fill = { id: string; keyId: string; model: string; price: bigint; charge: bigint; tokens: bigint; usage: boolean };
 
 const fillRowSchema = z.object({
   id: z.string().uuid(),
   key_id: z.string().uuid(),
   model: z.string(),
+  price: z.string().regex(/^\d+$/),
   charge: z.string().regex(/^\d+$/),
   tokens: z.string().regex(/^\d+$/),
   source: z.enum(["usage", "trade"]),
@@ -22,12 +22,12 @@ export async function minuteFills(minute: number): Promise<Fill[]> {
   const from = new Date(minute * 60_000).toISOString();
   const to = new Date((minute + 1) * 60_000).toISOString();
   const result = await db().execute(sql`
-    select u.id, u.key_id, l.model, u.charge_usd_micro::text as charge, u.mixed_tokens::text as tokens, 'usage' as source
+    select u.id, u.key_id, l.model, u.price_micro_per_mtok::text as price, u.charge_usd_micro::text as charge, u.mixed_tokens::text as tokens, 'usage' as source
     from usage u join listings l on l.id = u.listing_id
     where u.status = 'settled' and u.charge_usd_micro > 0 and u.mixed_tokens > 0
       and u.settled_at >= ${from}::timestamptz and u.settled_at < ${to}::timestamptz
     union all
-    select t.id, t.key_id, t.model, t.charge_usd_micro::text, t.tokens::text, 'trade'
+    select t.id, t.key_id, t.model, t.price_micro_per_mtok::text, t.charge_usd_micro::text, t.tokens::text, 'trade'
     from trades t
     where t.created_at >= ${from}::timestamptz and t.created_at < ${to}::timestamptz
     order by id
@@ -38,6 +38,7 @@ export async function minuteFills(minute: number): Promise<Fill[]> {
       id: row.id,
       keyId: row.key_id,
       model: row.model,
+      price: BigInt(row.price),
       charge: BigInt(row.charge),
       tokens: BigInt(row.tokens),
       usage: row.source === "usage",
@@ -68,6 +69,7 @@ export function buildRollups(minute: number, fills: ReadonlyArray<Fill>): Rollup
   return [...byModel].map(([model, group]) => {
     const charge = group.reduce((sum, f) => sum + f.charge, 0n);
     const tokens = group.reduce((sum, f) => sum + f.tokens, 0n);
+    const notional = group.reduce((sum, f) => sum + f.price * f.tokens, 0n);
     return {
       v: 1,
       model,
@@ -75,7 +77,7 @@ export function buildRollups(minute: number, fills: ReadonlyArray<Fill>): Rollup
       fills: group.length,
       mixed_tokens: tokens.toString(),
       charge_usd_micro: charge.toString(),
-      vwap_micro_per_mtok: vwap(charge, tokens).toString(),
+      vwap_micro_per_mtok: (notional / tokens).toString(),
       usage_root: merkleRoot(group),
     };
   });
