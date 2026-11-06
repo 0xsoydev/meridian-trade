@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useConnection, useSignMessage } from "wagmi";
 import { z } from "zod";
 import { charge, formatMicroPerMtok, formatMtok, formatUsd, parseMtok, parseUsd, sellerEarning } from "../../../lib/price";
+import { CTA, CORNERS } from "../../../components/landing/hero";
 import { useModels } from "../models";
 
 const TAKE_BPS = 1000n;
@@ -266,9 +267,14 @@ export function Sell() {
                     if (authenticated) void logout();
                     else login();
                   }}
-                  className="mt-2 flex h-[43px] w-[294px] max-w-full items-center justify-center rounded-[6px] bg-black text-[20px] leading-[24px] text-white disabled:bg-[#D4D4D4] disabled:text-white"
+                  className={`${CTA} relative mt-2 inline-flex h-[46px] items-center px-9 disabled:bg-[#D4D4D4] disabled:text-white`}
                 >
-                  {authenticated && address ? `${address.slice(0, 6)}…${address.slice(-4)} · disconnect` : "Connect wallet"}
+                  {CORNERS.map((corner) => (
+                    <span key={corner} aria-hidden className={corner} />
+                  ))}
+                  <span className="text-[16px] text-white">
+                    {authenticated && address ? "Disconnect" : "Connect wallet"}
+                  </span>
                 </button>
                 <p className={`mt-1.5 text-[12px] leading-5 ${MUTED}`}>
                   {authenticated && address ? (
@@ -295,9 +301,14 @@ export function Sell() {
                   type="button"
                   disabled={!address || verified !== null}
                   onClick={() => void startVerify()}
-                  className="mt-2 flex h-[43px] w-[294px] max-w-full items-center justify-center rounded-[6px] bg-black text-[20px] leading-[24px] text-white disabled:bg-[#D4D4D4] disabled:text-white"
+                  className={`${CTA} relative mt-2 inline-flex h-[46px] items-center px-9 disabled:bg-[#D4D4D4] disabled:text-white`}
                 >
-                  {verified ? "Verified" : "Verify with World ID"}
+                  {CORNERS.map((corner) => (
+                    <span key={corner} aria-hidden className={corner} />
+                  ))}
+                  <span className="text-[16px] text-white">
+                    {verified ? "Verified" : "Verify with World ID"}
+                  </span>
                 </button>
                 <p className={`mt-1.5 text-[12px] ${MUTED}`}>
                   {verified ??
@@ -338,7 +349,7 @@ export function Sell() {
                 <p className={`mt-1 text-[13px] leading-5 ${MUTED}`}>
                   The rail decides the capping story and whether listing at market is allowed.
                 </p>
-                <div className="mt-3 flex flex-wrap gap-3">
+                <div className="mt-3 flex flex-wrap gap-4">
                   {RAILS.map((item) => (
                     <button
                       key={item.id}
@@ -346,7 +357,7 @@ export function Sell() {
                       onClick={() => setRail(item.id)}
                       aria-pressed={rail === item.id}
                       title={item.story}
-                      className={`group relative h-[43px] px-5 text-[16px] font-semibold transition-transform duration-200 hover:scale-[0.98] ${
+                      className={`group relative h-[46px] px-6 text-[16px] font-semibold transition-transform duration-200 hover:scale-[0.98] ${
                         rail === item.id
                           ? "bg-black text-white"
                           : "border border-[#CECECE] bg-white text-[#757575] hover:border-[#1743FF] hover:text-[#1E1E1E]"
