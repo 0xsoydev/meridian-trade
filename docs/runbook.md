@@ -134,6 +134,16 @@ WantedBy=default.target
 
 Then `systemctl --user daemon-reload && systemctl --user enable --now celestial-keeper` and `loginctl enable-linger $USER`. Restart it after pulling keeper or `lib` changes.
 
+### Keeper on Render (free)
+
+Render's free plan has no background workers, so the keeper runs as a free web service. When `PORT` is set it answers `ok` on that port, which Render needs before it calls the service live; without `PORT` nothing changes.
+
+- New → Web Service on this repo, branch `main`, Root Directory blank, instance type Free.
+- Build command `pnpm install --frozen-lockfile`; start command `node --experimental-strip-types keeper/main.ts`.
+- Environment: the root `.env` (Add from .env). Render sets `PORT` itself.
+- Free web services stop after 15 minutes without a request, so point a free pinger (cron-job.org or UptimeRobot) at the service's `onrender.com` URL every 5 minutes.
+- Stop the local keeper (`systemctl --user disable --now celestial-keeper`) right before the first deploy goes live, so only one keeper runs.
+
 The agent prints a HashScan link for the top-up, then two approval URLs.
 
 Live checks against the running app (`ROUTER_URL`, default `http://localhost:3000`), on `deepseek-v4.1-flash` unless `MODEL` says otherwise:
