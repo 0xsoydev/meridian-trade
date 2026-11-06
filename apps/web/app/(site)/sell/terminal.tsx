@@ -252,8 +252,14 @@ export function Sell() {
           </div>
 
           <ol>
-            <li className="flex items-baseline gap-3 border-b border-[#D9D9D9] py-5 last:border-b-0">
-              <span className="font-serif text-[22px] leading-none text-[#A3A3A3]">1</span>
+            <li className="relative flex items-baseline gap-3 border-b border-[#D9D9D9] py-5 last:border-b-0">
+              <div
+                aria-hidden
+                className="pointer-events-none absolute bottom-0 left-[11px] top-[31px] w-[2px] bg-[#1743FF]"
+              />
+              <span className="relative z-10 w-6 shrink-0 bg-white text-center font-serif text-[22px] leading-none text-[#A3A3A3]">
+                1
+              </span>
               <div className="min-w-0">
                 <p className="text-[14px] font-semibold text-[#1E1E1E]">Connect your wallet</p>
                 <p className={`mt-1 text-[13px] leading-5 ${MUTED}`}>
@@ -289,8 +295,14 @@ export function Sell() {
               </div>
             </li>
 
-            <li className="flex items-baseline gap-3 border-b border-[#D9D9D9] py-5 last:border-b-0">
-              <span className="font-serif text-[22px] leading-none text-[#A3A3A3]">2</span>
+            <li className="relative flex items-baseline gap-3 border-b border-[#D9D9D9] py-5 last:border-b-0">
+              <div
+                aria-hidden
+                className="pointer-events-none absolute bottom-0 left-[11px] top-0 w-[2px] bg-[#1743FF]"
+              />
+              <span className="relative z-10 w-6 shrink-0 bg-white text-center font-serif text-[22px] leading-none text-[#A3A3A3]">
+                2
+              </span>
               <div className="min-w-0">
                 <p className="text-[14px] font-semibold text-[#1E1E1E]">Verify once with World ID</p>
                 <p className={`mt-1 text-[13px] leading-5 ${MUTED}`}>
@@ -342,8 +354,14 @@ export function Sell() {
               </div>
             </li>
 
-            <li className="flex items-baseline gap-3 border-b border-[#D9D9D9] py-5 last:border-b-0">
-              <span className="font-serif text-[22px] leading-none text-[#A3A3A3]">3</span>
+            <li className="relative flex items-baseline gap-3 border-b border-[#D9D9D9] py-5 last:border-b-0">
+              <div
+                aria-hidden
+                className="pointer-events-none absolute left-[11px] top-0 h-[31px] w-[2px] bg-[#1743FF]"
+              />
+              <span className="relative z-10 w-6 shrink-0 bg-white text-center font-serif text-[22px] leading-none text-[#A3A3A3]">
+                3
+              </span>
               <div className="min-w-0 flex-1">
                 <p className="text-[14px] font-semibold text-[#1E1E1E]">Pick your rail</p>
                 <p className={`mt-1 text-[13px] leading-5 ${MUTED}`}>
