@@ -236,40 +236,22 @@ export function Sell() {
 
   return (
     <section>
-      <h1 className="font-serif text-[50px] leading-[1.05] text-[#1E1E1E]">
-        Sell what <span className="text-[#A3A3A3]">expires</span>
-      </h1>
-      <p className="mt-4 max-w-[425px] text-[14px] leading-[18px] text-black">
-        Credits expire; capacity does not have to. Prove one human once, attach a rail you already
-        pay for, and list the MTokens you will not use. Ten percent keeps the venue running.
-      </p>
-
-      <div className="mt-6 border-t border-[#CECECE] pt-5">
-        <p className="text-[13px] text-[#1E1E1E]">[ how selling works ]</p>
-        <dl className="mt-3 flex flex-wrap gap-x-[26px] gap-y-3">
-          {[
-            ["fee", "10 percent of every fill"],
-            ["payouts", "daily, paid at 01:00 UTC"],
-            ["credentials", "sealed AES-256-GCM, opened per request"],
-            ["rule", "one human, one seller"],
-          ].map(([label, value]) => (
-            <div key={label}>
-              <dt className={`text-[13px] ${MUTED}`}>{label}</dt>
-              <dd className="text-[13px] text-[#1E1E1E]">{value}</dd>
-            </div>
-          ))}
-        </dl>
+      <div className="flex flex-wrap items-center gap-x-8 gap-y-3 rounded-[6px] border border-[#CECECE] bg-white px-4 py-3">
+        <Stat label="Fee" value="10 percent of every fill" />
+        <Stat label="Payouts" value="daily, paid at 01:00 UTC" />
+        <Stat label="Credentials" value="sealed AES-256-GCM, opened per request" />
+        <Stat label="Rule" value="one human, one seller" />
       </div>
 
       <div className="mt-5 grid gap-[17px] lg:grid-cols-[1fr_300px]">
-        <div className="border border-[#CECECE] bg-[#EBEBEB] p-4">
-          <p className="text-[13px] text-[#1E1E1E]">[ seller gate ]</p>
-          <h2 className="mt-2 font-serif text-[22px] leading-tight text-[#1E1E1E]">
-            Prove first, then list.
-          </h2>
+        <div className="rounded-[6px] border border-[#CECECE] bg-white">
+          <div className="flex items-center gap-5 border-b border-[#D9D9D9] px-4 py-2.5 text-[14px]">
+            <span className="font-semibold text-[#1E1E1E]">Seller gate</span>
+            <span className={MUTED}>prove first, then list</span>
+          </div>
 
-          <ol className="mt-4 border-t border-[#D9D9D9]">
-            <li className="flex items-baseline gap-3 border-b border-[#D9D9D9] py-4">
+          <ol>
+            <li className="flex items-baseline gap-3 border-b border-[#D9D9D9] px-4 py-4 last:border-b-0">
               <span className="font-serif text-[22px] leading-none text-[#A3A3A3]">1</span>
               <div className="min-w-0">
                 <p className="text-[14px] font-semibold text-[#1E1E1E]">Connect your wallet</p>
@@ -284,7 +266,7 @@ export function Sell() {
                     if (authenticated) void logout();
                     else login();
                   }}
-                  className="mt-2 border border-[#CECECE] bg-white px-3 py-1.5 text-[13px] text-[#1E1E1E] hover:border-[#1743FF] disabled:text-[#C9C9C9]"
+                  className="mt-2 rounded-[6px] border border-[#CECECE] bg-white px-3 py-1.5 text-[13px] text-[#1E1E1E] hover:border-[#1743FF] disabled:text-[#C9C9C9]"
                 >
                   {authenticated && address ? `${address.slice(0, 6)}…${address.slice(-4)} · disconnect` : "Connect wallet"}
                 </button>
@@ -301,7 +283,7 @@ export function Sell() {
               </div>
             </li>
 
-            <li className="flex items-baseline gap-3 border-b border-[#D9D9D9] py-4">
+            <li className="flex items-baseline gap-3 border-b border-[#D9D9D9] px-4 py-4 last:border-b-0">
               <span className="font-serif text-[22px] leading-none text-[#A3A3A3]">2</span>
               <div className="min-w-0">
                 <p className="text-[14px] font-semibold text-[#1E1E1E]">Verify once with World ID</p>
@@ -313,7 +295,7 @@ export function Sell() {
                   type="button"
                   disabled={!address || verified !== null}
                   onClick={() => void startVerify()}
-                  className="mt-2 border border-[#CECECE] bg-white px-3 py-1.5 text-[13px] text-[#1E1E1E] hover:border-[#1743FF] disabled:text-[#C9C9C9]"
+                  className="mt-2 rounded-[6px] border border-[#CECECE] bg-white px-3 py-1.5 text-[13px] text-[#1E1E1E] hover:border-[#1743FF] disabled:text-[#C9C9C9]"
                 >
                   {verified ? "Verified" : WORLD_BYPASS ? "Verify with World ID (test bypass)" : "Verify with World ID"}
                 </button>
@@ -349,7 +331,7 @@ export function Sell() {
               </div>
             </li>
 
-            <li className="flex items-baseline gap-3 border-b border-[#D9D9D9] py-4">
+            <li className="flex items-baseline gap-3 border-b border-[#D9D9D9] px-4 py-4 last:border-b-0">
               <span className="font-serif text-[22px] leading-none text-[#A3A3A3]">3</span>
               <div className="min-w-0 flex-1">
                 <p className="text-[14px] font-semibold text-[#1E1E1E]">Pick your rail</p>
@@ -395,8 +377,8 @@ export function Sell() {
           </ol>
         </div>
 
-        <div className="border border-[#CECECE] bg-[#EBEBEB] p-4">
-          <div className="flex border border-[#CECECE] bg-white">
+        <div className="flex flex-col self-start overflow-hidden rounded-[6px] border border-[#CECECE] bg-white">
+          <div className="flex border-b border-[#CECECE]">
             <button
               type="button"
               aria-pressed
@@ -412,11 +394,11 @@ export function Sell() {
             </Link>
           </div>
 
-          <div className="mt-4 space-y-4">
+          <div className="space-y-4 p-4">
             <div>
               <span className={`mb-1 block text-[13px] ${MUTED}`}>Model</span>
               <details ref={picker} className="relative">
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-2 border border-[#CECECE] bg-white px-2.5 py-2 [&::-webkit-details-marker]:hidden">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-2 rounded-[6px] border border-[#CECECE] bg-white px-2.5 py-2 [&::-webkit-details-marker]:hidden">
                   <span className="min-w-0">
                     <span className="block truncate text-[14px] text-[#1E1E1E]">
                       {selected?.id ?? "loading models…"}
@@ -427,7 +409,7 @@ export function Sell() {
                   </span>
                   <span aria-hidden className="text-[#757575]">⌄</span>
                 </summary>
-                <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-auto border border-[#CECECE] bg-white py-1">
+                <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-auto rounded-[6px] border border-[#CECECE] bg-white py-1">
                   {railModels.map((row) => (
                     <li key={row.id}>
                       <button
@@ -471,7 +453,7 @@ export function Sell() {
                 disabled={atMarket}
                 inputMode="decimal"
                 placeholder={blended !== null ? formatMicroPerMtok(blended) : "0.00"}
-                className="h-[34px] w-full border border-[#CECECE] bg-white px-2.5 text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF] disabled:text-[#C9C9C9]"
+                className="h-[34px] w-full rounded-[6px] border border-[#CECECE] bg-white px-2.5 text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF] disabled:text-[#C9C9C9]"
               />
             </label>
 
@@ -495,7 +477,7 @@ export function Sell() {
 
             <label className="block">
               <span className={`mb-1 block text-[13px] ${MUTED}`}>Capacity, in MTokens</span>
-              <span className="flex items-center gap-2 border border-[#CECECE] bg-white px-2.5 focus-within:border-[#1743FF]">
+              <span className="flex items-center gap-2 rounded-[6px] border border-[#CECECE] bg-white px-2.5 focus-within:border-[#1743FF]">
                 <input
                   value={capacity}
                   onChange={(event) => setCapacity(event.target.value)}
@@ -568,7 +550,7 @@ export function Sell() {
                   value={credential}
                   onChange={(event) => setCredential(event.target.value)}
                   placeholder={rail === "0g" ? "sk-… from pc.testnet.0g.ai" : "the rail's API key"}
-                  className="h-[34px] w-full border border-[#CECECE] bg-white px-2.5 text-[14px] text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF]"
+                  className="h-[34px] w-full rounded-[6px] border border-[#CECECE] bg-white px-2.5 text-[14px] text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF]"
                 />
               </label>
             )}
@@ -585,7 +567,7 @@ export function Sell() {
               {failure ?? (listed ? `listed ${listed.slice(0, 8)}…, live in the book` : (blocker ?? "the key is probed once, then sealed"))}
             </p>
 
-            <div className="border border-[#CECECE] bg-white px-3 py-3">
+            <div className="rounded-[6px] border border-[#CECECE] bg-white px-3 py-3">
               <p className="text-[14px] text-[#1E1E1E]">Your key never leaves the server.</p>
               <p className="mt-1 text-[13px] leading-5 text-[#757575]">
                 It is probed once, then sealed with AES-256-GCM and opened only inside the request
@@ -596,124 +578,126 @@ export function Sell() {
         </div>
       </div>
 
-      <div className="mt-10 border-t border-[#CECECE] pt-8">
-        <p className="text-[13px] text-[#1E1E1E]">[ your listings ]</p>
-        <h2 className="mt-3 font-serif text-[32px] leading-[1.1] text-[#1E1E1E]">
-          Capacity, on the record.
-        </h2>
-
-        <div className="mt-4 flex items-center gap-5">
+      <div className="mt-5 overflow-hidden rounded-[6px] border border-[#CECECE] bg-white">
+        <div className="flex flex-wrap items-center gap-5 border-b border-[#D9D9D9] px-4 py-2.5 text-[14px]">
           {(["listings", "payouts"] as const).map((item) => (
             <button
               key={item}
               type="button"
               onClick={() => setTab(item)}
               aria-pressed={tab === item}
-              className={`text-[14px] ${
+              className={`${
                 tab === item
-                  ? "text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
+                  ? "font-semibold text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
                   : "text-[#757575] hover:text-[#1E1E1E]"
               }`}
             >
               {item}
             </button>
           ))}
-          <span className={`text-[13px] ${MUTED}`}>
+          <span className={`ml-auto text-[13px] ${MUTED}`}>
             {tab === "listings"
               ? `${mine.length} listed`
               : `${formatUsd(BigInt(paid?.unpaid_usd_micro ?? "0"))} earned and unpaid · paid daily, 01:00 UTC`}
           </span>
         </div>
 
-        <div className="mt-4">
-          {tab === "listings" ? (
-            <>
-              <div className={`hidden border-y border-[#CECECE] py-2 text-[12px] md:grid md:grid-cols-5 ${MUTED}`}>
-                {["Market", "Rail", "Price", "Left", "Status"].map((head, i) => (
-                  <span key={head} className={i === 0 ? "pr-2" : "text-right"}>
-                    {head}
-                  </span>
-                ))}
-              </div>
-              {mine.length === 0 ? (
-                <p className="border-t border-[#CECECE] py-5 text-[14px] text-[#757575] md:border-t-0">
-                  {address ? "Nothing listed for this seller yet." : "Connect the seller wallet to see its listings."}
-                </p>
-              ) : (
-                mine.map((row) => {
-                  const total = BigInt(row.capacity_tokens);
-                  const left = total - BigInt(row.used_tokens) - BigInt(row.reserved_tokens);
-                  return (
-                    <div
-                      key={row.listing_id}
-                      className="grid grid-cols-3 gap-y-1 border-t border-[#CECECE] py-3 text-[13px] tabular-nums text-[#1E1E1E] md:grid-cols-5"
-                    >
-                      <span className="pr-2">{row.model}</span>
-                      <span className="text-right">{row.rail}</span>
-                      <span className="text-right">
-                        {row.price_micro_per_mtok === null ? "market" : formatMicroPerMtok(BigInt(row.price_micro_per_mtok))}
-                      </span>
-                      <span className="text-right">
-                        {formatMtok(left)} of {formatMtok(total)} MTok
-                      </span>
-                      <span className={`text-right ${row.status === "active" ? "text-[#2EBD85]" : MUTED}`}>{row.status}</span>
-                    </div>
-                  );
-                })
-              )}
-              {mine.length > 0 ? (
-                <p className={`border-t border-[#CECECE] pt-3 text-[13px] ${MUTED}`}>
-                  Amend or cancel an ask under Open Orders on{" "}
-                  <Link href="/trade" className="text-[#1743FF] hover:underline">
-                    Trade
-                  </Link>
-                  .
-                </p>
-              ) : null}
-            </>
-          ) : (
-            <>
-              <div className={`hidden border-y border-[#CECECE] py-2 text-[12px] md:grid md:grid-cols-4 ${MUTED}`}>
-                {["Day", "Amount", "Schedule", "Status"].map((head, i) => (
-                  <span key={head} className={i === 0 ? "pr-2" : "text-right"}>
-                    {head}
-                  </span>
-                ))}
-              </div>
-              {!paid || paid.data.length === 0 ? (
-                <p className="border-t border-[#CECECE] py-5 text-[14px] text-[#757575] md:border-t-0">
-                  No payouts yet. The keeper closes the day at 00:00 UTC; schedules land by 01:00.
-                </p>
-              ) : (
-                paid.data.map((row) => (
+        {tab === "listings" ? (
+          <>
+            <div className={`hidden gap-x-3 px-4 py-1.5 text-[11px] md:grid md:grid-cols-5 ${MUTED}`}>
+              {["Market", "Rail", "Price", "Left", "Status"].map((head, i) => (
+                <span key={head} className={i === 0 ? "pr-2" : "text-right"}>
+                  {head}
+                </span>
+              ))}
+            </div>
+            {mine.length === 0 ? (
+              <p className="border-t border-[#D9D9D9] px-4 py-5 text-[13px] text-[#757575] md:border-t-0">
+                {address ? "Nothing listed for this seller yet." : "Connect the seller wallet to see its listings."}
+              </p>
+            ) : (
+              mine.map((row) => {
+                const total = BigInt(row.capacity_tokens);
+                const left = total - BigInt(row.used_tokens) - BigInt(row.reserved_tokens);
+                return (
                   <div
-                    key={row.day}
-                    className="grid grid-cols-2 gap-y-1 border-t border-[#CECECE] py-3 text-[13px] tabular-nums text-[#1E1E1E] md:grid-cols-4"
+                    key={row.listing_id}
+                    className="grid grid-cols-3 gap-x-3 gap-y-1 border-t border-[#D9D9D9] px-4 py-2.5 text-[13px] tabular-nums text-[#1E1E1E] md:grid-cols-5"
                   >
-                    <span className="pr-2">{row.day}</span>
-                    <span className="text-right">{formatUsd(BigInt(row.amount_usd_micro))}</span>
+                    <span className="pr-2">{row.model}</span>
+                    <span className="text-right">{row.rail}</span>
                     <span className="text-right">
-                      {row.schedule_id ? (
-                        <a
-                          href={`https://hashscan.io/${paid.network}/schedule/${row.schedule_id}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-[#1743FF] hover:underline"
-                        >
-                          {row.schedule_id}
-                        </a>
-                      ) : (
-                        "—"
-                      )}
+                      {row.price_micro_per_mtok === null ? "market" : formatMicroPerMtok(BigInt(row.price_micro_per_mtok))}
                     </span>
-                    <span className={`text-right ${row.status === "executed" ? "text-[#2EBD85]" : MUTED}`}>{row.status}</span>
+                    <span className="text-right">
+                      {formatMtok(left)} of {formatMtok(total)} MTok
+                    </span>
+                    <span className={`text-right ${row.status === "active" ? "text-[#2EBD85]" : MUTED}`}>{row.status}</span>
                   </div>
-                ))
-              )}
-            </>
-          )}
-        </div>
+                );
+              })
+            )}
+            {mine.length > 0 ? (
+              <p className={`border-t border-[#D9D9D9] px-4 py-2 text-[12px] ${MUTED}`}>
+                Amend or cancel an ask under Open Orders on{" "}
+                <Link href="/trade" className="text-[#1743FF] hover:underline">
+                  Trade
+                </Link>
+                .
+              </p>
+            ) : null}
+          </>
+        ) : (
+          <>
+            <div className={`hidden gap-x-3 px-4 py-1.5 text-[11px] md:grid md:grid-cols-4 ${MUTED}`}>
+              {["Day", "Amount", "Schedule", "Status"].map((head, i) => (
+                <span key={head} className={i === 0 ? "pr-2" : "text-right"}>
+                  {head}
+                </span>
+              ))}
+            </div>
+            {!paid || paid.data.length === 0 ? (
+              <p className="border-t border-[#D9D9D9] px-4 py-5 text-[13px] text-[#757575] md:border-t-0">
+                No payouts yet. The keeper closes the day at 00:00 UTC; schedules land by 01:00.
+              </p>
+            ) : (
+              paid.data.map((row) => (
+                <div
+                  key={row.day}
+                  className="grid grid-cols-2 gap-x-3 gap-y-1 border-t border-[#D9D9D9] px-4 py-2.5 text-[13px] tabular-nums text-[#1E1E1E] md:grid-cols-4"
+                >
+                  <span className="pr-2">{row.day}</span>
+                  <span className="text-right">{formatUsd(BigInt(row.amount_usd_micro))}</span>
+                  <span className="text-right">
+                    {row.schedule_id ? (
+                      <a
+                        href={`https://hashscan.io/${paid.network}/schedule/${row.schedule_id}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[#1743FF] hover:underline"
+                      >
+                        {row.schedule_id}
+                      </a>
+                    ) : (
+                      "—"
+                    )}
+                  </span>
+                  <span className={`text-right ${row.status === "executed" ? "text-[#2EBD85]" : MUTED}`}>{row.status}</span>
+                </div>
+              ))
+            )}
+          </>
+        )}
       </div>
     </section>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-[11px] leading-4 text-[#757575]">{label}</p>
+      <p className="text-[14px] font-semibold text-[#1E1E1E]">{value}</p>
+    </div>
   );
 }
