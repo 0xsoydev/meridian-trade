@@ -288,10 +288,15 @@ export function Sell() {
                 >
                   {authenticated && address ? `${address.slice(0, 6)}…${address.slice(-4)} · disconnect` : "Connect wallet"}
                 </button>
-                <p className={`mt-1.5 text-[12px] ${MUTED}`}>
-                  {authenticated && address
-                    ? "this address is your seller identity"
-                    : "email gets an embedded wallet; any EVM wallet works"}
+                <p className={`mt-1.5 text-[12px] leading-5 ${MUTED}`}>
+                  {authenticated && address ? (
+                    <>
+                      seller identity{" "}
+                      <span className="tabular-nums text-[#1E1E1E] break-all">{address}</span>
+                    </>
+                  ) : (
+                    "email gets an embedded wallet; any EVM wallet works"
+                  )}
                 </p>
               </div>
             </li>
