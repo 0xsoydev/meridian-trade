@@ -10,7 +10,7 @@ import { marketId } from "../../apps/web/lib/perp.ts";
 
 const NETWORK = "hedera:testnet";
 const ROUTER_URL = (process.env.ROUTER_URL ?? process.env.PUBLIC_HOST ?? "http://localhost:3000").replace(/\/+$/, "");
-const MODEL = process.env.MODEL ?? "0gm-1.0-35b-a3b";
+const MODEL = process.env.MODEL ?? "deepseek-v4.1-flash";
 const TOPUP_USD = "0.50";
 const AUTO_TOPUP_MICRO = "1000000";
 const DAILY_CAP_MICRO = "2000000";

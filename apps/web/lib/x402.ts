@@ -25,33 +25,63 @@ function network(): Network {
   return value;
 }
 
-let server: Promise<x402ResourceServer> | null = null;
+const FACILITATOR_TIMEOUT_MS = 20_000;
+const FACILITATOR_BENCH_MS = 300_000;
+const servers = new Map<string, Promise<x402ResourceServer>>();
+const benchedUntil = new Map<string, number>();
 
-export function resourceServer(): Promise<x402ResourceServer> {
-  if (!server) {
-    const urls = (process.env.X402_FACILITATOR_URLS ?? DEFAULT_FACILITATORS)
-      .split(",")
-      .map((url) => url.trim())
-      .filter((url) => url.length > 0);
-    const instance = new x402ResourceServer(urls.map((url) => new HTTPFacilitatorClient({ url }))).register(
-      network(),
-      new ExactHederaScheme(),
-    );
-    server = instance.initialize().then(
-      () => instance,
-      (error: unknown) => {
-        server = null;
-        throw error;
-      },
-    );
-  }
-  return server;
+function facilitatorUrls(): string[] {
+  return (process.env.X402_FACILITATOR_URLS ?? DEFAULT_FACILITATORS)
+    .split(",")
+    .map((url) => url.trim())
+    .filter((url) => url.length > 0);
 }
 
-async function requirementsFor(amountMicro: bigint): Promise<PaymentRequirements[]> {
+function benched(url: string): boolean {
+  return (benchedUntil.get(url) ?? 0) > Date.now();
+}
+
+function serverFor(url: string): Promise<x402ResourceServer> {
+  const cached = servers.get(url);
+  if (cached) return cached;
+  const instance = new x402ResourceServer(new HTTPFacilitatorClient({ url, timeoutMs: FACILITATOR_TIMEOUT_MS })).register(
+    network(),
+    new ExactHederaScheme(),
+  );
+  const ready = instance.initialize().then(
+    () => instance,
+    (error: unknown) => {
+      servers.delete(url);
+      benchedUntil.set(url, Date.now() + FACILITATOR_BENCH_MS);
+      throw error;
+    },
+  );
+  servers.set(url, ready);
+  return ready;
+}
+
+function failure(error: unknown): string {
+  if (!(error instanceof Error)) return "settlement failed";
+  return error.cause instanceof Error ? `${error.message}: ${error.cause.message}` : error.message;
+}
+
+async function offeringServer(): Promise<x402ResourceServer> {
+  let lastError: unknown = new Error("every x402 facilitator is unavailable");
+  for (const url of facilitatorUrls()) {
+    if (benched(url)) continue;
+    try {
+      return await serverFor(url);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
+}
+
+function requirementsFor(server: x402ResourceServer, amountMicro: bigint): Promise<PaymentRequirements[]> {
   const payTo = process.env.HEDERA_TREASURY_ID;
   if (!payTo) throw new Error("HEDERA_TREASURY_ID is not set");
-  return (await resourceServer()).buildPaymentRequirements({
+  return server.buildPaymentRequirements({
     scheme: "exact",
     network: network(),
     payTo,
@@ -61,8 +91,9 @@ async function requirementsFor(amountMicro: bigint): Promise<PaymentRequirements
 
 export async function paymentRequired(amountMicro: bigint, resourceUrl: string, message: string): Promise<Response> {
   try {
-    const required = await (await resourceServer()).createPaymentRequiredResponse(
-      await requirementsFor(amountMicro),
+    const server = await offeringServer();
+    const required = await server.createPaymentRequiredResponse(
+      await requirementsFor(server, amountMicro),
       { url: resourceUrl, description: "Router balance top-up", mimeType: "application/json" },
       message,
     );
@@ -87,23 +118,33 @@ export async function settleTopup(
     if (amountMicro < bounds.minMicro || amountMicro > bounds.maxMicro) {
       return { error: `payment must be between ${bounds.minMicro} and ${bounds.maxMicro} micro USD` };
     }
-    const resource = await resourceServer();
-    const match = resource.findMatchingRequirements(await requirementsFor(amountMicro), payload);
-    if (!match) return { error: "payment does not match the offer" };
-    const verified = await resource.verifyPayment(payload, match);
-    if (!verified.isValid) return { error: verified.invalidMessage ?? verified.invalidReason ?? "payment rejected" };
-    const settled = await resource.settlePayment(payload, match);
-    if (!settled.success || !settled.transaction) {
-      return { error: settled.errorMessage ?? settled.errorReason ?? "settlement failed" };
+    for (const url of facilitatorUrls()) {
+      if (benched(url) && !servers.has(url)) continue;
+      const resource = await serverFor(url).catch(() => null);
+      if (!resource) continue;
+      const match = resource.findMatchingRequirements(await requirementsFor(resource, amountMicro), payload);
+      if (!match) continue;
+      try {
+        const verified = await resource.verifyPayment(payload, match);
+        if (!verified.isValid) return { error: verified.invalidMessage ?? verified.invalidReason ?? "payment rejected" };
+        const settled = await resource.settlePayment(payload, match);
+        if (!settled.success || !settled.transaction) {
+          return { error: settled.errorMessage ?? settled.errorReason ?? "settlement failed" };
+        }
+        return {
+          txId: settled.transaction,
+          payer: settled.payer ?? verified.payer ?? "unknown",
+          amountMicro,
+          responseHeader: encodePaymentResponseHeader(settled),
+        };
+      } catch (error) {
+        benchedUntil.set(url, Date.now() + FACILITATOR_BENCH_MS);
+        return { error: failure(error) };
+      }
     }
-    return {
-      txId: settled.transaction,
-      payer: settled.payer ?? verified.payer ?? "unknown",
-      amountMicro,
-      responseHeader: encodePaymentResponseHeader(settled),
-    };
+    return { error: "payment does not match the offer" };
   } catch (error) {
-    return { error: error instanceof Error ? error.message : "settlement failed" };
+    return { error: failure(error) };
   }
 }
 

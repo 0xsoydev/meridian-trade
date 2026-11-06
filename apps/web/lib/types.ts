@@ -80,6 +80,7 @@ export type ModelRow = {
   list_prompt_micro_per_mtok: string;
   list_completion_micro_per_mtok: string;
   reference_blended_micro_per_mtok: string;
+  list_ceiling_micro_per_mtok: string;
   best_ask_micro_per_mtok: string | null;
   index_micro_per_mtok: string | null;
   available_tokens: string;

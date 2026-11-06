@@ -54,6 +54,15 @@ test("a limit buy fills asks at or below its price and rests the rest, holding e
   assert.deepEqual(levels, [{ price_micro_per_mtok: "1500000", tokens: "200000" }]);
 });
 
+test("a limit above the model's list price is refused before anything fills", { skip }, async () => {
+  const response = await trade(
+    jsonRequest("http://localhost/api/v1/trades", buyer.raw, { model: MODEL, tokens: "1000", limit_price_micro_per_mtok: "2150001" }),
+  );
+  assert.equal(response.status, 400);
+  assert.match(((await response.json()) as { error: { message: string } }).error.message, /list price/);
+  assert.equal(await balance(), 600_000n);
+});
+
 test("a new ask at or below the best bid fills it at the bid's price, out of the hold", { skip }, async () => {
   const under = await makeListing({ sellerId, model: MODEL, credential: "sk-ok", price: 1_200_000n, capacity: 150_000n });
   assert.equal(await matchBids(MODEL), 1);

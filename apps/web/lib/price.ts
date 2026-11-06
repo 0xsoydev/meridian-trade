@@ -61,6 +61,18 @@ export function blended(p: Pricing): MicroPerMTok {
   return (3n * p.prompt + p.completion) / 4n;
 }
 
+export function listCeiling(model: string, rails: ReadonlyArray<Rail>): MicroPerMTok | null {
+  let ceiling: MicroPerMTok | null = null;
+  for (const rail of rails) {
+    if (!rail.enabled) continue;
+    const match = rail.models.find((entry) => entry.canonical === model);
+    if (!match) continue;
+    const price = blended({ prompt: match.listPrompt, completion: match.listCompletion });
+    if (ceiling === null || price > ceiling) ceiling = price;
+  }
+  return ceiling;
+}
+
 export function referenceFor(
   model: string,
   rails: ReadonlyArray<Rail>,

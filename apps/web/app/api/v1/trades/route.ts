@@ -4,8 +4,8 @@ import { restBid } from "../../../../lib/bids.ts";
 import { asks, type Ask } from "../../../../lib/book.ts";
 import { fail } from "../../../../lib/errors.ts";
 import { fill, nextUtcMidnight, prepaidHolding } from "../../../../lib/ledger.ts";
-import { charge, sellerEarning } from "../../../../lib/price.ts";
-import { reference } from "../../../../lib/rails.ts";
+import { charge, formatMicroPerMtok, listCeiling, sellerEarning } from "../../../../lib/price.ts";
+import { catalog, reference } from "../../../../lib/rails.ts";
 import { applyPayment, paymentDue } from "../../../../lib/x402.ts";
 import type { Trade, TradeResult } from "../../../../lib/types";
 
@@ -32,6 +32,10 @@ export async function POST(request: Request): Promise<Response> {
     return fail(400, "invalid_request", `tokens must be between 1 and ${MAX_TRADE_TOKENS}`);
   }
   if (!(await reference(model))) return fail(404, "model_not_found", `unknown model: ${model}`);
+  const ceiling = listCeiling(model, await catalog());
+  if (limit !== null && ceiling !== null && limit > ceiling) {
+    return fail(400, "invalid_request", `the limit is above the ${formatMicroPerMtok(ceiling)} USD/MTok list price, and no ask can sit above it`);
+  }
 
   const payment = await applyPayment(request, key);
   if ("error" in payment) return payment.error;
