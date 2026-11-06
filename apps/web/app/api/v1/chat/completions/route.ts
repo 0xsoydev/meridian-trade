@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { and, eq, gt, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { routerKey } from "../../../../../lib/auth.ts";
-import { asks, cheapestOf } from "../../../../../lib/book.ts";
+import { asks, byCheapest } from "../../../../../lib/book.ts";
 import { db } from "../../../../../lib/db.ts";
 import { fail } from "../../../../../lib/errors.ts";
 import { release, reserve, reservePrepaid, settle, type SettleInput } from "../../../../../lib/ledger.ts";
@@ -59,6 +59,7 @@ type Usage = z.infer<typeof usageSchema>;
 type Seen = { usage: Usage | null; upstreamId: string | null; forwardedBytes: number };
 
 type Candidate = {
+  model: string;
   listingId: string;
   rail: Rail;
   upstream: string;
@@ -106,17 +107,18 @@ export async function POST(request: Request): Promise<Response> {
     ? requested.slice("cheapest:".length).split(",").map((id) => id.trim()).filter(Boolean)
     : null;
   if (shortlist?.length === 0) return fail(400, "invalid_request", "cheapest: needs at least one model");
-  const model = shortlist ? cheapestOf(await asks(null), shortlist) : requested;
-  if (!model) return fail(404, "no_liquidity", `no asks for any of ${shortlist?.join(", ")}`);
-  if (!(await reference(model))) return fail(404, "model_not_found", `unknown model: ${model}`);
+  const known: string[] = [];
+  for (const id of shortlist ? byCheapest(await asks(null), shortlist) : [requested]) {
+    if (await reference(id)) known.push(id);
+  }
+  if (known.length === 0) return fail(404, "model_not_found", `unknown model: ${requested}`);
 
   const payment = await applyPayment(request, key);
   if ("error" in payment) return payment.error;
   const headers: Record<string, string> = payment.header ? { "PAYMENT-RESPONSE": payment.header } : {};
-  if (shortlist) headers["X-Router-Model"] = model;
 
-  const candidates = await candidatesFor(key.id, model);
-  if (candidates.length === 0) return fail(404, "no_liquidity", `no asks for ${model}`);
+  const candidates = (await Promise.all(known.map((id) => candidatesFor(key.id, id)))).flat();
+  if (candidates.length === 0) return fail(404, "no_liquidity", `no asks for ${requested}`);
 
   const promptBytes = encoder.encode(JSON.stringify(body.messages)).length;
   const maxTokens = body.max_completion_tokens ?? body.max_tokens ?? 4096;
@@ -150,6 +152,7 @@ export async function POST(request: Request): Promise<Response> {
     }
     if (!usageId) continue;
 
+    if (shortlist) headers["X-Router-Model"] = candidate.model;
     const outcome = await attempt({
       request,
       candidate,
@@ -161,7 +164,7 @@ export async function POST(request: Request): Promise<Response> {
       started,
       headers,
     });
-    if (outcome) return outcome;
+    if (outcome && !(shortlist && outcome.status === 404)) return outcome;
   }
 
   return fail(502, "upstream_failed", "every candidate failed");
@@ -197,6 +200,7 @@ async function candidatesFor(keyId: string, model: string): Promise<Candidate[]>
     const entry = rail?.models.find((candidate) => candidate.canonical === model);
     if (!rail || !entry) continue;
     fromPrepaid.push({
+      model,
       listingId: row.listingId,
       rail,
       upstream: entry.upstream,
@@ -208,6 +212,7 @@ async function candidatesFor(keyId: string, model: string): Promise<Candidate[]>
   }
 
   const spot: Candidate[] = (await asks(model)).slice(0, SPOT_CANDIDATES).map((ask) => ({
+    model,
     listingId: ask.listingId,
     rail: ask.rail,
     upstream: ask.upstream,

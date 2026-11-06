@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { cheapestOf } from "./book.ts";
+import { byCheapest } from "./book.ts";
 
-test("cheapestOf picks the first sorted ask whose model is on the shortlist", () => {
-  const sorted = [{ model: "a" }, { model: "b" }, { model: "c" }];
-  assert.equal(cheapestOf(sorted, ["c", "b"]), "b");
-  assert.equal(cheapestOf(sorted, ["c"]), "c");
-  assert.equal(cheapestOf(sorted, ["z"]), null);
-  assert.equal(cheapestOf([], ["a"]), null);
+test("byCheapest orders the shortlist by best ask, then models with no asks", () => {
+  const sorted = [{ model: "a" }, { model: "b" }, { model: "a" }, { model: "c" }];
+  assert.deepEqual(byCheapest(sorted, ["c", "b"]), ["b", "c"]);
+  assert.deepEqual(byCheapest(sorted, ["z", "c"]), ["c", "z"]);
+  assert.deepEqual(byCheapest(sorted, ["a", "c", "b"]), ["a", "b", "c"]);
+  assert.deepEqual(byCheapest([], ["x", "y"]), ["x", "y"]);
 });

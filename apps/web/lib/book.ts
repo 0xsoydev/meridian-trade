@@ -18,8 +18,9 @@ export type Ask = {
   createdAt: Date;
 };
 
-export function cheapestOf(sorted: ReadonlyArray<Pick<Ask, "model">>, models: ReadonlyArray<string>): string | null {
-  return sorted.find((ask) => models.includes(ask.model))?.model ?? null;
+export function byCheapest(sorted: ReadonlyArray<Pick<Ask, "model">>, models: ReadonlyArray<string>): string[] {
+  const ranked = [...new Set(sorted.map((ask) => ask.model).filter((model) => models.includes(model)))];
+  return [...ranked, ...models.filter((model) => !ranked.includes(model))];
 }
 
 export async function asks(model: string | null): Promise<Ask[]> {
