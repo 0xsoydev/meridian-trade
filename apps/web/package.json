@@ -13,6 +13,7 @@
     "hedera:setup": "node --experimental-strip-types --env-file-if-exists=.env scripts/hedera-setup.ts",
     "seed": "node --experimental-strip-types --env-file-if-exists=.env scripts/seed.ts",
     "e2e": "node --experimental-strip-types --env-file-if-exists=.env scripts/e2e.ts",
+    "og-e2e": "node --experimental-strip-types --env-file-if-exists=.env scripts/og-e2e.ts",
     "perps-e2e": "node --experimental-strip-types --env-file-if-exists=.env scripts/perps-e2e.ts",
     "agent:setup": "node --experimental-strip-types --env-file-if-exists=.env scripts/hedera-agent.ts"
   },

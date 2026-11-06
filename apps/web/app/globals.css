@@ -11,21 +11,14 @@
   initial-value: 0px;
 }
 
-@media (min-width: 1024px) and (max-width: 1727.98px) {
+@media (min-width: 1024px) {
   .desktop-wrap {
-    height: calc(4548 / 1728 * 100vw);
+    height: calc(4388 / 1728 * 100vw);
     overflow: hidden;
   }
   .desktop-canvas {
     --vw: 100vw;
     transform: scale(tan(atan2(var(--vw), 1728px)));
     transform-origin: top left;
-  }
-}
-
-@media (min-width: 1728px) {
-  .desktop-wrap {
-    display: flex;
-    justify-content: center;
   }
 }

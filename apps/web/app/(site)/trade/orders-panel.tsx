@@ -12,6 +12,7 @@ const MUTED = "text-[#757575]";
 const POLL_MS = 15_000;
 const TABS = ["Balances", "Open Orders", "Trade History", "Venue Fills"] as const;
 const ROW = "grid grid-cols-3 gap-x-3 gap-y-1 border-t border-[#CECECE] py-3 text-[13px] tabular-nums text-[#1E1E1E] md:grid-cols-6";
+const SCROLL = "max-h-[225px] overflow-y-auto";
 const HEAD = `hidden border-y border-[#CECECE] py-2 text-[12px] md:grid md:grid-cols-6 md:gap-x-3 ${MUTED}`;
 const INPUT = "h-[26px] w-20 border border-[#CECECE] bg-white px-1.5 text-right outline-none focus:border-[#1743FF]";
 
@@ -234,14 +235,16 @@ export function OrdersPanel({
                 No MTokens held. Buy on the ticket above; what you hold can be spent on inference or sold.
               </p>
             ) : (
-              holdings.map((row) => (
-                <div key={row.prepaid_id} className={ROW}>
-                  <span>{row.model}</span>
-                  <span className={MUTED}>{row.rail}</span>
-                  <span>{formatMtok(BigInt(row.tokens))}</span>
-                  <span className={`md:col-span-3 ${MUTED}`}>{expiry(row.expires_at)}</span>
-                </div>
-              ))
+              <div className={SCROLL}>
+                {holdings.map((row) => (
+                  <div key={row.prepaid_id} className={ROW}>
+                    <span>{row.model}</span>
+                    <span className={MUTED}>{row.rail}</span>
+                    <span>{formatMtok(BigInt(row.tokens))}</span>
+                    <span className={`md:col-span-3 ${MUTED}`}>{expiry(row.expires_at)}</span>
+                  </div>
+                ))}
+              </div>
             )}
           </>
         ) : null}
@@ -260,135 +263,137 @@ export function OrdersPanel({
                 No open orders. A limit below the best ask rests as a bid; a limit sell above the best bid rests as an ask.
               </p>
             ) : null}
-            {bids.map((row) => (
-              <div key={row.bid_id} className={ROW}>
-                <span className="text-[#2EBD85]">Bid</span>
-                <span>{row.model}</span>
-                <span>{formatMicroPerMtok(BigInt(row.price_micro_per_mtok))}</span>
-                <span>{formatMtok(BigInt(row.tokens))}</span>
-                <span className={MUTED}>holds {formatUsd(BigInt(row.hold_usd_micro))}</span>
-                <span className="text-right">
-                  <button
-                    type="button"
-                    disabled={busy !== null}
-                    onClick={() => void run(row.bid_id, "bid cancelled; its hold is back in the balance", withKey(`/api/v1/bids/${row.bid_id}`))}
-                    className="text-[#F6465D] hover:underline disabled:text-[#C9C9C9]"
-                  >
-                    {busy === row.bid_id ? "cancelling…" : "cancel"}
-                  </button>
-                </span>
-              </div>
-            ))}
-            {offers.map((row) => (
-              <div key={row.offer_id} className={ROW}>
-                <span className="text-[#F6465D]">Ask · resale</span>
-                <span>{row.model}</span>
-                <span>{formatMicroPerMtok(BigInt(row.price_micro_per_mtok))}</span>
-                <span>{formatMtok(BigInt(row.tokens))}</span>
-                <span className={MUTED}>{expiry(row.expires_at)}</span>
-                <span className="text-right">
-                  <button
-                    type="button"
-                    disabled={busy !== null}
-                    onClick={() => void run(row.offer_id, "ask cancelled; its MTokens are back in your holdings", withKey(`/api/v1/offers/${row.offer_id}`))}
-                    className="text-[#F6465D] hover:underline disabled:text-[#C9C9C9]"
-                  >
-                    {busy === row.offer_id ? "cancelling…" : "cancel"}
-                  </button>
-                </span>
-              </div>
-            ))}
-            {asks.map((row) => {
-              const capacity = BigInt(row.capacity_tokens);
-              const left = capacity - BigInt(row.used_tokens) - BigInt(row.reserved_tokens);
-              return (
-                <div key={row.listing_id} className={ROW}>
-                  <span className="text-[#F6465D]">Ask · {row.rail} key</span>
+            <div className={SCROLL}>
+              {bids.map((row) => (
+                <div key={row.bid_id} className={ROW}>
+                  <span className="text-[#2EBD85]">Bid</span>
                   <span>{row.model}</span>
-                  {amending === row.listing_id ? (
-                    <>
-                      <input
-                        value={amendPrice}
-                        onChange={(event) => setAmendPrice(event.target.value)}
-                        inputMode="decimal"
-                        aria-label="new price, USD per MTok"
-                        className={INPUT}
-                      />
-                      <input
-                        value={amendCapacity}
-                        onChange={(event) => setAmendCapacity(event.target.value)}
-                        inputMode="numeric"
-                        aria-label="new total capacity, MTok"
-                        className={INPUT}
-                      />
-                      <span className={MUTED}>total capacity, MTok</span>
-                      <span className="flex justify-end gap-3">
-                        <button
-                          type="button"
-                          disabled={busy !== null || !amendValid || amendPriceMicro === null}
-                          onClick={() => {
-                            if (amendPriceMicro === null) return;
-                            void run(
-                              row.listing_id,
-                              "ask updated",
-                              signed(`/api/listings/${row.listing_id}`, "PATCH", {
-                                action: "amend",
-                                listing_id: row.listing_id,
-                                price_micro_per_mtok: amendPriceMicro.toString(),
-                                capacity_mtok: amendCapacity.trim(),
-                              }),
-                            );
-                          }}
-                          className="text-[#1743FF] hover:underline disabled:text-[#C9C9C9]"
-                        >
-                          {busy === row.listing_id ? "signing…" : "save"}
-                        </button>
-                        <button type="button" onClick={() => setAmending(null)} className={`${MUTED} hover:underline`}>
-                          keep
-                        </button>
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <span>{row.price_micro_per_mtok === null ? "market" : formatMicroPerMtok(BigInt(row.price_micro_per_mtok))}</span>
-                      <span>
-                        {formatMtok(left)} of {formatMtok(capacity)}
-                      </span>
-                      <span className={MUTED}>{row.status}</span>
-                      <span className="flex justify-end gap-3">
-                        <button
-                          type="button"
-                          disabled={busy !== null || !address}
-                          onClick={() => {
-                            setAmending(row.listing_id);
-                            setAmendPrice(row.price_micro_per_mtok === null ? "" : formatMicroPerMtok(BigInt(row.price_micro_per_mtok)));
-                            setAmendCapacity((capacity / 1_000_000n).toString());
-                            setNotice(null);
-                          }}
-                          className="text-[#1743FF] hover:underline disabled:text-[#C9C9C9]"
-                        >
-                          amend
-                        </button>
-                        <button
-                          type="button"
-                          disabled={busy !== null || !address}
-                          onClick={() =>
-                            void run(
-                              row.listing_id,
-                              "ask cancelled",
-                              signed(`/api/listings/${row.listing_id}`, "DELETE", { action: "cancel", listing_id: row.listing_id }),
-                            )
-                          }
-                          className="text-[#F6465D] hover:underline disabled:text-[#C9C9C9]"
-                        >
-                          {busy === row.listing_id ? "signing…" : "cancel"}
-                        </button>
-                      </span>
-                    </>
-                  )}
+                  <span>{formatMicroPerMtok(BigInt(row.price_micro_per_mtok))}</span>
+                  <span>{formatMtok(BigInt(row.tokens))}</span>
+                  <span className={MUTED}>holds {formatUsd(BigInt(row.hold_usd_micro))}</span>
+                  <span className="text-right">
+                    <button
+                      type="button"
+                      disabled={busy !== null}
+                      onClick={() => void run(row.bid_id, "bid cancelled; its hold is back in the balance", withKey(`/api/v1/bids/${row.bid_id}`))}
+                      className="text-[#F6465D] hover:underline disabled:text-[#C9C9C9]"
+                    >
+                      {busy === row.bid_id ? "cancelling…" : "cancel"}
+                    </button>
+                  </span>
                 </div>
-              );
-            })}
+              ))}
+              {offers.map((row) => (
+                <div key={row.offer_id} className={ROW}>
+                  <span className="text-[#F6465D]">Ask · resale</span>
+                  <span>{row.model}</span>
+                  <span>{formatMicroPerMtok(BigInt(row.price_micro_per_mtok))}</span>
+                  <span>{formatMtok(BigInt(row.tokens))}</span>
+                  <span className={MUTED}>{expiry(row.expires_at)}</span>
+                  <span className="text-right">
+                    <button
+                      type="button"
+                      disabled={busy !== null}
+                      onClick={() => void run(row.offer_id, "ask cancelled; its MTokens are back in your holdings", withKey(`/api/v1/offers/${row.offer_id}`))}
+                      className="text-[#F6465D] hover:underline disabled:text-[#C9C9C9]"
+                    >
+                      {busy === row.offer_id ? "cancelling…" : "cancel"}
+                    </button>
+                  </span>
+                </div>
+              ))}
+              {asks.map((row) => {
+                const capacity = BigInt(row.capacity_tokens);
+                const left = capacity - BigInt(row.used_tokens) - BigInt(row.reserved_tokens);
+                return (
+                  <div key={row.listing_id} className={ROW}>
+                    <span className="text-[#F6465D]">Ask · {row.rail} key</span>
+                    <span>{row.model}</span>
+                    {amending === row.listing_id ? (
+                      <>
+                        <input
+                          value={amendPrice}
+                          onChange={(event) => setAmendPrice(event.target.value)}
+                          inputMode="decimal"
+                          aria-label="new price, USD per MTok"
+                          className={INPUT}
+                        />
+                        <input
+                          value={amendCapacity}
+                          onChange={(event) => setAmendCapacity(event.target.value)}
+                          inputMode="numeric"
+                          aria-label="new total capacity, MTok"
+                          className={INPUT}
+                        />
+                        <span className={MUTED}>total capacity, MTok</span>
+                        <span className="flex justify-end gap-3">
+                          <button
+                            type="button"
+                            disabled={busy !== null || !amendValid || amendPriceMicro === null}
+                            onClick={() => {
+                              if (amendPriceMicro === null) return;
+                              void run(
+                                row.listing_id,
+                                "ask updated",
+                                signed(`/api/listings/${row.listing_id}`, "PATCH", {
+                                  action: "amend",
+                                  listing_id: row.listing_id,
+                                  price_micro_per_mtok: amendPriceMicro.toString(),
+                                  capacity_mtok: amendCapacity.trim(),
+                                }),
+                              );
+                            }}
+                            className="text-[#1743FF] hover:underline disabled:text-[#C9C9C9]"
+                          >
+                            {busy === row.listing_id ? "signing…" : "save"}
+                          </button>
+                          <button type="button" onClick={() => setAmending(null)} className={`${MUTED} hover:underline`}>
+                            keep
+                          </button>
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span>{row.price_micro_per_mtok === null ? "market" : formatMicroPerMtok(BigInt(row.price_micro_per_mtok))}</span>
+                        <span>
+                          {formatMtok(left)} of {formatMtok(capacity)}
+                        </span>
+                        <span className={MUTED}>{row.status}</span>
+                        <span className="flex justify-end gap-3">
+                          <button
+                            type="button"
+                            disabled={busy !== null || !address}
+                            onClick={() => {
+                              setAmending(row.listing_id);
+                              setAmendPrice(row.price_micro_per_mtok === null ? "" : formatMicroPerMtok(BigInt(row.price_micro_per_mtok)));
+                              setAmendCapacity((capacity / 1_000_000n).toString());
+                              setNotice(null);
+                            }}
+                            className="text-[#1743FF] hover:underline disabled:text-[#C9C9C9]"
+                          >
+                            amend
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy !== null || !address}
+                            onClick={() =>
+                              void run(
+                                row.listing_id,
+                                "ask cancelled",
+                                signed(`/api/listings/${row.listing_id}`, "DELETE", { action: "cancel", listing_id: row.listing_id }),
+                              )
+                            }
+                            className="text-[#F6465D] hover:underline disabled:text-[#C9C9C9]"
+                          >
+                            {busy === row.listing_id ? "signing…" : "cancel"}
+                          </button>
+                        </span>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
             {!address ? (
               <p className={`border-t border-[#CECECE] py-3 text-[13px] ${MUTED}`}>
                 Connect your seller wallet to see and change the asks your provider keys post.
@@ -407,19 +412,21 @@ export function OrdersPanel({
             {history.length === 0 ? (
               <p className="border-t border-[#CECECE] py-5 text-[14px] text-[#757575] md:border-t-0">No fills on this key yet.</p>
             ) : (
-              history.map((row, index) => (
-                <div key={`${row.at}-${index}`} className={ROW}>
-                  <span className={MUTED}>{stampFormat.format(new Date(row.at))}</span>
-                  <span>{row.model}</span>
-                  <span className={row.side === "buy" ? "text-[#2EBD85]" : "text-[#F6465D]"}>{row.side === "buy" ? "Buy" : "Sell"}</span>
-                  <span>{formatMicroPerMtok(BigInt(row.price_micro_per_mtok))}</span>
-                  <span>{formatMtok(BigInt(row.tokens))}</span>
-                  <span>
-                    {row.side === "buy" ? "paid " : "received "}
-                    {formatUsd(BigInt(row.amount_usd_micro))}
-                  </span>
-                </div>
-              ))
+              <div className={SCROLL}>
+                {history.map((row, index) => (
+                  <div key={`${row.at}-${index}`} className={ROW}>
+                    <span className={MUTED}>{stampFormat.format(new Date(row.at))}</span>
+                    <span>{row.model}</span>
+                    <span className={row.side === "buy" ? "text-[#2EBD85]" : "text-[#F6465D]"}>{row.side === "buy" ? "Buy" : "Sell"}</span>
+                    <span>{formatMicroPerMtok(BigInt(row.price_micro_per_mtok))}</span>
+                    <span>{formatMtok(BigInt(row.tokens))}</span>
+                    <span>
+                      {row.side === "buy" ? "paid " : "received "}
+                      {formatUsd(BigInt(row.amount_usd_micro))}
+                    </span>
+                  </div>
+                ))}
+              </div>
             )}
           </>
         ) : null}
@@ -428,15 +435,17 @@ export function OrdersPanel({
           venueFills.length === 0 ? (
             <p className="border-t border-[#CECECE] py-5 text-[14px] text-[#757575]">The venue has not printed a fill for {model} yet.</p>
           ) : (
-            venueFills.map((fill) => (
-              <div key={`${fill.listing_id}-${fill.created_at}`} className={ROW}>
-                <span className={MUTED}>{stampFormat.format(new Date(fill.created_at))}</span>
-                <span>{model}</span>
-                <span>{formatMicroPerMtok(BigInt(fill.price_micro_per_mtok))}</span>
-                <span>{formatMtok(BigInt(fill.tokens))}</span>
-                <span className="md:col-span-2">{formatUsd(charge(BigInt(fill.tokens), BigInt(fill.price_micro_per_mtok)))}</span>
-              </div>
-            ))
+            <div className={SCROLL}>
+              {venueFills.map((fill) => (
+                <div key={`${fill.listing_id}-${fill.created_at}`} className={ROW}>
+                  <span className={MUTED}>{stampFormat.format(new Date(fill.created_at))}</span>
+                  <span>{model}</span>
+                  <span>{formatMicroPerMtok(BigInt(fill.price_micro_per_mtok))}</span>
+                  <span>{formatMtok(BigInt(fill.tokens))}</span>
+                  <span className="md:col-span-2">{formatUsd(charge(BigInt(fill.tokens), BigInt(fill.price_micro_per_mtok)))}</span>
+                </div>
+              ))}
+            </div>
           )
         ) : null}
       </div>

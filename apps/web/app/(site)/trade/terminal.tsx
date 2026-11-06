@@ -1,10 +1,10 @@
 "use client";
 
 import { usePrivy } from "@privy-io/react-auth";
-import { KeyRound, ReceiptText, Tag } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { BaseError } from "viem";
 import { useConnection } from "wagmi";
 import { z } from "zod";
@@ -77,6 +77,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
   const [problem, setProblem] = useState<{ message: string; shortfall: bigint | null } | null>(null);
   const [copied, setCopied] = useState(false);
   const [noticeOpen, setNoticeOpen] = useState(true);
+  const [statusBar, setStatusBar] = useState<HTMLElement | null>(null);
   const [clock, setClock] = useState<string | null>(null);
   const nowRef = useRef(Date.now());
 
@@ -91,6 +92,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
 
   useEffect(() => {
     setKey(window.localStorage.getItem(KEY_STORAGE));
+    setStatusBar(document.getElementById("status-bar"));
   }, []);
 
   const refreshBook = useCallback(
@@ -275,15 +277,6 @@ export function Trade({ initialModel }: { initialModel: string }) {
       : "no asks yet",
     plan: "Spot",
   }));
-  const menuItems = [
-    {
-      label: key ? "Manage agent" : "Connect your agent",
-      icon: <KeyRound className="h-4 w-4" />,
-      href: "/keys",
-    },
-    { label: "Sell tokens", icon: <Tag className="h-4 w-4" />, href: "/sell" },
-    { label: "Receipts", icon: <ReceiptText className="h-4 w-4" />, href: "/receipts" },
-  ];
 
   const affordable =
     balance !== null && bestAsk !== null && balance > 0n ? (balance * 1_000_000n) / bestAsk : 0n;
@@ -411,14 +404,6 @@ export function Trade({ initialModel }: { initialModel: string }) {
     }
   };
 
-  const signOut = () => {
-    window.localStorage.removeItem(KEY_STORAGE);
-    setKey(null);
-    setBalance(null);
-    setAccount(null);
-    setHolding(null);
-  };
-
   return (
     <section>
       <div className="flex flex-wrap items-center gap-x-8 gap-y-3 border border-[#CECECE] bg-white px-4 py-3">
@@ -427,9 +412,6 @@ export function Trade({ initialModel }: { initialModel: string }) {
           defaultAccountId={model}
           onAccountChange={(entry) => pick(entry.id)}
           info={{ label: "Available to trade", value: balance !== null ? formatUsd(balance) : "—" }}
-          items={menuItems}
-          signedIn={key !== null}
-          onSignOut={signOut}
         />
 
         <div className="flex flex-wrap items-center gap-x-7 gap-y-2">
@@ -467,7 +449,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
       ) : null}
 
       <div className={`mt-5 grid gap-[17px] ${expanded ? "" : "lg:grid-cols-[minmax(0,1fr)_250px_290px]"}`}>
-        <div className="flex flex-col border border-[#CECECE] bg-white">
+        <div className="flex flex-col self-start border border-[#CECECE] bg-white">
           <div className="flex items-center gap-5 border-b border-[#D9D9D9] px-4 py-2.5 text-[14px]">
             <span className="font-semibold text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4">
               Chart
@@ -553,12 +535,12 @@ export function Trade({ initialModel }: { initialModel: string }) {
             ) : null}
           </div>
 
-          <FillsChart points={points} bucket={bucket} scale={scale} className="min-h-[420px] flex-1" />
+          <FillsChart points={points} bucket={bucket} scale={scale} className="h-[calc(100svh-380px)] min-h-[320px]" />
         </div>
 
         {!expanded && (
           <>
-            <div className="flex flex-col border border-[#CECECE] bg-white">
+            <div className="flex flex-col self-start border border-[#CECECE] bg-white lg:h-[calc(100svh-277px)] lg:min-h-[423px]">
               <div className="flex items-center gap-5 border-b border-[#D9D9D9] px-4 py-2.5 text-[14px]">
                 {(["book", "tape"] as const).map((item) => (
                   <button
@@ -587,7 +569,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
                     <span>Size (MTok)</span>
                     <span>Total</span>
                   </div>
-                  <div className="max-h-[420px] min-h-0 flex-1 overflow-auto">
+                  <div className="max-h-[420px] min-h-0 flex-1 overflow-auto lg:max-h-none">
                     {[...asks].reverse().map((ask) => (
                       <div
                         key={ask.offer_id ?? ask.listing_id}
@@ -642,7 +624,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
                   </p>
                 </>
               ) : (
-                <div className="max-h-[420px] min-h-0 flex-1 overflow-auto">
+                <div className="max-h-[420px] min-h-0 flex-1 overflow-auto lg:max-h-none">
                   {venueFills.slice(0, 40).map((fill, index) => {
                     const next = venueFills[index + 1];
                     const up = next === undefined || BigInt(fill.price_micro_per_mtok) >= BigInt(next.price_micro_per_mtok);
@@ -665,9 +647,9 @@ export function Trade({ initialModel }: { initialModel: string }) {
               )}
             </div>
 
-            <div className="flex flex-col gap-[17px]">
-              <div className="border border-[#CECECE] bg-white">
-                <div className="flex border-b border-[#D9D9D9]">
+            <div className="flex flex-col gap-[17px] self-start lg:h-[calc(100svh-277px)] lg:min-h-[423px]">
+              <div className="flex min-h-0 flex-1 flex-col border border-[#CECECE] bg-white">
+                <div className="flex shrink-0 border-b border-[#D9D9D9]">
                   {(["buy", "sell"] as const).map((item) => (
                     <button
                       key={item}
@@ -683,7 +665,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
                   ))}
                 </div>
 
-                <div className="space-y-4 p-4">
+                <div className="min-h-0 flex-1 space-y-4 overflow-auto p-4">
                   <div className="flex justify-between text-[14px]">
                     <span className={MUTED}>{side === "buy" ? "Available to trade" : "Available to sell"}</span>
                     <span className="tabular-nums text-[#1E1E1E]">
@@ -971,44 +953,6 @@ export function Trade({ initialModel }: { initialModel: string }) {
                   ) : null}
                 </div>
               </div>
-
-              {noticeOpen ? (
-                <div className="border border-[#CECECE] bg-white p-4">
-                  <div className="flex items-center justify-between">
-                    <p className="text-[14px] font-semibold text-[#1E1E1E]">Announcements</p>
-                    <button
-                      type="button"
-                      onClick={() => setNoticeOpen(false)}
-                      aria-label="dismiss announcements"
-                      className="text-[#757575] hover:text-[#1E1E1E]"
-                    >
-                      ×
-                    </button>
-                  </div>
-                  <ul className="mt-3 space-y-3 text-[13px] leading-5">
-                    <li>
-                      <p className="text-[#1E1E1E]">Every fill rolls up</p>
-                      <p className={MUTED}>
-                        Usage roots land on the public record —{" "}
-                        <Link href="/receipts" className="text-[#1743FF] hover:underline">
-                          receipts
-                        </Link>
-                        .
-                      </p>
-                    </li>
-                    <li>
-                      <p className="text-[#1E1E1E]">Buying needs an agent key</p>
-                      <p className={MUTED}>
-                        Paste it once on{" "}
-                        <Link href="/keys" className="text-[#1743FF] hover:underline">
-                          keys
-                        </Link>
-                        ; it stays in this browser.
-                      </p>
-                    </li>
-                  </ul>
-                </div>
-              ) : null}
             </div>
           </>
         )}
@@ -1026,6 +970,50 @@ export function Trade({ initialModel }: { initialModel: string }) {
           void refreshHolding();
         }}
       />
+
+      {noticeOpen && statusBar
+        ? createPortal(
+            <div
+              role="status"
+              className="absolute bottom-full right-4 mb-4 w-[min(290px,calc(100vw-2rem))] border border-[#CECECE] bg-white p-4 shadow-[0_8px_24px_rgba(30,30,30,0.08)] transition-[opacity,translate] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] starting:translate-y-2 starting:opacity-0 motion-reduce:transition-none lg:right-6"
+            >
+              <div className="flex items-center justify-between">
+                <p className="text-[14px] font-semibold text-[#1E1E1E]">Announcements</p>
+                <button
+                  type="button"
+                  onClick={() => setNoticeOpen(false)}
+                  aria-label="dismiss announcements"
+                  className="text-[#757575] hover:text-[#1E1E1E]"
+                >
+                  ×
+                </button>
+              </div>
+              <ul className="mt-3 space-y-3 text-[13px] leading-5">
+                <li>
+                  <p className="text-[#1E1E1E]">Every fill rolls up</p>
+                  <p className={MUTED}>
+                    Usage roots land on the public record —{" "}
+                    <Link href="/receipts" className="text-[#1743FF] hover:underline">
+                      receipts
+                    </Link>
+                    .
+                  </p>
+                </li>
+                <li>
+                  <p className="text-[#1E1E1E]">Buying needs an agent key</p>
+                  <p className={MUTED}>
+                    Paste it once on{" "}
+                    <Link href="/keys" className="text-[#1743FF] hover:underline">
+                      keys
+                    </Link>
+                    ; it stays in this browser.
+                  </p>
+                </li>
+              </ul>
+            </div>,
+            statusBar,
+          )
+        : null}
     </section>
   );
 }

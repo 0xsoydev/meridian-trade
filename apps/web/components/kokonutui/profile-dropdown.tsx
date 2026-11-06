@@ -6,7 +6,7 @@
  * https://kokonutui.com/docs/navigation/profile-dropdown
  */
 
-import { Check, ChevronsUpDown, LogOut } from "lucide-react";
+import { Check, ChevronsUpDown } from "lucide-react";
 import {
   animate,
   motion,
@@ -53,15 +53,10 @@ interface ProfileDropdownProps {
   accounts?: ProfileAccount[];
   defaultAccountId?: string;
   onAccountChange?: (account: ProfileAccount) => void;
-  /** Menu entries between the market list and sign out. */
+  /** Menu entries after the market list. */
   items?: ProfileMenuItem[];
   /** Quiet label + value row at the top of the menu, such as the balance. */
   info?: { label: string; value: string };
-  /** Shows the hold-to-sign-out row only when there is something to sign out of. */
-  signedIn?: boolean;
-  /** Called once Sign out has been held for `holdDuration` ms. */
-  onSignOut?: () => void;
-  holdDuration?: number;
   className?: string;
 }
 
@@ -213,108 +208,6 @@ function Separator() {
   return <hr className="mx-2.5 my-1.5 h-px border-0 bg-[#EBEBEB]" />;
 }
 
-function HoldSignOut({ duration, onComplete }: { duration: number; onComplete: (via: Via) => void }) {
-  const [holding, setHolding] = useState(false);
-  const [done, setDone] = useState(false);
-  const [nudge, setNudge] = useState(false);
-  const timer = useRef<number | undefined>(undefined);
-  const nudgeTimer = useRef<number | undefined>(undefined);
-
-  useEffect(
-    () => () => {
-      window.clearTimeout(timer.current);
-      window.clearTimeout(nudgeTimer.current);
-    },
-    [],
-  );
-
-  const start = (via: Via) => {
-    if (timer.current !== undefined || done) {
-      return;
-    }
-    window.clearTimeout(nudgeTimer.current);
-    setNudge(false);
-    setHolding(true);
-    timer.current = window.setTimeout(() => {
-      timer.current = undefined;
-      setHolding(false);
-      setDone(true);
-      onComplete(via);
-    }, duration);
-  };
-
-  const cancel = () => {
-    if (timer.current === undefined) {
-      return;
-    }
-    window.clearTimeout(timer.current);
-    timer.current = undefined;
-    setHolding(false);
-    setNudge(true);
-    nudgeTimer.current = window.setTimeout(() => setNudge(false), 1400);
-  };
-
-  const label = (
-    <>
-      <LogOut className="h-4 w-4" />
-      <span className="flex-1">Sign out</span>
-      <span className="text-[11px] opacity-60">{nudge ? "Keep holding" : "Hold"}</span>
-    </>
-  );
-
-  return (
-    <button
-      className={cn(ITEM_CLASS, "relative touch-none select-none")}
-      data-menu-item=""
-      onBlur={cancel}
-      onClick={(event) => event.preventDefault()}
-      onContextMenu={(event) => event.preventDefault()}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          if (!event.repeat) {
-            start("keyboard");
-          }
-        }
-      }}
-      onKeyUp={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          cancel();
-        }
-      }}
-      onPointerCancel={cancel}
-      onPointerDown={(event) => {
-        if (event.button !== 0) {
-          return;
-        }
-        event.currentTarget.setPointerCapture(event.pointerId);
-        start("pointer");
-      }}
-      onPointerUp={cancel}
-      role="menuitem"
-      tabIndex={-1}
-      type="button"
-    >
-      {label}
-      <span className="sr-only">, press and hold to confirm</span>
-      {/* The fill: an inverted copy of the row, revealed left to right. */}
-      <span
-        aria-hidden="true"
-        className="absolute inset-0 flex items-center gap-2.5 rounded-[8px] bg-[#1E1E1E] px-2.5 text-white"
-        style={{
-          clipPath: holding || done ? "inset(0 0 0 0 round 8px)" : "inset(0 100% 0 0 round 8px)",
-          transition: holding
-            ? `clip-path ${duration}ms linear`
-            : "clip-path 240ms cubic-bezier(0.23, 1, 0.32, 1)",
-        }}
-      >
-        {label}
-      </span>
-    </button>
-  );
-}
-
 function LinkItem({
   item,
   onSelect,
@@ -356,9 +249,6 @@ export default function ProfileDropdown({
   onAccountChange,
   items = [],
   info,
-  signedIn = false,
-  onSignOut,
-  holdDuration = 1200,
   className,
 }: ProfileDropdownProps) {
   const uid = useId();
@@ -547,7 +437,7 @@ export default function ProfileDropdown({
         aria-controls={sharedInPanel ? menuId : undefined}
         aria-expanded={sharedInPanel}
         aria-haspopup="menu"
-        className="flex w-64 items-center gap-2.5 rounded-[10px] border border-[#CECECE] bg-white p-2 pr-3 text-left outline-none transition-colors duration-150 hover:border-[#1743FF] focus-visible:ring-2 focus-visible:ring-[#1743FF]/40"
+        className="flex w-64 items-center gap-2.5 rounded-[10px] bg-white p-2 pr-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-[#1743FF]/40"
         onClick={(event) => {
           const via = viaOf(event);
           openMenu(via, via === "keyboard" ? "first" : "menu");
@@ -632,34 +522,36 @@ export default function ProfileDropdown({
                   </div>
                 ) : null}
                 <Separator />
-                {accounts.map((entry, index) => {
-                  const checked = entry.id === account.id;
-                  return (
-                    <button
-                      aria-checked={checked}
-                      className={ITEM_CLASS}
-                      data-menu-item=""
-                      key={entry.id}
-                      onClick={(event) => {
-                        if (!checked) {
-                          setAccountId(entry.id);
-                          onAccountChange?.(entry);
-                        }
-                        closeMenu(viaOf(event), true);
-                      }}
-                      role="menuitemradio"
-                      tabIndex={-1}
-                      type="button"
-                    >
-                      <Avatar account={entry} className="h-7 w-7" tone={index} />
-                      <span className="flex min-w-0 flex-1 flex-col">
-                        <span className="truncate font-medium text-[#1E1E1E]">{entry.name}</span>
-                        <span className="truncate text-[11px] text-[#757575]">{entry.email}</span>
-                      </span>
-                      {checked ? <Check className="h-4 w-4 text-[#1743FF]" /> : null}
-                    </button>
-                  );
-                })}
+                <div className="max-h-[260px] overflow-y-auto">
+                  {accounts.map((entry, index) => {
+                    const checked = entry.id === account.id;
+                    return (
+                      <button
+                        aria-checked={checked}
+                        className={ITEM_CLASS}
+                        data-menu-item=""
+                        key={entry.id}
+                        onClick={(event) => {
+                          if (!checked) {
+                            setAccountId(entry.id);
+                            onAccountChange?.(entry);
+                          }
+                          closeMenu(viaOf(event), true);
+                        }}
+                        role="menuitemradio"
+                        tabIndex={-1}
+                        type="button"
+                      >
+                        <Avatar account={entry} className="h-7 w-7" tone={index} />
+                        <span className="flex min-w-0 flex-1 flex-col">
+                          <span className="truncate font-medium text-[#1E1E1E]">{entry.name}</span>
+                          <span className="truncate text-[11px] text-[#757575]">{entry.email}</span>
+                        </span>
+                        {checked ? <Check className="h-4 w-4 text-[#1743FF]" /> : null}
+                      </button>
+                    );
+                  })}
+                </div>
                 {accounts.length === 0 ? (
                   <p className="px-2.5 py-2 text-[13px] text-[#757575]">loading models…</p>
                 ) : null}
@@ -667,18 +559,6 @@ export default function ProfileDropdown({
                 {items.map((item) => (
                   <LinkItem item={item} key={item.label} onSelect={select} />
                 ))}
-                {signedIn ? (
-                  <>
-                    <Separator />
-                    <HoldSignOut
-                      duration={holdDuration}
-                      onComplete={(via) => {
-                        onSignOut?.();
-                        closeMenu(via, true);
-                      }}
-                    />
-                  </>
-                ) : null}
               </motion.div>
             </div>
           </motion.div>

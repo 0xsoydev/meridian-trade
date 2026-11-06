@@ -27,7 +27,7 @@ export function Proof({ variant }: { variant: "page" | "canvas" }) {
 
   return (
     <>
-      <p className="absolute left-[96px] top-[1575px] w-[876px] whitespace-pre-wrap font-serif text-[60px] font-normal leading-[60px] text-black">
+      <p className="absolute left-[96px] top-[1605px] w-[876px] whitespace-pre-wrap font-serif text-[60px] font-normal leading-[60px] text-black">
         Proof over marketing. Recompute our index in your browser.
       </p>
 

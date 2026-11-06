@@ -45,15 +45,15 @@ export function Navbar({ variant = "page" }: { variant?: "page" | "canvas" }) {
       <div className="hidden lg:block">
         {variant === "canvas" ? (
           <>
-            <nav className="absolute right-[56px] top-[37px] flex h-[24px] items-center gap-[39px] text-[20px] leading-[24px] text-[#1E1E1E]">
+            <nav className="absolute right-[56px] top-0 flex h-[73px] w-[500px] items-center justify-center gap-[31px] border-b border-l border-[#CECECE] text-[16px] leading-[20px] text-[#1E1E1E]">
               <NavLinks />
             </nav>
             <div aria-hidden className="pointer-events-none absolute left-[54px] top-0 h-[4548px] w-px bg-[#CECECE]" />
-            <div aria-hidden className="pointer-events-none absolute left-[1671px] top-[90px] h-[4458px] w-px bg-[#CECECE]" />
+            <div aria-hidden className="pointer-events-none absolute left-[1671px] top-[73px] h-[4475px] w-px bg-[#CECECE]" />
           </>
         ) : (
           <>
-            <nav className="absolute top-[min(2.1412vw,37px)] right-[calc(56*min(100vw,1728px)/1728_+_max(0px,(100vw_-_1728px)/2))] flex h-[min(1.3889vw,24px)] items-center gap-[min(2.2569vw,39px)] text-[min(1.1574vw,20px)] leading-[min(1.3889vw,24px)] text-[#1E1E1E]">
+            <nav className="absolute top-[min(1.5046vw,26px)] right-[calc(56*min(100vw,1728px)/1728_+_max(0px,(100vw_-_1728px)/2))] w-[min(28.9352vw,500px)] justify-center flex h-[min(1.1574vw,20px)] items-center gap-[min(1.794vw,31px)] text-[min(0.9259vw,16px)] leading-[min(1.1574vw,20px)] text-[#1E1E1E]">
               <NavLinks />
             </nav>
             <div

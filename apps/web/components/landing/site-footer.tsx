@@ -1,21 +1,45 @@
 import Link from "next/link";
 
+const LINK =
+  "w-fit text-[#1E1E1E] underline decoration-transparent underline-offset-[6px] transition-[text-decoration-color] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] hover:decoration-[#1743FF] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#1743FF] motion-reduce:transition-none";
+const GROUPS: { title: string; links: { label: string; href?: string }[] }[] = [
+  {
+    title: "socials",
+    links: [
+      { label: "Twitter X" },
+      { label: "Telegram" },
+      { label: "HashScan", href: "https://hashscan.io/testnet/topic/0.0.11222352" },
+    ],
+  },
+  {
+    title: "docs",
+    links: [
+      { label: "Plan", href: "https://github.com/0xsoydev/celestial-trade/blob/develop/docs/plan.md" },
+      { label: "README", href: "https://github.com/0xsoydev/celestial-trade" },
+      { label: "Receipts", href: "/receipts" },
+    ],
+  },
+];
+
 export function SiteFooter({ variant }: { variant: "page" | "canvas" | "site" }) {
   if (variant === "page") {
     return (
       <footer className="border-t border-[#CECECE] bg-[#EBEBEB] px-6 pb-10 pt-12">
-        <div className="flex gap-16 text-[16px] text-[#1E1E1E]">
-          <div className="flex flex-col gap-1.5">
-            <p>Socials</p>
-            <p>Twitter X</p>
-            <p>Telegram</p>
-            <p>HashScan</p>
-          </div>
-        </div>
-        <div className="mt-10 flex flex-wrap gap-x-8 gap-y-3 text-[15px] leading-[22px] text-[#757575]">
-          <a href="https://github.com/0xsoydev/celestial-trade/blob/develop/docs/plan.md">Plan</a>
-          <a href="https://github.com/0xsoydev/celestial-trade">README</a>
-          <Link href="/receipts">Receipts</Link>
+        <div className="flex gap-16">
+          {GROUPS.map((g) => (
+            <div key={g.title} className="flex flex-col gap-1.5 text-[16px] text-[#1E1E1E]">
+              <p className="text-[13px] text-[#757575]">[ {g.title} ]</p>
+              {g.links.map((l) =>
+                l.href ? (
+                  <Link key={l.label} href={l.href} className={LINK}>
+                    {l.label}
+                  </Link>
+                ) : (
+                  <span key={l.label}>{l.label}</span>
+                ),
+              )}
+            </div>
+          ))}
         </div>
         <div
           className="mt-8 h-[220px] w-full bg-contain bg-center bg-no-repeat"
@@ -51,22 +75,28 @@ export function SiteFooter({ variant }: { variant: "page" | "canvas" | "site" })
 
   return (
     <>
-      <div className="absolute left-[55px] top-[3351px] h-[286px] w-[1617px] border border-[#CECECE] bg-[#EBEBEB]" />
+      <div className="absolute left-[55px] top-[3351px] h-[730px] w-[1617px] border border-[#CECECE] bg-[#EBEBEB]" />
+      <p className="absolute left-[864px] top-[3747px] -translate-x-1/2 font-['Instrument_Sans','Instrument_Serif_Fallback'] font-black text-[320px] leading-none text-[#757575]/30">MERIDIAN</p>
 
       <div
-        className="absolute left-[413px] top-[3427px] h-[658px] w-[1315px] bg-cover bg-center"
+        className="absolute left-[676px] top-[3559px] h-[526px] w-[1052px] bg-cover bg-center"
         style={{ backgroundImage: "url(/images/goddess.webp)" }}
       />
-      <div className="absolute left-[138px] top-[3384px] flex w-[119px] flex-col gap-[5px] text-[20px] text-[#1E1E1E]">
-        <p className="leading-[36px]">Socials</p>
-        <p className="leading-[30px]">Twitter X</p>
-        <p className="leading-[30px]">Telegram</p>
-        <p className="leading-[30px]">HashScan</p>
-      </div>
-      <div className="absolute left-[138px] top-[3576px] flex gap-[50px] text-[20px] leading-[24px] text-[#757575]">
-        <a href="https://github.com/0xsoydev/celestial-trade/blob/develop/docs/plan.md">Plan</a>
-        <a href="https://github.com/0xsoydev/celestial-trade">README</a>
-        <Link href="/receipts">Receipts</Link>
+      <div className="absolute left-[138px] top-[3384px] flex gap-[120px]">
+        {GROUPS.map((g) => (
+          <div key={g.title} className="flex flex-col gap-[10px] text-[20px] leading-[30px] text-[#1E1E1E]">
+            <p className="text-[16px] leading-[24px] text-[#757575]">[ {g.title} ]</p>
+            {g.links.map((l) =>
+              l.href ? (
+                <Link key={l.label} href={l.href} className={LINK}>
+                  {l.label}
+                </Link>
+              ) : (
+                <span key={l.label}>{l.label}</span>
+              ),
+            )}
+          </div>
+        ))}
       </div>
     </>
   );
