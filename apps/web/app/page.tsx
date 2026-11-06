@@ -25,7 +25,7 @@ export default function Home() {
 
       <div className="desktop-wrap hidden lg:block">
         <div className="desktop-canvas relative h-[4388px] w-[1728px] overflow-hidden bg-white">
-          <Hero variant="canvas" nav={<Navbar variant="canvas" />} />
+          <Hero variant="canvas" nav={<Navbar />} />
           <div className="absolute inset-x-0 top-[307px]">
             <WhatWeDo variant="canvas" />
             <Proof variant="canvas" />
