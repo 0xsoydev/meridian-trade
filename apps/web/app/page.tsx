@@ -1,3 +1,4 @@
+import { Flow } from "../components/landing/flow";
 import { Hero } from "../components/landing/hero";
 import { HowItWorks } from "../components/landing/how-it-works";
 import { Panorama } from "../components/landing/panorama";
@@ -20,18 +21,22 @@ export default function Home() {
         <Proof variant="page" />
         <Panorama variant="page" />
         <HowItWorks variant="page" />
+        <Flow variant="page" />
         <SiteFooter variant="page" />
       </div>
 
       <div className="desktop-wrap hidden lg:block">
-        <div className="desktop-canvas relative h-[4388px] w-[1728px] overflow-hidden bg-white">
+        <div className="desktop-canvas relative h-[4652px] w-[1728px] overflow-hidden bg-white">
           <Hero variant="canvas" nav={<Navbar />} />
           <div className="absolute inset-x-0 top-[307px]">
             <WhatWeDo variant="canvas" />
             <Proof variant="canvas" />
             <Panorama variant="canvas" />
             <HowItWorks variant="canvas" />
-            <SiteFooter variant="canvas" />
+            <Flow variant="canvas" />
+            <div className="absolute inset-x-0 top-[264px]">
+              <SiteFooter variant="canvas" />
+            </div>
           </div>
         </div>
       </div>
