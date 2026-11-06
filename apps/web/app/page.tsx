@@ -28,7 +28,7 @@ export default function Home() {
       </div>
 
       <div className="desktop-wrap hidden lg:block">
-        <div className="desktop-canvas relative h-[4964px] w-[1728px] overflow-hidden bg-white">
+        <div className="desktop-canvas relative h-[5254px] w-[1728px] overflow-hidden bg-white">
           <Hero variant="canvas" nav={<Navbar />} />
           <div className="absolute inset-x-0 top-[307px]">
             <WhatWeDo variant="canvas" />
@@ -37,7 +37,7 @@ export default function Home() {
             <HowItWorks variant="canvas" />
             <Flow variant="canvas" />
             <AgentsTerminal variant="canvas" />
-            <div className="absolute inset-x-0 top-[576px]">
+            <div className="absolute inset-x-0 top-[866px]">
               <SiteFooter variant="canvas" />
             </div>
           </div>

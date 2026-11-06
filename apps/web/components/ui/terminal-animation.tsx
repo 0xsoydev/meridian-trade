@@ -174,6 +174,12 @@ export function TerminalAnimationOutput({ className }: { className?: string }) {
   );
 }
 
+export function TerminalAnimationTrailingPrompt({ className, children }: { className?: string; children: ReactNode }) {
+  const { isTypingCommand, visibleLines, currentTab } = useTerminalAnimationContext();
+  if (isTypingCommand || !currentTab || visibleLines < currentTab.lines.length) return null;
+  return <div className={className}>{children}</div>;
+}
+
 export function TerminalAnimationTabList({ className, children }: { className?: string; children: ReactNode }) {
   return (
     <div role="tablist" aria-label="Agent steps" className={className}>
