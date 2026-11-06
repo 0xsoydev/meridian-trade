@@ -1,3 +1,5 @@
+import { LINE } from "./copy";
+
 export function HowItWorks({ variant }: { variant: "page" | "canvas" }) {
   if (variant === "page") {
     return (
@@ -8,8 +10,12 @@ export function HowItWorks({ variant }: { variant: "page" | "canvas" }) {
   }
 
   return (
-    <h2 className="absolute left-[103px] top-[1605px] whitespace-pre font-serif text-[60px] font-normal leading-[72px] text-black">
-      How it works
-    </h2>
+    <>
+      <div className={`absolute left-[55px] top-[1546px] h-px w-[1618px] ${LINE}`} />
+      <h2 className="absolute left-[103px] top-[1605px] whitespace-pre font-serif text-[60px] font-normal leading-[72px] text-black">
+        How it works
+      </h2>
+      <div className={`absolute left-[55px] top-[2111px] h-px w-[1618px] ${LINE}`} />
+    </>
   );
 }
