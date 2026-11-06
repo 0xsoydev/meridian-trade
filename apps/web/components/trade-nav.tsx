@@ -42,7 +42,11 @@ export function TradeNav() {
           ))}
 
           <details className="group relative">
-            <summary className="flex cursor-pointer list-none items-center gap-1.5 [&::-webkit-details-marker]:hidden">
+            <summary
+              className={`flex cursor-pointer list-none items-center gap-1.5 [&::-webkit-details-marker]:hidden ${
+                MORE.some((link) => isActive(link.href)) ? "text-[#1743FF]" : ""
+              }`}
+            >
               More
               <Chevron />
             </summary>
