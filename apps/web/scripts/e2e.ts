@@ -1,11 +1,18 @@
 import assert from "node:assert/strict";
-import { Client, PrivateKey, TransferTransaction } from "@hiero-ledger/sdk";
+import { AccountId, Client, Hbar, PrivateKey, TransferTransaction } from "@hiero-ledger/sdk";
+import { createPublicClient, createWalletClient, erc20Abi, http, isAddress } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
+import { hederaTestnet } from "viem/chains";
 import { z } from "zod";
+import { hederaClient } from "../lib/hcs.ts";
+import { evmAddressOf, treasuryEvm } from "../lib/mirror.ts";
 
 const BASE = (process.env.ROUTER_URL ?? process.env.PUBLIC_HOST ?? "http://localhost:3000").replace(/\/+$/, "");
-const MODEL = process.env.MODEL ?? "0gm-1.0-35b-a3b";
+const MIRROR = process.env.MIRROR_NODE_URL ?? "https://testnet.mirrornode.hedera.com";
+const MODEL = process.env.MODEL ?? "deepseek-v4.1-flash";
 const DEPOSIT_MICRO = 100_000;
+const WALLET_DEPOSIT_MICRO = 50_000;
+const GAS_HBAR = 1;
 const BUY_TOKENS = "10000";
 
 function required(name: string): string {
@@ -45,19 +52,59 @@ client.close();
 const txId = transfer.transactionId.toString();
 console.log(`deposit    ${txId}`);
 
-const deposit = (): Promise<Response> =>
-  fetch(`${BASE}/api/v1/keys/deposit`, { method: "POST", headers, body: JSON.stringify({ tx_id: txId }) });
-let credited = await deposit();
-for (let attempt = 0; credited.status === 400 && attempt < 20; attempt++) {
-  await new Promise((resolve) => setTimeout(resolve, 3000));
-  credited = await deposit();
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const deposit = (id: string): Promise<Response> =>
+  fetch(`${BASE}/api/v1/keys/deposit`, { method: "POST", headers, body: JSON.stringify({ tx_id: id }) });
+
+async function credited(id: string, amountMicro: number): Promise<bigint> {
+  let response = await deposit(id);
+  for (let attempt = 0; response.status === 400 && attempt < 20; attempt++) {
+    await sleep(3000);
+    response = await deposit(id);
+  }
+  if (!response.ok) throw new Error(`deposit answered ${response.status}: ${await response.text()}`);
+  const { balance_usd_micro: balance } = z
+    .object({ amount_usd_micro: z.literal(String(amountMicro)), balance_usd_micro: z.string() })
+    .parse(await response.json());
+  assert.equal((await deposit(id)).status, 409);
+  return BigInt(balance);
 }
-if (!credited.ok) throw new Error(`deposit answered ${credited.status}: ${await credited.text()}`);
-const { balance_usd_micro: funded } = z
-  .object({ amount_usd_micro: z.literal(String(DEPOSIT_MICRO)), balance_usd_micro: z.string() })
-  .parse(await credited.json());
-assert.equal((await deposit()).status, 409);
-console.log(`credited   ${funded} micro USD; the replay was refused`);
+
+const memoFunded = await credited(txId, DEPOSIT_MICRO);
+console.log(`credited   ${memoFunded} micro USD; the replay was refused`);
+
+const treasury = hederaClient();
+const treasuryId = treasury.operatorAccountId;
+const treasuryAlias = await treasuryEvm();
+const usdcEvm = evmAddressOf(usdc);
+if (!treasuryId || !treasuryAlias || !isAddress(treasuryAlias) || !usdcEvm || !isAddress(usdcEvm)) {
+  throw new Error("the treasury and Hedera USDC must be configured");
+}
+const alias = AccountId.fromEvmAddress(0, 0, wallet.address);
+await (
+  await new TransferTransaction()
+    .addHbarTransfer(treasuryId, new Hbar(-GAS_HBAR))
+    .addHbarTransfer(alias, new Hbar(GAS_HBAR))
+    .addTokenTransfer(usdc, treasuryId, -WALLET_DEPOSIT_MICRO)
+    .addTokenTransfer(usdc, alias, WALLET_DEPOSIT_MICRO)
+    .execute(treasury)
+).getReceipt(treasury);
+treasury.close();
+for (let attempt = 0; !(await fetch(`${MIRROR}/api/v1/accounts/${wallet.address}`)).ok; attempt++) {
+  if (attempt === 20) throw new Error(`${wallet.address} never appeared on the mirror`);
+  await sleep(2000);
+}
+const hash = await createWalletClient({ account: wallet, chain: hederaTestnet, transport: http() }).writeContract({
+  address: usdcEvm,
+  abi: erc20Abi,
+  functionName: "transfer",
+  args: [treasuryAlias, BigInt(WALLET_DEPOSIT_MICRO)],
+});
+const receipt = await createPublicClient({ chain: hederaTestnet, transport: http() }).waitForTransactionReceipt({ hash });
+assert.equal(receipt.status, "success");
+const funded = await credited(hash, WALLET_DEPOSIT_MICRO);
+assert.equal(funded, memoFunded + BigInt(WALLET_DEPOSIT_MICRO));
+console.log(`wallet     ${hash} sent ${WALLET_DEPOSIT_MICRO} micro USDC on chain 296; credited, and the replay was refused`);
 
 const traded = await fetch(`${BASE}/api/v1/trades`, {
   method: "POST",
@@ -93,5 +140,5 @@ const balance = await fetch(`${BASE}/api/v1/balance`, { headers });
 const after = z
   .object({ balance_usd_micro: z.string(), reserved_usd_micro: z.literal("0") })
   .parse(await balance.json());
-assert.equal(BigInt(after.balance_usd_micro), BigInt(funded) - cost);
+assert.equal(BigInt(after.balance_usd_micro), funded - cost);
 console.log(`balance    ${after.balance_usd_micro} micro USD; the call spent prepaid tokens, not cash`);
