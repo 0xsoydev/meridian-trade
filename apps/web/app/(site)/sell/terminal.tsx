@@ -20,13 +20,13 @@ const PRESETS = [
 ];
 
 const RAILS = [
-  { id: "0g", label: "0G iAI", story: "daily credits reset at 00:00 UTC", market: true, logo: "/images/rails/0g.svg" },
-  { id: "anthropic", label: "Anthropic", story: "Console workspace key with a spend limit", market: false, logo: "/images/rails/anthropic.svg" },
-  { id: "openai", label: "OpenAI", story: "project key with a budget", market: false, logo: "/images/rails/openai.svg" },
-  { id: "openrouter", label: "OpenRouter", story: "the gateway's own spend limit — the probe shows credits left", market: false, logo: "/images/rails/openrouter.svg" },
-  { id: "commandcode", label: "Command Code", story: "the gateway's own spend limit · OpenAI chat, max_completion_tokens", market: false, logo: "/images/rails/commandcode.svg" },
-  { id: "zen", label: "OpenCode Zen", story: "the gateway's own spend limit", market: false, logo: "/images/rails/opencode.svg" },
-  { id: "opencode-go", label: "OpenCode Go", story: "the gateway's own spend limit", market: false, logo: "/images/rails/opencode.svg" },
+  { id: "0g", label: "0G iAI", story: "daily credits reset at 00:00 UTC", market: true, logo: "/images/rails/0g.svg", wide: true },
+  { id: "anthropic", label: "Anthropic", story: "Console workspace key with a spend limit", market: false, logo: "/images/rails/anthropic.svg", wide: false },
+  { id: "openai", label: "OpenAI", story: "project key with a budget", market: false, logo: "/images/rails/openai.svg", wide: false },
+  { id: "openrouter", label: "OpenRouter", story: "the gateway's own spend limit — the probe shows credits left", market: false, logo: "/images/rails/openrouter.svg", wide: false },
+  { id: "commandcode", label: "Command Code", story: "the gateway's own spend limit · OpenAI chat, max_completion_tokens", market: false, logo: "/images/rails/commandcode.svg", wide: false },
+  { id: "zen", label: "OpenCode Zen", story: "the gateway's own spend limit", market: false, logo: "/images/rails/opencode.svg", wide: false },
+  { id: "opencode-go", label: "OpenCode Go", story: "the gateway's own spend limit", market: false, logo: "/images/rails/opencode.svg", wide: false },
 ] as const;
 
 type RailId = (typeof RAILS)[number]["id"];
@@ -374,7 +374,7 @@ export function Sell() {
                       {item.logo ? (
                         <span
                           aria-hidden
-                          className="h-[18px] w-[18px] shrink-0 bg-current"
+                          className={`shrink-0 bg-current ${item.wide ? "h-[18px] w-[38px]" : "h-[18px] w-[18px]"}`}
                           style={{
                             maskImage: `url(${item.logo})`,
                             maskSize: "contain",
