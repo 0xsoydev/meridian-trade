@@ -248,14 +248,14 @@ Missing usage (client abort, upstream break, deadline abort): `mixedTokens(estim
 |---|---|---|
 | `accounts` | `id uuid pk`, `address text`, `world_nullifier numeric(78,0) null`, `created_at` | `address` unique (lowercase), `world_nullifier` unique |
 | `sellers` | `id uuid pk`, `address text`, `world_nullifier numeric(78,0)`, `hedera_account text null`, `created_at timestamptz` | `address` unique (lowercase), `world_nullifier` unique |
-| `listings` | `id uuid pk`, `seller_id fk`, `rail text`, `model text`, `auth_kind text`, `credential_ciphertext text`, `account_ref text null`, `price_micro_per_mtok bigint null`, `capacity_tokens bigint`, `used_tokens bigint default 0`, `reserved_tokens bigint default 0`, `throttled_until timestamptz null`, `status text`, `client_nonce text`, `created_at` | `capacity_tokens > 0`; `used_tokens + reserved_tokens <= capacity_tokens`; `auth_kind in ('key','oauth')`; `status in ('active','exhausted','invalid','cancelled','pending_auth')`; `client_nonce` unique; index `(model, status, price_micro_per_mtok)` |
+| `listings` | `id uuid pk`, `seller_id fk`, `rail text`, `model text`, `auth_kind text`, `credential_ciphertext text`, `account_ref text null`, `price_micro_per_mtok bigint null`, `capacity_tokens bigint`, `used_tokens bigint default 0`, `reserved_tokens bigint default 0`, `throttled_until timestamptz null`, `status text`, `reset_on date` (default today, UTC), `client_nonce text`, `created_at` | `capacity_tokens > 0`; `used_tokens + reserved_tokens <= capacity_tokens`; `auth_kind in ('key','oauth')`; `status in ('active','exhausted','invalid','cancelled','pending_auth')`; `client_nonce` unique; index `(model, status, price_micro_per_mtok)` |
 | `keys` | `id uuid pk`, `account_id fk null`, `hash bytea`, `balance_usd_micro bigint`, `reserved_usd_micro bigint default 0`, `auto_topup_usd_micro bigint default 0`, `daily_topup_cap_usd_micro bigint default 5000000`, `default_model text null`, `world_sub text null`, `created_at` | `hash` unique; `balance_usd_micro >= 0`; `reserved_usd_micro >= 0` |
 | `topups` | `tx_id text pk`, `key_id fk`, `amount_usd_micro bigint`, `payer text`, `created_at` | index `(key_id, created_at)` |
 | `usage` | `id uuid pk`, `status text`, `rail text`, `upstream_request_id text null`, `key_id fk`, `listing_id fk`, `prepaid_id fk null` (set when the request spends prepaid MTokens), `price_micro_per_mtok bigint`, `reserved_tokens bigint`, `reserved_usd_micro bigint`, `prompt_tokens int default 0`, `completion_tokens int default 0`, `list_cost_usd_micro bigint default 0`, `mixed_tokens bigint default 0`, `charge_usd_micro bigint default 0`, `seller_earning_usd_micro bigint default 0`, `payout_id uuid null`, `hcs_minute bigint null`, `created_at`, `settled_at timestamptz null` | `status in ('open','settled','released')`; `upstream_request_id` unique when not null; index `(status, created_at)`, `(settled_at)`, `(listing_id, payout_id)` |
 | `trades` | `id uuid pk`, `key_id fk`, `listing_id fk`, `model text`, `tokens bigint`, `price_micro_per_mtok bigint`, `charge_usd_micro bigint`, `seller_earning_usd_micro bigint`, `payout_id uuid null`, `created_at` | `tokens > 0`; index `(created_at)`, `(listing_id, payout_id)`, `(key_id, created_at)` |
 | `prepaid` | `id uuid pk`, `key_id fk`, `listing_id fk`, `model text`, `tokens_remaining bigint`, `expires_at timestamptz null`, `created_at` | `tokens_remaining >= 0`; index `(key_id, model, expires_at)` |
 | `bids` | `id uuid pk`, `key_id fk`, `model text`, `price_micro_per_mtok bigint`, `tokens bigint` (unfilled), `hold_usd_micro bigint`, `status text`, `created_at` | `status in ('open','filled','cancelled')`; `price > 0`; `tokens, hold >= 0`; index `(model, status, price)`, `(key_id, status)` |
-| `payouts` | `id uuid pk`, `seller_id fk`, `day date`, `amount_usd_micro bigint`, `schedule_id text null`, `status text`, `created_at` | unique `(seller_id, day)`; `status in ('pending','scheduled','executed','cancelled')` |
+| `payouts` | `id uuid pk`, `seller_id fk`, `day date`, `amount_usd_micro bigint`, `schedule_id text null`, `execute_at timestamptz null`, `status text`, `created_at` | unique `(seller_id, day)`; `status in ('pending','scheduled','executed','cancelled')` |
 | `approvals` | `id uuid pk`, `key_id fk`, `kind text`, `cap_usd_micro bigint null`, `device_code_ciphertext text`, `user_code text`, `verification_uri_complete text`, `interval_s int`, `expires_at`, `status text`, `created_at` | `kind in ('link_human','raise_cap')`; `status in ('pending','approved','denied','expired')` |
 
 Each request attempt writes one `usage` row: `open` at reservation, then closed exactly once as `settled` or `released` (§9, 11a). A `trades` row is a spot fill: capacity taken, money moved, a price observed. A request covered from prepaid writes a `usage` row with `charge_usd_micro = 0` and leaves listing capacity alone, because the fill already took it.
@@ -298,6 +298,7 @@ export type ModelRow = {
   list_prompt_micro_per_mtok: string;
   list_completion_micro_per_mtok: string;
   reference_blended_micro_per_mtok: string;
+  list_ceiling_micro_per_mtok: string;
   best_ask_micro_per_mtok: string | null;
   index_micro_per_mtok: string | null;
   available_tokens: string;
@@ -362,7 +363,7 @@ export type ApprovalStatus = { status: "pending" | "approved" | "denied" | "expi
 3. Catalog: `lib/rails.ts` `catalog()` (per-rail, 300 s cache) → `reference(model)`. Unknown model → 404 `model_not_found`.
 4. `maxTokens = clamp(request ?? 4096, 1, model.max_completion_tokens)`; force it into the upstream body. If `stream`, force `stream_options.include_usage = true`.
 5. If `PAYMENT-SIGNATURE` present → top-up settle path (§10.3) before continuing; bounds: 1 micro up to the remaining daily cap.
-6. Candidates: active listings for `model` from enabled rails with `throttled_until` null or past. Listings where this key holds unexpired prepaid MTokens come first (FIFO by `expires_at`); the rest are ordered by effective ask, computed in app code because it depends on the rail (`price ?? marketPrice(bestLimitAsk, reference, rail)`). No ask and no eligible market rail → 404 `no_liquidity`.
+6. Candidates: active listings for `model` from enabled rails with `throttled_until` null or past. Listings where this key holds unexpired prepaid MTokens come first (FIFO by `expires_at`), including ones the seller has since cancelled, because those MTokens are sold and paid for; the rest are ordered by effective ask, computed in app code because it depends on the rail (`price ?? marketPrice(bestLimitAsk, reference, rail)`). No ask and no eligible market rail → 404 `no_liquidity`.
 7. For each candidate, one statement reserves what the request needs, or nothing:
    - prepaid: if the key holds at least `r.tokens` unexpired MTokens on this listing, `prepaid.tokens_remaining -= r.tokens where tokens_remaining >= r.tokens`. No USD hold and no capacity change: the fill took both (§10.10).
    - otherwise: lock the listing (`for update`) when `status = 'active'` and `used + reserved + r.tokens <= capacity`; `balance -= r.micro, reserved += r.micro where balance >= r.micro`, only if the listing row was locked; then `reserved_tokens += r.tokens`.
@@ -378,7 +379,7 @@ export type ApprovalStatus = { status: "pending" | "approved" | "denied" | "expi
 11. Non-stream: `openai-chat` returns the upstream JSON unchanged; the two translated protocols map it with `translate.*ToChat`. Read `usage`, settle (11a) in a `finally` (abort → §7 fallback), return the OpenAI chat shape.
 12. Stream: `openai-chat` forwards bytes untouched; `anthropic-messages` and `openai-responses` map their events to OpenAI chat chunks (`translate.*SseToChat`), which also yields the final usage. Settle (11a) in a `finally` that runs on normal end, upstream error, client cancel (which aborts upstream) and the deadline; a `TransformStream` `flush` alone never runs on cancel. Missing usage → §7 fallback.
 
-11a. Settle, one CTE statement, effective once: usage `open → settled` (`where status = 'open'`) with final fields and `settled_at = now()`; listing `reserved_tokens -= r.tokens`, `used_tokens = least(used_tokens + actualTokens, capacity_tokens − (reserved_tokens − r.tokens))`, → `exhausted` when `used = capacity`; key `reserved -= r.micro`, `balance = greatest(balance + r.micro − charge, 0)`. Listing and key change only if the usage row was still `open`. The clamps stop constraints from failing when actual cost exceeds the reservation (§21). Release is the same statement with zero usage, closing the row as `released`, and it gives back whichever hold was taken: `prepaid.tokens_remaining` for a prepaid request, `reserved_usd_micro` and `reserved_tokens` for a spot one.
+11a. Settle, one CTE statement, effective once: usage `open → settled` (`where status = 'open'`) with final fields and `settled_at = now()`; listing `reserved_tokens -= r.tokens`, `used_tokens = least(used_tokens + actualTokens, capacity_tokens − (reserved_tokens − r.tokens))`, → `exhausted` when `used = capacity`; key `reserved -= r.micro`, `balance = greatest(balance + r.micro − charge, 0)`. A prepaid request leaves the listing alone and sets `prepaid.tokens_remaining = greatest(tokens_remaining + r.tokens − actualTokens, 0)`, so a request that runs past its byte-estimated reservation is deducted what it used. Listing, key and prepaid change only if the usage row was still `open`. The clamps stop constraints from failing when actual cost exceeds the reservation (§21). Release is the same statement with zero usage, closing the row as `released`, and it gives back whichever hold was taken: `prepaid.tokens_remaining` for a prepaid request, `reserved_usd_micro` and `reserved_tokens` for a spot one.
 
 ---
 
@@ -422,21 +423,20 @@ export type Credential = { kind: "key"; key: string } | { kind: "stored"; listin
 
 `GET /api/listings?seller=0x…` returns `SellerListings`: `verified` (a `sellers` row exists for the address) and that seller's listings, newest first, without credentials. `/trade`'s Sell tab reads it to find a stored key on a rail that serves the model.
 
-`DELETE /api/listings/:id` with `Signed<{ action: "cancel"; listing_id: string; client_nonce: string }>` → `status = cancelled` when no reservation is open.
+`DELETE /api/listings/:id` with `Signed<{ action: "cancel"; listing_id: string; client_nonce: string }>` → `status = cancelled` when no reservation is open. MTokens already sold on it stay spendable (§9 step 6).
 
 `PATCH /api/listings/:id` with `Signed<{ action: "amend"; listing_id: string; price_micro_per_mtok: string | null; capacity_mtok: string; client_nonce: string }>` → re-runs the price rule and updates both fields. `capacity_tokens` may not fall below `used_tokens + reserved_tokens`; shrinking to that floor is allowed. This is the Sell side of `/trade`.
 
 ### 10.3 Top-up (`lib/x402.ts`)
 
 ```ts
-export function resourceServer(): Promise<x402ResourceServer>;
 export function paymentRequired(amountMicro: bigint, resourceUrl: string): Promise<{ status: 402; headers: Headers; body: string }>;
 export function settleTopup(header: string, bounds: { minMicro: bigint; maxMicro: bigint }, resourceUrl: string): Promise<{ txId: string; payer: string; amountMicro: bigint } | { error: string }>;
 ```
 
-- `x402ResourceServer([new HTTPFacilitatorClient({ url: X402_FACILITATOR_URLS[0] }), new HTTPFacilitatorClient({ url: X402_FACILITATOR_URLS[1] })]).register(HEDERA_NETWORK, new ExactHederaScheme())`, `await initialize()` once per instance. Requirements carry the first healthy facilitator's fee payer.
+- One `x402ResourceServer(new HTTPFacilitatorClient({ url, timeoutMs: 20_000 })).register(HEDERA_NETWORK, new ExactHederaScheme())` per URL in `X402_FACILITATOR_URLS`, initialized once and cached. A facilitator that fails `initialize`, `verify` or `settle` is benched for 5 min. A 402 offer comes from the first facilitator that is not benched and initializes, and carries that facilitator's fee payer. The Hedera scheme matches `extra.feePayer` exactly, so only the facilitator that issued an offer can settle a payment made against it.
 - `paymentRequired`: `buildPaymentRequirements({ scheme: "exact", network: HEDERA_NETWORK, payTo: HEDERA_TREASURY_ID, price: "$<amount>" })` → `createPaymentRequiredResponse(...)` → `encodePaymentRequiredHeader` into `PAYMENT-REQUIRED`.
-- `settleTopup`: `decodePaymentSignatureHeader` → `accepted.amount` (zod: integer string; USDC atomic units = micro) must fall within `bounds` → rebuild requirements exactly as `paymentRequired` does for that amount → `findMatchingRequirements` → `verifyPayment` → `settlePayment`. The retry never re-derives the amount from state that may have changed since the 402. Any failure → 402 with the reason.
+- `settleTopup`: `decodePaymentSignatureHeader` → `accepted.amount` (zod: integer string; USDC atomic units = micro) must fall within `bounds` → for each facilitator, rebuild its requirements exactly as `paymentRequired` does for that amount → `findMatchingRequirements` → on the first match, `verifyPayment` → `settlePayment`. The retry never re-derives the amount from state that may have changed since the 402. Any failure → 402 with the reason.
 - Credit, one statement: `with t as (insert into topups … on conflict (tx_id) do nothing returning amount_usd_micro) update keys set balance_usd_micro = balance_usd_micro + (select amount_usd_micro from t) where id = $key and exists (select 1 from t)`. A replayed tx id credits nothing.
 - `/api/v1/topup` without auth: after settlement insert a new key, return the plaintext key once.
 - Response header `PAYMENT-RESPONSE` via `encodePaymentResponseHeader`.
@@ -464,10 +464,10 @@ export function pollApproval(approvalId: string): Promise<ApprovalStatus>;
 1. For every seller with unpaid money from before today — `usage` rows settled with a seller earning, plus `trades` rows — one statement inserts the payout (`on conflict (seller_id, day) do nothing`, status `pending`) and sets `payout_id` on exactly the rows it sums.
 2. Every `pending` payout, including any left by a crash:
    - Seller without `hedera_account`: look up `address` on the mirror; if absent, a plain `TransferTransaction` of 1 micro-USDC treasury → `AccountId.fromEvmAddress(0, 0, seller.address)` creates the account with USDC associated (HIP-542; treasury pays creation). Store the `0.0.N` id.
-   - `ScheduleCreateTransaction` wrapping `TransferTransaction` USDC treasury → `seller.hedera_account`, `setExpirationTime(payout.day + 1 d, 01:00 UTC)`, `setWaitForExpiry(true)`, `setAdminKey(treasury)`, `setScheduleMemo(payout.id)`. Every input comes from the payout row, so a retry before 01:00 gets `IDENTICAL_SCHEDULE_ALREADY_CREATED` with the existing schedule id, and after 01:00 creation fails and the payout stays `pending` (§21). Store `schedule_id`, status `scheduled`.
-3. Reset listings on rails with `resetPeriod = 'daily'`: `used_tokens = 0, status = 'active' where status in ('active','exhausted')`. Monthly and non-expiring rails keep their usage; the seller re-lists or raises capacity.
-4. Between 00:00 and 01:00 UTC an operator can cancel a payout with `ScheduleDeleteTransaction`.
-5. 01:05 UTC: mirror `GET /schedules/{id}`. `executed` only when `executed_timestamp` is set and `GET /transactions?timestamp=` holds a `scheduled` transaction with `result: SUCCESS`; deleted → `cancelled`; anything else stays `scheduled` and is re-checked every minute.
+   - `ScheduleCreateTransaction` wrapping `TransferTransaction` USDC treasury → `seller.hedera_account`, `setExpirationTime(execute_at)`, `setWaitForExpiry(true)`, `setAdminKey(treasury)`, `setScheduleMemo(payout.id)`. The first attempt stores `execute_at = max(payout.day + 1 d at 01:00 UTC, now + 10 min)` with `coalesce`, so it is never overwritten: a payout closed late still pays ten minutes out, and every retry rebuilds the identical body and gets `IDENTICAL_SCHEDULE_ALREADY_CREATED` with the existing schedule id instead of a second transfer. A payout still `pending` after its `execute_at` is logged for an operator (§21). Store `schedule_id`, status `scheduled`.
+3. Reset listings on rails with `resetPeriod = 'daily'` whose `reset_on` is before today: `used_tokens = 0, status = 'active', reset_on = today where status in ('active','exhausted')`. It runs every minute, at most once per listing per UTC day, so a keeper that was down at midnight resets on its next tick. Monthly and non-expiring rails keep their usage; the seller re-lists or raises capacity.
+4. Until `execute_at` an operator can cancel a payout with `ScheduleDeleteTransaction`.
+5. Every minute, for every `scheduled` payout: mirror `GET /schedules/{id}`, where a 404 means the mirror has not indexed it yet. `executed` only when `executed_timestamp` is set and `GET /transactions?timestamp=` holds a `scheduled` transaction with `result: SUCCESS`; deleted → `cancelled`; anything else stays `scheduled` and is re-checked every minute.
 
 Schedules pay the numeric account id because resolving an EVM alias inside a scheduled transaction is unverified.
 
@@ -487,7 +487,7 @@ export function routerKey(request: Request): Promise<KeyRow | null>;
 2. When woken, or every 180 s, per market: read the last `INDEX_WINDOW_MIN` minutes of rollups for the model from the mirror node (`/topics/{HCS_TOPIC_ID}/messages`) — the public log is the only input. `INDEX_WINDOW_MIN` is 60 in production and 10 for the demo.
    - `twap` = mean `vwap` over minutes with fills.
    - No fills → effective best ask → else `marketPrice(null, reference, rail)`; `null` means the market has no bid.
-   - `index = clamp(twap, blended(reference(model)!.pricing)/2, blended(reference(model)!.pricing))`.
+   - `index = clamp(twap, blended(reference(model)!.pricing)/10, blended(reference(model)!.pricing))`. The floor sits at a tenth of list, so a deep spot discount moves the index instead of pinning it at half of list.
    - Post when `|Δ| ≥ 10 bps` or 5 min since last post (inside the 600 s staleness window): `IndexOracle.post(market, index, seqFrom, seqTo)`. Each post moves at most `MAX_MOVE_BPS` from the last posted price, so a large move converges over successive posts instead of reverting.
 3. Every 30 s: accounts from `PositionModified` logs; `canLiquidate` → `liquidate`.
 
@@ -504,7 +504,7 @@ export type Rollup = {
 };
 ```
 
-`vwap = charge · 1e6 / mixed_tokens`. `usage_root` = SHA-256 Merkle root over `sha256(id|key_id|charge|mixed_tokens)` of that minute's rows. It commits to the rows; serving inclusion proofs is out of scope (§21). Message < 1024 bytes.
+`vwap = Σ(price · mixed_tokens) / Σ mixed_tokens` over the minute's rows, each at the ask or bid it filled at; `charge_usd_micro` reports what was charged. Charges round up to whole micro-USD per request, so dividing them by tokens would overstate the VWAP of a minute of small requests. `usage_root` = SHA-256 Merkle root over `sha256(id|key_id|charge|mixed_tokens)` of that minute's rows. It commits to the rows; serving inclusion proofs is out of scope (§21). Message < 1024 bytes.
 
 ### 10.8 Perps (frontend)
 
@@ -542,7 +542,7 @@ export function buy(keyId: string, intent: TradeIntent): Promise<{ fills: Trade[
 `GET /api/v1/book?model=` returns the asks (`listing_id`, rail, price, tokens left, verifiable), the open bids summed by price (best first, at most 20 levels) and the last 50 `trades`, which is what `/trade` renders and what its live series reads.
 
 Limit buys (`lib/bids.ts`):
-1. `limit_price_micro_per_mtok` stops the ask walk at the first ask above it. What the walk fills is charged as above; the rest rests as a `bids` row. One statement moves `hold = charge(rest, limit)` from the key's balance into the bid, or rests nothing when the balance cannot cover it. The 402 check covers the fills plus that hold.
+1. `limit_price_micro_per_mtok` stops the ask walk at the first ask above it. What the walk fills is charged as above; the rest rests as a `bids` row. One statement moves `hold = charge(rest, limit)` from the key's balance into the bid, or rests nothing when the balance cannot cover it. The 402 check covers the fills plus that hold. A limit above the highest list price among the enabled rails that serve the model (`list_ceiling_micro_per_mtok` on `/api/v1/models`) is refused with 400, because no ask can sit above list.
 2. A bid always holds exactly `charge(tokens, price)` for its unfilled tokens. A fill of `take` tokens charges `hold − charge(tokens − take, price)` and the bid keeps the new `charge(tokens − take, price)`, so a bid's fills add up to what it held, and a full fill leaves 0.
 3. `matchBids(model)` fills the best bid (highest price, then oldest) from the best ask while the ask is at or below the bid, one statement per fill that locks the bid and the listing, and stops at the first fill that fails. The trade prints at the bid's price: the resting order sets the price, so sellers selling into bids print below the asks and the tape moves both ways. Fills write `trades` and `prepaid` like a buy, and the seller is paid at the trade's charge.
 4. Matching runs after `POST /api/listings` and `PATCH /api/listings/:id`, and every 60 s in the keeper, which also catches capacity returned by the daily reset.
@@ -689,7 +689,7 @@ type AgentEnv = {
 | Page | Who | Contents | Data |
 |---|---|---|---|
 | `/` | everyone | Markets overview and the way in: model, rails, verifiability, best ask, index, discount, 24 h volume, links to `/trade?model=` and `/perps?model=` | DB + `IndexOracle.latest` |
-| `/trade` | spot buyers and sellers | Model picker (`?model=`). **Buy**: the order book, asks with price, MTokens left, rail and verifiability and bids in green under them; size input; an optional limit price, where blank buys at market and a price fills what it can and rests the rest as a bid; fee, the amount held for the bid and the total; your open bids with cancel; recent fills, charted as 1m, 5m, 15m or 1h candles from the last 50 fills; a short balance on a wallet key is paid from that wallet in Hedera USDC, up to 20 USD, before the buy. **Sell**: from the connected seller wallet, your own asks with amend price, capacity and cancel, and a limit sell (price, size) placed with a key already stored on one of your listings on a rail that serves the model; a link to `/sell` only when the wallet is not a verified seller or has no such key | `GET /api/v1/book`, `POST /api/v1/trades`, `PATCH`/`DELETE /api/listings/:id` |
+| `/trade` | spot buyers and sellers | Model picker (`?model=`). **Buy**: the order book, asks with price, MTokens left, rail and verifiability and bids in green under them; size input; an optional limit price, where blank buys at market and a price fills what it can and rests the rest as a bid, with a note saying which will happen and a limit above the list price refused; fee, the amount held for the bid and the total; your open bids with cancel; recent fills, charted as 1m, 5m, 15m or 1h candles from the last 50 fills; a short balance on a wallet key is paid from that wallet in Hedera USDC, up to 20 USD, before the buy. **Sell**: from the connected seller wallet, your own asks with amend price, capacity and cancel, and a limit sell (price, size) placed with a key already stored on one of your listings on a rail that serves the model; a link to `/sell` only when the wallet is not a verified seller or has no such key | `GET /api/v1/book`, `POST /api/v1/trades`, `PATCH`/`DELETE /api/listings/:id` |
 | `/perps` | traders | Model picker (`?model=`). Index chart and mark price, current funding rate, long/short with size, leverage and margin, previewed liquidation price, Positions tab across all models, MockUSDC balance and faucet, connect-wallet state | `IndexPosted` logs (viem `getLogs`), `PerpMarket` reads, wagmi |
 | `/sell` | sellers, once | Wallet → World verify → source picker (API key or Connect Claude Code / Codex) → new listing → earnings and payouts (HashScan). Setup and accounting, not trading | API, DB |
 | `/keys` | a human buyer | Connect a wallet → sign once to create a router key → list keys, deposit panel (deposit from the key's wallet, or treasury, memo = key id, amount, tx id), balance, auto top-up, daily cap, default model, link human (QR via `qrcode`). Pasting an agent's key still works | `/api/v1/keys`, `/api/v1/keys/deposit`, `/api/v1/*` |
@@ -844,18 +844,18 @@ Video (2:30–2:55, human voice):
 - Seeded prices are the standard short-context tier. OpenAI doubles prices past 272K input tokens and Claude Haiku 5.5 is five times dearer past 100K, so a flat $/MTok listing priced at the short-context rate loses money on a very large prompt.
 - Failover can move one request between rails with different upstreams and different verifiability. The buyer names a model, not a rail.
 - Cash-denominated credits carry no discount incentive, which is why a rail with `resetPeriod = null` cannot post a market ask.
-- Prompt tokens estimated as `bytes / 3` for reservations; when actual cost exceeds what the reservation plus balance covers, the platform absorbs the rest. Upgrade: tokenizer per model.
+- Prompt tokens estimated as `bytes / 3` for reservations; when actual cost exceeds what the reservation plus balance covers, the platform absorbs the rest, and a prepaid request past what its prepaid row holds is served free. Upgrade: tokenizer per model.
 - Reservations swept after a function died are released at zero charge.
 - The daily cap is checked before settlement; concurrent top-ups can overshoot it by one top-up each.
-- A payout needs the seller's Hedera account to be able to receive USDC. If the scheduled transfer fails at 01:00 UTC (no balance, account not associated), the payout stays `scheduled`; the keeper re-checks it every minute and logs it for an operator.
-- The daily listing reset runs only if the keeper is up when the UTC day changes; a missed day waits for the next reset or a manual run.
+- A payout needs the seller's Hedera account to be able to receive USDC. If the scheduled transfer fails at its `execute_at` (no balance, account not associated), the payout stays `scheduled`; the keeper re-checks it every minute and logs it for an operator.
+- A keeper that is down at 00:00 UTC closes the day and resets daily listings on its first tick back; until then buyers see the previous day's exhausted capacity.
 - After keeper downtime longer than `INDEX_WINDOW_MIN`, minutes older than the window are never published to HCS: the index ignores them and `/receipts` cannot show them.
 - An older signed amend can be replayed inside its 5-minute window after a newer one: a listing keeps only its latest `client_nonce`.
 - Each over-cap request starts its own approval; unanswered ones simply expire.
 - Whoever completes an approval link first becomes the key's human (`link_human`); the link and its user code are bearer secrets until they expire.
-- A payout still `pending` after 01:00 UTC on its pay day needs an operator: check the mirror for a schedule with that memo before paying by hand.
+- A payout still `pending` after its `execute_at` (Hedera kept refusing the schedule for ten minutes, or the keeper stopped between creating it and recording it) needs an operator: check the mirror for a schedule with that memo before clearing `execute_at` or paying by hand.
 - `usage_root` inclusion proofs are not served.
-- Facilitator chosen at startup; a signed payment cannot fail over mid-flight.
+- A signed payment settles only through the facilitator that offered it, so it cannot fail over mid-flight; the client retries for a fresh offer, which comes from a facilitator that is up.
 - Keeper is a trusted poster; inputs are public and recomputable.
 - House vault is the only counterparty; no LP shares.
 - No per-key rate limiting beyond the rails' own.
