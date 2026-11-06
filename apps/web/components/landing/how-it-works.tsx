@@ -8,7 +8,7 @@ export function HowItWorks({ variant }: { variant: "page" | "canvas" }) {
   }
 
   return (
-    <h2 className="absolute left-[103px] top-[2846px] whitespace-pre font-serif text-[60px] font-normal leading-[72px] text-black">
+    <h2 className="absolute left-[103px] top-[1605px] whitespace-pre font-serif text-[60px] font-normal leading-[72px] text-black">
       How it works
     </h2>
   );
