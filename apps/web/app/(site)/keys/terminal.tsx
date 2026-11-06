@@ -3,7 +3,7 @@
 import { usePrivy } from "@privy-io/react-auth";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BaseError } from "viem";
-import { useConnection, useSignMessage } from "wagmi";
+import { useConnection, useDisconnect, useSignMessage } from "wagmi";
 import { z } from "zod";
 import { CORNERS, CTA } from "../../../components/landing/hero";
 import { formatMicroPerMtok, formatUsd, parseUsd, stampFormat, TOPUP_MAX_MICRO } from "../../../lib/price";
@@ -39,14 +39,15 @@ const INPUT =
   "h-[34px] w-full border border-[#CECECE] bg-white px-2.5 text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF]";
 const BUTTON =
   "h-[34px] w-full rounded-[6px] bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4] disabled:text-white";
-const KEY_CTA = `${CTA} relative flex h-[34px] w-full items-center justify-center text-[14px] font-semibold text-white disabled:pointer-events-none disabled:bg-[#D4D4D4]`;
+const KEY_CTA = `${CTA} relative mt-6 inline-flex h-[46px] w-fit items-center px-9 text-[16px] text-white disabled:pointer-events-none disabled:bg-[#D4D4D4]`;
 
 const tabClass = (active: boolean) =>
   active ? "font-semibold text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4" : "text-[#757575] hover:text-[#1E1E1E]";
 
 export function Keys() {
-  const { ready, authenticated, login, logout } = usePrivy();
+  const { ready, login, logout } = usePrivy();
   const { address } = useConnection();
+  const { mutate: disconnect } = useDisconnect();
   const { mutateAsync: signMessage } = useSignMessage();
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -57,7 +58,6 @@ export function Keys() {
   const [accountError, setAccountError] = useState<"rejected" | "down" | null>(null);
   const [version, setVersion] = useState(0);
   const [pane, setPane] = useState<"connect" | "usage">("connect");
-  const [keyTab, setKeyTab] = useState<"create" | "paste">("create");
   const [fundTab, setFundTab] = useState<"wallet" | "transfer" | "agent">("wallet");
 
   const models = useModels();
@@ -305,13 +305,13 @@ export function Keys() {
   };
 
   const stats: { label: string; value: string; tone?: "up" | undefined }[] = [
-    { label: "Balance", value: balance ? formatUsd(BigInt(balance.balance_usd_micro)) : "—" },
-    { label: "Reserved", value: balance ? formatUsd(BigInt(balance.reserved_usd_micro)) : "—" },
-    { label: "Topped up today", value: balance ? formatUsd(BigInt(balance.topped_up_today_usd_micro)) : "—" },
-    { label: "Daily cap", value: balance ? formatUsd(BigInt(balance.daily_topup_cap_usd_micro)) : "—" },
-    { label: "Auto top-up", value: balance ? formatUsd(BigInt(balance.auto_topup_usd_micro)) : "—" },
+    { label: "balance", value: balance ? formatUsd(BigInt(balance.balance_usd_micro)) : "—" },
+    { label: "reserved", value: balance ? formatUsd(BigInt(balance.reserved_usd_micro)) : "—" },
+    { label: "topped up today", value: balance ? formatUsd(BigInt(balance.topped_up_today_usd_micro)) : "—" },
+    { label: "daily cap", value: balance ? formatUsd(BigInt(balance.daily_topup_cap_usd_micro)) : "—" },
+    { label: "auto top-up", value: balance ? formatUsd(BigInt(balance.auto_topup_usd_micro)) : "—" },
     {
-      label: "Human link",
+      label: "human link",
       value: balance ? (balance.human_linked ? "linked" : "not linked") : "—",
       tone: balance?.human_linked ? "up" : undefined,
     },
@@ -324,219 +324,167 @@ export function Keys() {
     { id: "topup", label: "Top-up call", text: `POST ${origin}/api/v1/topup?usd=1.00` },
   ];
 
-  const keyState = !key
-    ? "none"
-    : accountError === "rejected"
-      ? "rejected"
-      : accountError === "down"
-        ? "offline"
-        : balance
-          ? "live"
-          : "checking";
   const wallet = balance?.wallet ?? null;
   const walletShort = wallet ? `${wallet.slice(0, 6)}…${wallet.slice(-4)}` : "";
 
   return (
     <section>
-      <div className="flex flex-wrap items-center gap-x-8 gap-y-3 border border-[#CECECE] bg-white px-4 py-3">
-        <div className="flex w-64 items-center gap-2.5 p-2 pr-3">
-          <span
-            aria-hidden
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#1E1E1E] text-[11px] font-medium tracking-wide text-white"
-          >
-            rk
-          </span>
-          <span className="flex min-w-0 flex-1 flex-col">
-            <span className="truncate text-[14px] font-semibold leading-5 text-[#1E1E1E]">Router key</span>
-            <span className="truncate text-[11px] leading-4 tabular-nums text-[#757575]">
-              {key ? maskKey(key) : "none in this browser"}
-            </span>
-          </span>
-          <span
-            className={`shrink-0 border border-[#CECECE] px-1.5 py-0.5 text-[11px] leading-none ${
-              keyState === "live" ? "text-[#2EBD85]" : keyState === "rejected" ? "text-[#F6465D]" : "text-[#1E1E1E]"
-            }`}
-          >
-            {keyState}
-          </span>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-x-7 gap-y-2">
-          {stats.map((stat) => (
-            <div key={stat.label}>
-              <p className="text-[11px] leading-4 text-[#757575]">{stat.label}</p>
-              <p className={`text-[14px] font-semibold tabular-nums ${stat.tone === "up" ? "text-[#2EBD85]" : "text-[#1E1E1E]"}`}>
-                {stat.value}
-              </p>
-            </div>
-          ))}
-        </div>
-
-        <div className="ml-auto text-[14px]">
-          {accountError === "rejected" ? (
-            <span className="text-[13px] text-[#F6465D]">Router key rejected. Paste it again.</span>
-          ) : accountError === "down" ? (
-            <span className="text-[13px] text-[#F6465D]">The account feed is unreachable. Retry in a moment.</span>
-          ) : address ? (
-            <span className="tabular-nums text-[#1E1E1E]">
-              {address.slice(0, 6)}…{address.slice(-4)}
-            </span>
-          ) : null}
-        </div>
+      <div className="mb-4 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 px-1">
+        <h1 className="text-[28px] font-normal leading-9 text-[#1E1E1E]">API Keys</h1>
+        {accountError ? (
+          <p className="text-[13px] text-[#F6465D]">
+            {accountError === "rejected" ? "Router key rejected. Paste it again." : "The account feed is unreachable. Retry in a moment."}
+          </p>
+        ) : null}
       </div>
-
+      <div className="mb-4 flex flex-wrap items-end gap-x-12 gap-y-3 px-1">
+        {stats.map((stat) => (
+          <div key={stat.label}>
+            <p className="text-[13px] leading-5 text-[#757575]">[ {stat.label} ]</p>
+            <p className={`text-[28px] font-normal leading-9 tabular-nums ${stat.tone === "up" ? "text-[#2EBD85]" : "text-[#1E1E1E]"}`}>{stat.value}</p>
+          </div>
+        ))}
+      </div>
       <div className="mt-5 grid grid-cols-1 gap-[17px] lg:grid-cols-[minmax(0,1fr)_290px_290px]">
-        <div className={COLUMN}>
-          <div className={TAB_ROW}>
-            {(["connect", "usage"] as const).map((item) => (
-              <button key={item} type="button" onClick={() => setPane(item)} aria-pressed={pane === item} className={tabClass(pane === item)}>
-                {item === "connect" ? "Connect" : "Usage"}
+        <div className="flex flex-col gap-[17px] self-start lg:h-[calc(100svh-277px)] lg:min-h-[423px]">
+          <div className="flex min-h-0 flex-1 flex-col justify-center-safe overflow-auto border border-[#CECECE] bg-white px-6 py-8">
+            <p className="text-[13px] text-[#1E1E1E]">[ api key ]</p>
+            <h2 className="mt-3 font-serif text-[40px] leading-[1.05] text-[#1E1E1E]">One key, one balance.</h2>
+            <p className={`mt-3 max-w-[480px] text-pretty text-[14px] leading-5 ${MUTED}`}>
+              Your wallet signs one message to create it. The key stays in this browser, never in a URL, and Trade and
+              Perps read the same one.
+            </p>
+            {address ? (
+              <button type="button" onClick={() => void createKey()} disabled={creating} className={KEY_CTA}>
+                {CORNERS.map((corner) => (
+                  <span key={corner} aria-hidden className={corner} />
+                ))}
+                {creating ? "Waiting for the signature…" : "Create API Key"}
               </button>
-            ))}
-            <span className={`ml-auto text-[12px] ${MUTED}`}>
-              {calls.length} call{calls.length === 1 ? "" : "s"}
-            </span>
+            ) : (
+              <button type="button" onClick={() => login()} disabled={!ready} className={KEY_CTA}>
+                {CORNERS.map((corner) => (
+                  <span key={corner} aria-hidden className={corner} />
+                ))}
+                Connect Wallet
+              </button>
+            )}
+            <p className={`mt-5 text-[13px] leading-5 ${createError ? "text-[#F6465D]" : MUTED}`}>
+              {createError ?? (address ? `${address.slice(0, 6)}…${address.slice(-4)} is connected.` : "No wallet connected yet.")}
+              {address ? (
+                <>
+                  {" "}
+                  <button
+                    type="button"
+                    onClick={() => void logout().finally(() => disconnect())}
+                    className="text-[#1743FF] hover:underline"
+                  >
+                    Disconnect
+                  </button>
+                </>
+              ) : null}
+            </p>
+            {key ? (
+              <p className={`mt-1 text-[13px] leading-5 ${MUTED}`}>
+                Saved <span className="tabular-nums text-[#1E1E1E]">{maskKey(key)}</span>.{" "}
+                <button type="button" onClick={clearKey} className="text-[#1743FF] hover:underline">
+                  Clear
+                </button>
+              </p>
+            ) : null}
           </div>
 
-          {pane === "connect" ? (
-            <div className="min-h-0 flex-1 overflow-auto px-4 pb-4 pt-6">
-              <p className="text-[13px] text-[#1E1E1E]">[ the router ]</p>
-              <h2 className="mt-3 font-serif text-[32px] leading-[1.1] text-[#1E1E1E]">Point your agent at the router.</h2>
-              <p className={`mt-3 max-w-[560px] text-pretty text-[14px] leading-5 ${MUTED}`}>
-                OpenAI-compatible chat, one bearer token. The key stays in the header; every call prices itself at
-                the cheapest ask and settles once.
-              </p>
-
-              <div className="mt-5 border-t border-[#D9D9D9]">
-                {snippets.map((snippet) => (
-                  <div key={snippet.id} className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-b border-[#D9D9D9] py-3">
-                    <span className={`w-24 shrink-0 text-[13px] ${MUTED}`}>{snippet.label}</span>
-                    <code className="min-w-0 flex-1 truncate text-[13px] tabular-nums text-[#1E1E1E]">
-                      {snippet.id === "auth" && key ? `Authorization: Bearer ${maskKey(key)}` : snippet.text}
-                    </code>
-                    <button
-                      type="button"
-                      onClick={() => void copy(snippet.id, snippet.text)}
-                      className="text-[13px] text-[#1743FF] hover:underline"
-                    >
-                      {copied === snippet.id ? "copied" : "copy"}
-                    </button>
-                  </div>
-                ))}
-              </div>
-
-              <p className={`mt-4 max-w-[560px] text-pretty text-[13px] leading-5 ${MUTED}`}>
-                A top-up with no Authorization header mints a fresh funded key; with one, it credits that key.
-                Deposits are credited only after the Hedera mirror confirms the transfer.
-              </p>
+          <div className="flex shrink-0 flex-col border border-[#CECECE] bg-white lg:h-[240px]">
+            <div className={TAB_ROW}>
+              {(["connect", "usage"] as const).map((item) => (
+                <button key={item} type="button" onClick={() => setPane(item)} aria-pressed={pane === item} className={tabClass(pane === item)}>
+                  {item === "connect" ? "Connect" : "Usage"}
+                </button>
+              ))}
+              <span className={`ml-auto text-[12px] ${MUTED}`}>
+                {calls.length} call{calls.length === 1 ? "" : "s"}
+              </span>
             </div>
-          ) : (
-            <>
-              <div className={`hidden px-4 py-1.5 text-[11px] md:grid md:grid-cols-6 md:gap-x-3 ${MUTED}`}>
-                {["Time, UTC", "Model", "Rail", "Tokens in / out", "Paid from", "Charge"].map((head) => (
-                  <span key={head}>{head}</span>
-                ))}
-              </div>
-              <div className="max-h-[420px] min-h-0 flex-1 overflow-auto lg:max-h-none">
-                {!key ? (
-                  <p className="px-4 py-6 text-center text-[13px] text-[#757575]">Create or paste a key to see its calls.</p>
-                ) : calls.length === 0 ? (
-                  <p className="px-4 py-6 text-center text-[13px] text-[#757575]">
-                    No calls yet. Point an agent at the router and they show up here.
-                  </p>
-                ) : (
-                  calls.map((call, index) => (
-                    <div
-                      key={`${call.at}-${index}`}
-                      className="grid grid-cols-3 gap-x-3 gap-y-1 border-t border-[#D9D9D9] px-4 py-2 text-[13px] tabular-nums text-[#1E1E1E] md:grid-cols-6"
-                    >
-                      <span className={MUTED}>{stampFormat.format(new Date(call.at))}</span>
-                      <span className="truncate">{call.model}</span>
-                      <span className={MUTED}>{call.rail}</span>
-                      <span>
-                        {call.prompt_tokens.toLocaleString("en-US")} / {call.completion_tokens.toLocaleString("en-US")}
-                      </span>
-                      <span className={MUTED}>{call.status === "settled" ? call.paid_from : call.status}</span>
-                      <span>{call.paid_from === "prepaid" ? "prepaid MTokens" : formatUsd(BigInt(call.charge_usd_micro))}</span>
+
+            {pane === "connect" ? (
+              <div className="min-h-0 flex-1 overflow-auto px-4 pb-2 pt-3">
+                <p className={`text-pretty text-[13px] leading-5 ${MUTED}`}>
+                  OpenAI-compatible chat, one bearer token. Every call prices itself at the cheapest ask and settles once.
+                </p>
+                <div className="mt-2">
+                  {snippets.map((snippet) => (
+                    <div key={snippet.id} className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-t border-[#D9D9D9] py-2">
+                      <span className={`w-24 shrink-0 text-[13px] ${MUTED}`}>{snippet.label}</span>
+                      <code className="min-w-0 flex-1 truncate text-[13px] tabular-nums text-[#1E1E1E]">
+                        {snippet.id === "auth" && key ? `Authorization: Bearer ${maskKey(key)}` : snippet.text}
+                      </code>
+                      <button
+                        type="button"
+                        onClick={() => void copy(snippet.id, snippet.text)}
+                        className="text-[13px] text-[#1743FF] hover:underline"
+                      >
+                        {copied === snippet.id ? "copied" : "copy"}
+                      </button>
                     </div>
-                  ))
-                )}
+                  ))}
+                </div>
               </div>
-            </>
-          )}
+            ) : (
+              <>
+                <div className={`hidden shrink-0 px-4 py-1.5 text-[11px] md:grid md:grid-cols-6 md:gap-x-3 ${MUTED}`}>
+                  {["Time, UTC", "Model", "Rail", "Tokens in / out", "Paid from", "Charge"].map((head) => (
+                    <span key={head}>{head}</span>
+                  ))}
+                </div>
+                <div className="max-h-[300px] min-h-0 flex-1 overflow-auto lg:max-h-none">
+                  {!key ? (
+                    <p className="px-4 py-6 text-center text-[13px] text-[#757575]">Create or paste a key to see its calls.</p>
+                  ) : calls.length === 0 ? (
+                    <p className="px-4 py-6 text-center text-[13px] text-[#757575]">
+                      No calls yet. Point an agent at the router and they show up here.
+                    </p>
+                  ) : (
+                    calls.map((call, index) => (
+                      <div
+                        key={`${call.at}-${index}`}
+                        className="grid grid-cols-3 gap-x-3 gap-y-1 border-t border-[#D9D9D9] px-4 py-2 text-[13px] tabular-nums text-[#1E1E1E] md:grid-cols-6"
+                      >
+                        <span className={MUTED}>{stampFormat.format(new Date(call.at))}</span>
+                        <span className="truncate">{call.model}</span>
+                        <span className={MUTED}>{call.rail}</span>
+                        <span>
+                          {call.prompt_tokens.toLocaleString("en-US")} / {call.completion_tokens.toLocaleString("en-US")}
+                        </span>
+                        <span className={MUTED}>{call.status === "settled" ? call.paid_from : call.status}</span>
+                        <span>{call.paid_from === "prepaid" ? "prepaid MTokens" : formatUsd(BigInt(call.charge_usd_micro))}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
         <div className="flex flex-col gap-[17px] self-start lg:h-[calc(100svh-277px)] lg:min-h-[423px]">
           <div className="shrink-0 border border-[#CECECE] bg-white">
-            <div className="flex border-b border-[#D9D9D9]">
-              {(["create", "paste"] as const).map((item) => (
-                <button
-                  key={item}
-                  type="button"
-                  onClick={() => setKeyTab(item)}
-                  aria-pressed={keyTab === item}
-                  className={`w-1/2 py-2 text-[14px] font-semibold ${item === "paste" ? "border-l border-[#CECECE]" : ""} ${
-                    keyTab === item ? "bg-black text-white" : "text-[#757575] hover:text-[#1E1E1E]"
-                  }`}
-                >
-                  {item === "create" ? "Create" : "Paste"}
-                </button>
-              ))}
+            <div className={TAB_ROW}>
+              <span className="font-semibold text-[#1E1E1E]">Paste a key</span>
             </div>
-
             <div className="space-y-3 p-4">
-              {keyTab === "create" ? (
-                authenticated && address ? (
-                  <>
-                    <button type="button" onClick={() => void createKey()} disabled={creating} className={KEY_CTA}>
-                      {CORNERS.map((corner) => (
-                        <span key={corner} aria-hidden className={corner} />
-                      ))}
-                      {creating ? "Waiting for the signature…" : "Create a key with your wallet"}
-                    </button>
-                    <p className={`text-[13px] leading-5 ${createError ? "text-[#F6465D]" : MUTED}`}>
-                      {createError ?? `${address.slice(0, 6)}…${address.slice(-4)} signs once. The key stays in this browser.`}{" "}
-                      <button type="button" onClick={() => void logout()} className="text-[#1743FF] hover:underline">
-                        Disconnect
-                      </button>
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <button type="button" onClick={() => login()} disabled={!ready} className={KEY_CTA}>
-                      {CORNERS.map((corner) => (
-                        <span key={corner} aria-hidden className={corner} />
-                      ))}
-                      Connect wallet
-                    </button>
-                    <p className={`text-[13px] leading-5 ${MUTED}`}>One wallet signature creates the key.</p>
-                  </>
-                )
-              ) : (
-                <>
-                  <label className="block">
-                    <span className={`mb-1 block text-[13px] ${MUTED}`}>Router key</span>
-                    <input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="rk_…" className={INPUT} />
-                  </label>
-                  <button
-                    type="button"
-                    onClick={saveKey}
-                    disabled={!draft.trim().startsWith("rk_") || draft.trim().length < 8}
-                    className={BUTTON}
-                  >
-                    Save key
-                  </button>
-                  <p className={`text-[13px] leading-5 ${MUTED}`}>Stays in this browser, never in a URL.</p>
-                </>
-              )}
-              {key ? (
-                <p className={`border-t border-[#D9D9D9] pt-3 text-[13px] leading-5 ${MUTED}`}>
-                  Saved <span className="tabular-nums text-[#1E1E1E]">{maskKey(key)}</span>.{" "}
-                  <button type="button" onClick={clearKey} className="text-[#1743FF] hover:underline">
-                    Clear
-                  </button>
-                </p>
-              ) : null}
+              <label className="block">
+                <span className={`mb-1 block text-[13px] ${MUTED}`}>Router key</span>
+                <input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="rk_…" className={INPUT} />
+              </label>
+              <button
+                type="button"
+                onClick={saveKey}
+                disabled={!draft.trim().startsWith("rk_") || draft.trim().length < 8}
+                className={BUTTON}
+              >
+                Save key
+              </button>
+              <p className={`text-[13px] leading-5 ${MUTED}`}>Stays in this browser, never in a URL.</p>
             </div>
           </div>
 
