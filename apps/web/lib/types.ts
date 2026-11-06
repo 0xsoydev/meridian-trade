@@ -157,6 +157,19 @@ export type Bid = {
 
 export type TradeResult = { fills: Trade[]; bid: Bid | null; prepaid_tokens: string };
 
+export type PerpFill = {
+  tx_hash: string;
+  at: string;
+  model: string;
+  kind: "modify" | "liquidate";
+  size_change: string;
+  size_after: string;
+  price_micro_per_mtok: string;
+  realized_pnl_usd_micro: string;
+  fee_usd_micro: string;
+  reward_usd_micro: string;
+};
+
 export type BookAsk = {
   listing_id: string;
   rail: RailId;
