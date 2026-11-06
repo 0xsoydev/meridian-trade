@@ -234,6 +234,12 @@ export type SellerListing = {
 
 export type SellerListings = { verified: boolean; listings: SellerListing[] };
 
+export type SellerPayouts = {
+  network: string;
+  unpaid_usd_micro: string;
+  data: { day: string; amount_usd_micro: string; schedule_id: string | null; execute_at: string | null; status: string }[];
+};
+
 export type Rollup = {
   v: 1;
   model: string;

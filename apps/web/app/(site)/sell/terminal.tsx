@@ -2,6 +2,7 @@
 
 import { usePrivy } from "@privy-io/react-auth";
 import { IDKitRequestWidget, proofOfHuman, type IDKitResult } from "@worldcoin/idkit";
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useConnection, useSignMessage } from "wagmi";
 import { z } from "zod";
@@ -41,6 +42,27 @@ const worldSchema = z.object({
 });
 const listedSchema = z.object({ listing_id: z.string() });
 const failureSchema = z.object({ error: z.object({ message: z.string() }) });
+const mineSchema = z.object({
+  listings: z.array(
+    z.object({
+      listing_id: z.string(),
+      rail: z.string(),
+      model: z.string(),
+      price_micro_per_mtok: z.string().nullable(),
+      capacity_tokens: z.string(),
+      used_tokens: z.string(),
+      reserved_tokens: z.string(),
+      status: z.string(),
+    }),
+  ),
+});
+const payoutsSchema = z.object({
+  network: z.string(),
+  unpaid_usd_micro: z.string(),
+  data: z.array(
+    z.object({ day: z.string(), amount_usd_micro: z.string(), schedule_id: z.string().nullable(), status: z.string() }),
+  ),
+});
 const WORLD_BYPASS = process.env.NEXT_PUBLIC_WORLD_BYPASS === "true" && process.env.NODE_ENV !== "production";
 
 type Envelope = { address: string; message: string; signature: string };
@@ -64,7 +86,31 @@ export function Sell() {
   const [marketWanted, setMarketWanted] = useState(false);
   const [capacity, setCapacity] = useState("100");
   const [tab, setTab] = useState<"listings" | "payouts">("listings");
+  const [mine, setMine] = useState<z.infer<typeof mineSchema>["listings"]>([]);
+  const [paid, setPaid] = useState<z.infer<typeof payoutsSchema> | null>(null);
+  const [useStored, setUseStored] = useState(true);
   const picker = useRef<HTMLDetailsElement | null>(null);
+
+  useEffect(() => {
+    if (!address) {
+      setMine([]);
+      setPaid(null);
+      return;
+    }
+    let alive = true;
+    const json = (url: string) =>
+      fetch(url, { cache: "no-store" })
+        .then((res) => (res.ok ? res.json() : null))
+        .catch(() => null);
+    void Promise.all([json(`/api/listings?seller=${address}`), json(`/api/v1/payouts?seller=${address}`)]).then(([listings, payouts]) => {
+      if (!alive) return;
+      setMine(mineSchema.safeParse(listings).data?.listings ?? []);
+      setPaid(payoutsSchema.safeParse(payouts).data ?? null);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [address, listed, verified]);
 
   useEffect(() => {
     let alive = true;
@@ -92,6 +138,8 @@ export function Sell() {
     priceMicro !== null && priceMicro > 0n && capacityTokens > 0n ? charge(capacityTokens, priceMicro) : 0n;
   const earning = sellerEarning(notional, TAKE_BPS);
   const fee = notional - earning;
+  const stored = mine.find((row) => row.rail === rail && row.status !== "invalid" && row.status !== "pending_auth") ?? null;
+  const usingStored = useStored && stored !== null;
 
   const blocker =
     !authenticated || !address
@@ -108,7 +156,7 @@ export function Sell() {
               ? "enter a price, or list at market on a daily rail"
               : !/^\d+$/.test(capacity.trim()) || capacityTokens === 0n
                 ? "enter a whole number of MTokens"
-                : credential.trim() === ""
+                : credential.trim() === "" && !usingStored
                   ? "paste the rail's API key"
                   : null;
 
@@ -175,7 +223,10 @@ export function Sell() {
       const res = await fetch("/api/listings", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ signed, credential: { kind: "key", key: credential.trim() } }),
+        body: JSON.stringify({
+          signed,
+          credential: usingStored && stored ? { kind: "stored", listing_id: stored.listing_id } : { kind: "key", key: credential.trim() },
+        }),
       });
       const body: unknown = await res.json().catch(() => null);
       const created = listedSchema.safeParse(body);
@@ -506,17 +557,31 @@ export function Sell() {
                 : `capacity ${formatMtok(capacityTokens)} MTok · paid daily at 01:00 UTC`}
             </p>
 
-            <label className="block">
-              <span className={`mb-1 block text-[13px] ${MUTED}`}>Rail API key</span>
-              <input
-                type="password"
-                autoComplete="off"
-                value={credential}
-                onChange={(event) => setCredential(event.target.value)}
-                placeholder={rail === "0g" ? "sk-… from pc.testnet.0g.ai" : "the rail's API key"}
-                className="h-[34px] w-full border border-[#CECECE] bg-white px-2.5 text-[14px] text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF]"
-              />
-            </label>
+            {stored ? (
+              <label className="flex items-center gap-2 text-[14px] text-[#1E1E1E]">
+                <input
+                  type="checkbox"
+                  checked={useStored}
+                  onChange={(event) => setUseStored(event.target.checked)}
+                  className="accent-[#1743FF]"
+                />
+                Use the {railConfig.label} key you already stored
+              </label>
+            ) : null}
+
+            {usingStored ? null : (
+              <label className="block">
+                <span className={`mb-1 block text-[13px] ${MUTED}`}>Rail API key</span>
+                <input
+                  type="password"
+                  autoComplete="off"
+                  value={credential}
+                  onChange={(event) => setCredential(event.target.value)}
+                  placeholder={rail === "0g" ? "sk-… from pc.testnet.0g.ai" : "the rail's API key"}
+                  className="h-[34px] w-full border border-[#CECECE] bg-white px-2.5 text-[14px] text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF]"
+                />
+              </label>
+            )}
 
             <button
               type="button"
@@ -564,7 +629,9 @@ export function Sell() {
             </button>
           ))}
           <span className={`text-[13px] ${MUTED}`}>
-            {tab === "listings" ? "0 listed" : "paid daily, 01:00 UTC"}
+            {tab === "listings"
+              ? `${mine.length} listed`
+              : `${formatUsd(BigInt(paid?.unpaid_usd_micro ?? "0"))} earned and unpaid · paid daily, 01:00 UTC`}
           </span>
         </div>
 
@@ -578,9 +645,41 @@ export function Sell() {
                   </span>
                 ))}
               </div>
-              <p className="border-t border-[#CECECE] py-5 text-[14px] text-[#757575] md:border-t-0">
-                Nothing listed for this seller yet.
-              </p>
+              {mine.length === 0 ? (
+                <p className="border-t border-[#CECECE] py-5 text-[14px] text-[#757575] md:border-t-0">
+                  {address ? "Nothing listed for this seller yet." : "Connect the seller wallet to see its listings."}
+                </p>
+              ) : (
+                mine.map((row) => {
+                  const total = BigInt(row.capacity_tokens);
+                  const left = total - BigInt(row.used_tokens) - BigInt(row.reserved_tokens);
+                  return (
+                    <div
+                      key={row.listing_id}
+                      className="grid grid-cols-3 gap-y-1 border-t border-[#CECECE] py-3 text-[13px] tabular-nums text-[#1E1E1E] md:grid-cols-5"
+                    >
+                      <span className="pr-2">{row.model}</span>
+                      <span className="text-right">{row.rail}</span>
+                      <span className="text-right">
+                        {row.price_micro_per_mtok === null ? "market" : formatMicroPerMtok(BigInt(row.price_micro_per_mtok))}
+                      </span>
+                      <span className="text-right">
+                        {formatMtok(left)} of {formatMtok(total)} MTok
+                      </span>
+                      <span className={`text-right ${row.status === "active" ? "text-[#2EBD85]" : MUTED}`}>{row.status}</span>
+                    </div>
+                  );
+                })
+              )}
+              {mine.length > 0 ? (
+                <p className={`border-t border-[#CECECE] pt-3 text-[13px] ${MUTED}`}>
+                  Amend or cancel an ask under Open Orders on{" "}
+                  <Link href="/trade" className="text-[#1743FF] hover:underline">
+                    Trade
+                  </Link>
+                  .
+                </p>
+              ) : null}
             </>
           ) : (
             <>
@@ -591,9 +690,36 @@ export function Sell() {
                   </span>
                 ))}
               </div>
-              <p className="border-t border-[#CECECE] py-5 text-[14px] text-[#757575] md:border-t-0">
-                No payouts yet. The keeper closes the day at 00:00 UTC; schedules land by 01:00.
-              </p>
+              {!paid || paid.data.length === 0 ? (
+                <p className="border-t border-[#CECECE] py-5 text-[14px] text-[#757575] md:border-t-0">
+                  No payouts yet. The keeper closes the day at 00:00 UTC; schedules land by 01:00.
+                </p>
+              ) : (
+                paid.data.map((row) => (
+                  <div
+                    key={row.day}
+                    className="grid grid-cols-2 gap-y-1 border-t border-[#CECECE] py-3 text-[13px] tabular-nums text-[#1E1E1E] md:grid-cols-4"
+                  >
+                    <span className="pr-2">{row.day}</span>
+                    <span className="text-right">{formatUsd(BigInt(row.amount_usd_micro))}</span>
+                    <span className="text-right">
+                      {row.schedule_id ? (
+                        <a
+                          href={`https://hashscan.io/${paid.network}/schedule/${row.schedule_id}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[#1743FF] hover:underline"
+                        >
+                          {row.schedule_id}
+                        </a>
+                      ) : (
+                        "—"
+                      )}
+                    </span>
+                    <span className={`text-right ${row.status === "executed" ? "text-[#2EBD85]" : MUTED}`}>{row.status}</span>
+                  </div>
+                ))
+              )}
             </>
           )}
         </div>
