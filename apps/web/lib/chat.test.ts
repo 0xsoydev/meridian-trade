@@ -32,6 +32,8 @@ const MODEL = {
   stream: name("stream"),
   cancel: name("cancel"),
   failover: name("failover"),
+  shortCheap: name("short-cheap"),
+  shortNext: name("short-next"),
   throttle: name("throttle"),
   policy: name("policy"),
   upgrade: name("upgrade"),
@@ -225,6 +227,23 @@ test("a failing cheapest ask fails over to the next one", { skip }, async () => 
   assert.equal((await keyRow(key.id)).balanceUsdMicro, 1_000_000n - 14n);
   assert.equal((await listingRow(bad)).reservedTokens, 0n);
   assert.equal((await listingRow(bad)).status, "active");
+});
+
+test("cheapest: falls through to the next model when every seller of the cheapest fails", { skip }, async () => {
+  const bad = await makeListing({ sellerId, model: MODEL.shortCheap, credential: "sk-500", price: 1_000_000n, capacity: 1_000_000n });
+  const good = await makeListing({ sellerId, model: MODEL.shortNext, credential: "sk-ok", price: 1_500_000n, capacity: 1_000_000n });
+  const key = await makeKey(1_000_000n);
+
+  const response = await chat(key.raw, { model: `cheapest:${MODEL.shortNext},${MODEL.shortCheap}`, messages: ping, max_tokens: 16 });
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("x-router-model"), MODEL.shortNext);
+
+  const rows = await usageOf(key.id);
+  assert.equal(rows.length, 2);
+  assert.equal(rows.find((row) => row.listingId === bad)?.status, "released");
+  assert.equal(rows.find((row) => row.listingId === good)?.status, "settled");
+  assert.equal((await keyRow(key.id)).balanceUsdMicro, 1_000_000n - 14n);
+  assert.equal((await listingRow(bad)).reservedTokens, 0n);
 });
 
 test("the anthropic rail sends the seller key and Anthropic's dashed model id", { skip }, async () => {

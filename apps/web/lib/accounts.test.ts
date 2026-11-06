@@ -4,7 +4,7 @@ import { createServer } from "node:http";
 import { after, before, test } from "node:test";
 import { eq } from "drizzle-orm";
 import { generatePrivateKey, privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
-import { GET, POST } from "../app/api/v1/keys/route.ts";
+import { DELETE, GET, POST } from "../app/api/v1/keys/route.ts";
 import { approvalAction } from "./approvals.ts";
 import { db } from "./db.ts";
 import { accounts, keys } from "./schema.ts";
@@ -94,6 +94,21 @@ test("a wallet signature creates a key bound to the account", { skip }, async ()
   assert.equal(body.keys.length, 1);
   assert.equal(body.keys[0]?.key_id, result.key_id);
   assert.equal(body.keys[0]?.balance_usd_micro, "0");
+});
+
+test("a key deletes itself only once it holds nothing, then stops working", { skip }, async () => {
+  const account = privateKeyToAccount(generatePrivateKey());
+  addresses.push(account.address.toLowerCase());
+  const created = (await (await createKeyCall(await sign(account, "create_key"))).json()) as CreateKeyResult;
+  const remove = () =>
+    DELETE(new Request("http://localhost/api/v1/keys", { method: "DELETE", headers: { authorization: `Bearer ${created.key}` } }));
+
+  await db().update(keys).set({ balanceUsdMicro: 1n }).where(eq(keys.id, created.key_id));
+  assert.equal((await remove()).status, 409);
+
+  await db().update(keys).set({ balanceUsdMicro: 0n }).where(eq(keys.id, created.key_id));
+  assert.equal((await remove()).status, 204);
+  assert.equal((await remove()).status, 401);
 });
 
 test("a tampered signature is refused", { skip }, async () => {

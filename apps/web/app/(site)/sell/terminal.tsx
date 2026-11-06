@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useConnection, useSignMessage } from "wagmi";
 import { z } from "zod";
 import { charge, formatMicroPerMtok, formatMtok, formatUsd, parseMtok, parseUsd, sellerEarning } from "../../../lib/price";
+import { CTA, CORNERS } from "../../../components/landing/hero";
 import { useModels } from "../models";
 
 const TAKE_BPS = 1000n;
@@ -19,13 +20,13 @@ const PRESETS = [
 ];
 
 const RAILS = [
-  { id: "0g", label: "0G iAI", story: "daily credits reset at 00:00 UTC", market: true },
-  { id: "anthropic", label: "Anthropic", story: "Console workspace key with a spend limit", market: false },
-  { id: "openai", label: "OpenAI", story: "project key with a budget", market: false },
-  { id: "openrouter", label: "OpenRouter", story: "the gateway's own spend limit — the probe shows credits left", market: false },
-  { id: "commandcode", label: "Command Code", story: "the gateway's own spend limit · OpenAI chat, max_completion_tokens", market: false },
-  { id: "zen", label: "OpenCode Zen", story: "the gateway's own spend limit", market: false },
-  { id: "opencode-go", label: "OpenCode Go", story: "the gateway's own spend limit", market: false },
+  { id: "0g", label: "iAI", story: "daily credits reset at 00:00 UTC", market: true, logo: "/images/rails/0g.svg", wide: true },
+  { id: "anthropic", label: "Anthropic", story: "Console workspace key with a spend limit", market: false, logo: "/images/rails/anthropic.svg", wide: false },
+  { id: "openai", label: "OpenAI", story: "project key with a budget", market: false, logo: "/images/rails/openai.svg", wide: false },
+  { id: "openrouter", label: "OpenRouter", story: "the gateway's own spend limit — the probe shows credits left", market: false, logo: "/images/rails/openrouter.svg", wide: false },
+  { id: "commandcode", label: "Command Code", story: "the gateway's own spend limit · OpenAI chat, max_completion_tokens", market: false, logo: "/images/rails/commandcode.svg", wide: false },
+  { id: "zen", label: "OpenCode Zen", story: "the gateway's own spend limit", market: false, logo: "/images/rails/opencode.svg", wide: false },
+  { id: "opencode-go", label: "OpenCode Go", story: "the gateway's own spend limit", market: false, logo: "/images/rails/opencode.svg", wide: false },
 ] as const;
 
 type RailId = (typeof RAILS)[number]["id"];
@@ -90,6 +91,7 @@ export function Sell() {
   const [paid, setPaid] = useState<z.infer<typeof payoutsSchema> | null>(null);
   const [useStored, setUseStored] = useState(true);
   const picker = useRef<HTMLDetailsElement | null>(null);
+  const railPicker = useRef<HTMLDetailsElement | null>(null);
 
   useEffect(() => {
     if (!address) {
@@ -146,6 +148,27 @@ export function Sell() {
                 : credential.trim() === "" && !usingStored
                   ? "paste the rail's API key"
                   : null;
+
+  const keyHint = (() => {
+    const value = credential.trim();
+    const prefixes: Record<RailId, string | null> = {
+      "0g": "sk-",
+      anthropic: "sk-ant-",
+      openai: "sk-",
+      openrouter: "sk-or-",
+      commandcode: null,
+      zen: null,
+      "opencode-go": null,
+    };
+    const prefix = prefixes[rail];
+    if (value === "") {
+      return { ok: false, text: prefix ? `expected a key starting with ${prefix}…` : "the rail's API key" };
+    }
+    if (prefix !== null && !value.startsWith(prefix)) {
+      return { ok: false, text: `that doesn't look like a ${railConfig.label} key — ${prefix}… expected` };
+    }
+    return { ok: true, text: `✓ looks like a ${railConfig.label} key` };
+  })();
 
   const signal = (address ?? "").toLowerCase();
   const preset = useMemo(() => proofOfHuman({ signal }), [signal]);
@@ -235,41 +258,25 @@ export function Sell() {
   };
 
   return (
-    <section>
-      <h1 className="font-serif text-[50px] leading-[1.05] text-[#1E1E1E]">
-        Sell what <span className="text-[#A3A3A3]">expires</span>
-      </h1>
-      <p className="mt-4 max-w-[425px] text-[14px] leading-[18px] text-black">
-        Credits expire; capacity does not have to. Prove one human once, attach a rail you already
-        pay for, and list the MTokens you will not use. Ten percent keeps the venue running.
-      </p>
-
-      <div className="mt-6 border-t border-[#CECECE] pt-5">
-        <p className="text-[13px] text-[#1E1E1E]">[ how selling works ]</p>
-        <dl className="mt-3 flex flex-wrap gap-x-[26px] gap-y-3">
-          {[
-            ["fee", "10 percent of every fill"],
-            ["payouts", "daily, paid at 01:00 UTC"],
-            ["credentials", "sealed AES-256-GCM, opened per request"],
-            ["rule", "one human, one seller"],
-          ].map(([label, value]) => (
-            <div key={label}>
-              <dt className={`text-[13px] ${MUTED}`}>{label}</dt>
-              <dd className="text-[13px] text-[#1E1E1E]">{value}</dd>
-            </div>
-          ))}
-        </dl>
+    <section className="relative lg:px-6">
+      <div aria-hidden className="pointer-events-none absolute inset-y-0 left-0 hidden w-px bg-[#CECECE] lg:block" />
+      <div aria-hidden className="pointer-events-none absolute inset-y-0 right-0 hidden w-px bg-[#CECECE] lg:block" />
+      <div className="flex flex-wrap items-center gap-x-8 gap-y-3 border-b border-[#D9D9D9] pb-4">
+        <Stat label="Fee" value="10 percent of every fill" />
+        <Stat label="Payouts" value="daily, paid at 01:00 UTC" />
+        <Stat label="Credentials" value="sealed AES-256-GCM, opened per request" />
+        <Stat label="Rule" value="one human, one seller" />
       </div>
 
-      <div className="mt-5 grid gap-[17px] lg:grid-cols-[1fr_300px]">
-        <div className="border border-[#CECECE] bg-[#EBEBEB] p-4">
-          <p className="text-[13px] text-[#1E1E1E]">[ seller gate ]</p>
-          <h2 className="mt-2 font-serif text-[22px] leading-tight text-[#1E1E1E]">
-            Prove first, then list.
-          </h2>
+      <div className="mt-5 grid gap-8 lg:grid-cols-[1fr_400px]">
+        <div>
+          <div className="flex items-center gap-5 border-b border-[#D9D9D9] pb-2.5 text-[14px]">
+            <span className="font-semibold text-[#1E1E1E]">Seller gate</span>
+            <span className={MUTED}>prove first, then list</span>
+          </div>
 
-          <ol className="mt-4 border-t border-[#D9D9D9]">
-            <li className="flex items-baseline gap-3 border-b border-[#D9D9D9] py-4">
+          <ol>
+            <li className="flex items-baseline gap-3 border-b border-[#D9D9D9] py-6 last:border-b-0">
               <span className="font-serif text-[22px] leading-none text-[#A3A3A3]">1</span>
               <div className="min-w-0">
                 <p className="text-[14px] font-semibold text-[#1E1E1E]">Connect your wallet</p>
@@ -284,19 +291,29 @@ export function Sell() {
                     if (authenticated) void logout();
                     else login();
                   }}
-                  className="mt-2 border border-[#CECECE] bg-white px-3 py-1.5 text-[13px] text-[#1E1E1E] hover:border-[#1743FF] disabled:text-[#C9C9C9]"
+                  className={`${CTA} relative mt-2 inline-flex h-[46px] items-center px-9 disabled:bg-[#D4D4D4] disabled:text-white`}
                 >
-                  {authenticated && address ? `${address.slice(0, 6)}…${address.slice(-4)} · disconnect` : "Connect wallet"}
+                  {CORNERS.map((corner) => (
+                    <span key={corner} aria-hidden className={corner} />
+                  ))}
+                  <span className="text-[16px] text-white">
+                    {authenticated && address ? "Disconnect" : "Connect wallet"}
+                  </span>
                 </button>
-                <p className={`mt-1.5 text-[12px] ${MUTED}`}>
-                  {authenticated && address
-                    ? "this address is your seller identity"
-                    : "email gets an embedded wallet; any EVM wallet works"}
+                <p className={`mt-1.5 text-[12px] leading-5 ${MUTED}`}>
+                  {authenticated && address ? (
+                    <>
+                      seller identity{" "}
+                      <span className="tabular-nums text-[#1E1E1E] break-all">{address}</span>
+                    </>
+                  ) : (
+                    "email gets an embedded wallet; any EVM wallet works"
+                  )}
                 </p>
               </div>
             </li>
 
-            <li className="flex items-baseline gap-3 border-b border-[#D9D9D9] py-4">
+            <li className="flex items-baseline gap-3 border-b border-[#D9D9D9] py-6 last:border-b-0">
               <span className="font-serif text-[22px] leading-none text-[#A3A3A3]">2</span>
               <div className="min-w-0">
                 <p className="text-[14px] font-semibold text-[#1E1E1E]">Verify once with World ID</p>
@@ -308,9 +325,14 @@ export function Sell() {
                   type="button"
                   disabled={!address || verified !== null}
                   onClick={() => void startVerify()}
-                  className="mt-2 border border-[#CECECE] bg-white px-3 py-1.5 text-[13px] text-[#1E1E1E] hover:border-[#1743FF] disabled:text-[#C9C9C9]"
+                  className={`${CTA} relative mt-2 inline-flex h-[46px] items-center px-9 disabled:bg-[#D4D4D4] disabled:text-white`}
                 >
-                  {verified ? "Verified" : WORLD_BYPASS ? "Verify with World ID (test bypass)" : "Verify with World ID"}
+                  {CORNERS.map((corner) => (
+                    <span key={corner} aria-hidden className={corner} />
+                  ))}
+                  <span className="text-[16px] text-white">
+                    {verified ? "Verified" : "Verify with World ID"}
+                  </span>
                 </button>
                 <p className={`mt-1.5 text-[12px] ${MUTED}`}>
                   {verified ??
@@ -344,42 +366,56 @@ export function Sell() {
               </div>
             </li>
 
-            <li className="flex items-baseline gap-3 border-b border-[#D9D9D9] py-4">
+            <li id="gate-rail" className="flex items-baseline gap-3 border-b border-[#D9D9D9] py-6 last:border-b-0">
               <span className="font-serif text-[22px] leading-none text-[#A3A3A3]">3</span>
               <div className="min-w-0 flex-1">
                 <p className="text-[14px] font-semibold text-[#1E1E1E]">Pick your rail</p>
                 <p className={`mt-1 text-[13px] leading-5 ${MUTED}`}>
                   The rail decides the capping story and whether listing at market is allowed.
                 </p>
-                <div className="mt-3">
+                <div className="mt-3 flex flex-wrap gap-4">
                   {RAILS.map((item) => (
                     <button
                       key={item.id}
                       type="button"
                       onClick={() => setRail(item.id)}
                       aria-pressed={rail === item.id}
-                      className={`flex w-full items-start justify-between gap-4 border-t border-[#D9D9D9] py-3 text-left ${
-                        rail === item.id ? "text-[#1E1E1E]" : "text-[#757575] hover:text-[#1E1E1E]"
+                      title={item.story}
+                      className={`group relative inline-flex h-[46px] items-center justify-center gap-2.5 px-6 text-[16px] font-semibold transition-transform duration-200 hover:scale-[0.98] ${
+                        rail === item.id
+                          ? "bg-black text-white"
+                          : "rounded-[6px] border border-[#CECECE] bg-white text-[#757575] hover:border-[#1743FF] hover:text-[#1E1E1E]"
                       }`}
                     >
-                      <span className="min-w-0">
-                        <span className="flex items-baseline gap-2">
-                          <span className="text-[14px] font-semibold">{item.label}</span>
-                          <span className="text-[12px] text-[#757575]">{item.id}</span>
-                        </span>
-                        <span className="mt-0.5 block text-[13px] leading-5 text-[#757575]">
-                          {item.story}
-                        </span>
-                      </span>
-                      <span
-                        aria-hidden
-                        className={`mt-1.5 h-[7px] w-[7px] shrink-0 rounded-full ${
-                          rail === item.id ? "bg-[#1743FF]" : "bg-[#C9C9C9]"
-                        }`}
-                      />
+                      {CORNERS.map((corner) => (
+                        <span
+                          key={corner}
+                          aria-hidden
+                          className={`${corner} opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100`}
+                          style={{ transitionProperty: "opacity, transform" }}
+                        />
+                      ))}
+                      {item.logo ? (
+                        <span
+                          aria-hidden
+                          className={`shrink-0 bg-current ${item.wide ? "h-[18px] w-[38px]" : "h-[18px] w-[18px]"}`}
+                          style={{
+                            maskImage: `url(${item.logo})`,
+                            maskSize: "contain",
+                            maskRepeat: "no-repeat",
+                            maskPosition: "center",
+                            WebkitMaskImage: `url(${item.logo})`,
+                            WebkitMaskSize: "contain",
+                            WebkitMaskRepeat: "no-repeat",
+                            WebkitMaskPosition: "center",
+                          }}
+                        />
+                      ) : null}
+                      {item.label}
                     </button>
                   ))}
                 </div>
+                <p className={`mt-2 text-[13px] leading-5 ${MUTED}`}>{railConfig.story}</p>
                 <p className={`mt-3 text-[13px] leading-5 ${MUTED}`}>
                   OAuth rails — Claude Code and Codex — are flagged off. The key is checked once against
                   the model you list, through the provider&apos;s model list or, on Command Code, a 1-token
@@ -390,28 +426,21 @@ export function Sell() {
           </ol>
         </div>
 
-        <div className="border border-[#CECECE] bg-[#EBEBEB] p-4">
-          <div className="flex border border-[#CECECE] bg-white">
-            <button
-              type="button"
-              aria-pressed
-              className="w-1/2 bg-black py-2 text-[14px] font-semibold text-white"
-            >
+        <div className="flex flex-col self-start">
+          <div className="flex items-center justify-between gap-4 border-b border-[#D9D9D9] pb-2.5 text-[14px]">
+            <span className="font-semibold text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4">
               List
-            </button>
-            <Link
-              href="/trade#orders"
-              className="w-1/2 border-l border-[#CECECE] py-2 text-center text-[14px] font-semibold text-[#757575] hover:text-[#1E1E1E]"
-            >
-              Amend
+            </span>
+            <Link href="/trade#orders" className="text-[#1743FF] hover:underline">
+              Amend →
             </Link>
           </div>
 
-          <div className="mt-4 space-y-4">
+          <div className="space-y-6 pt-4">
             <div>
               <span className={`mb-1 block text-[13px] ${MUTED}`}>Model</span>
               <details ref={picker} className="relative">
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-2 border border-[#CECECE] bg-white px-2.5 py-2 [&::-webkit-details-marker]:hidden">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-2 rounded-[6px] border border-[#CECECE] bg-white px-2.5 py-2 [&::-webkit-details-marker]:hidden">
                   <span className="min-w-0">
                     <span className="block truncate text-[14px] text-[#1E1E1E]">
                       {selected?.id ?? "loading models…"}
@@ -422,7 +451,7 @@ export function Sell() {
                   </span>
                   <span aria-hidden className="text-[#757575]">⌄</span>
                 </summary>
-                <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-auto border border-[#CECECE] bg-white py-1">
+                <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-auto rounded-[6px] border border-[#CECECE] bg-white py-1">
                   {railModels.map((row) => (
                     <li key={row.id}>
                       <button
@@ -448,41 +477,87 @@ export function Sell() {
               </details>
             </div>
 
-            <div className="flex justify-between text-[14px]">
+            <div className="flex items-baseline justify-between text-[14px]">
               <span className={MUTED}>Rail</span>
-              <span className="tabular-nums text-[#1E1E1E]">
-                {railConfig.label} · {railConfig.id}
+              <span className="flex items-baseline gap-3">
+                <span className="tabular-nums text-[#1E1E1E]">
+                  {railConfig.label} · {railConfig.id}
+                </span>
+                <details ref={railPicker} className="relative">
+                  <summary className="cursor-pointer list-none text-[13px] text-[#1743FF] hover:underline [&::-webkit-details-marker]:hidden">
+                    change
+                  </summary>
+                  <ul className="absolute right-0 top-full z-20 mt-1 w-52 rounded-[6px] border border-[#CECECE] bg-white py-1">
+                    {RAILS.map((item) => (
+                      <li key={item.id}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRail(item.id);
+                            if (railPicker.current) railPicker.current.open = false;
+                          }}
+                          className={`w-full px-3 py-1.5 text-left text-[13px] hover:bg-[#F5F5F5] ${
+                            item.id === rail ? "text-[#1E1E1E]" : "text-[#757575]"
+                          }`}
+                        >
+                          {item.label} · {item.id}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
               </span>
             </div>
 
-            <label className="block">
-              <span className={`mb-1 flex items-baseline justify-between gap-2 text-[13px] ${MUTED}`}>
-                <span>Price, USD / MTok</span>
-                {railConfig.market ? <span className="text-[12px] text-[#1743FF]">market allowed</span> : null}
-              </span>
-              <input
-                value={atMarket ? "" : price}
-                onChange={(event) => setPrice(event.target.value)}
-                disabled={atMarket}
-                inputMode="decimal"
-                placeholder={blended !== null ? formatMicroPerMtok(blended) : "0.00"}
-                className="h-[34px] w-full border border-[#CECECE] bg-white px-2.5 text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF] disabled:text-[#C9C9C9]"
-              />
-            </label>
+            <div>
+              <span className={`mb-1 block text-[13px] ${MUTED}`}>Price, USD / MTok</span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setMarketWanted(false)}
+                  aria-pressed={!atMarket}
+                  className={`h-[34px] flex-1 text-[13px] font-semibold ${
+                    atMarket
+                      ? "rounded-[6px] border border-[#CECECE] bg-white text-[#757575] hover:text-[#1E1E1E]"
+                      : "bg-black text-white"
+                  }`}
+                >
+                  Fixed price
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMarketWanted(true)}
+                  disabled={!railConfig.market}
+                  aria-pressed={atMarket}
+                  title={railConfig.market ? "90% of the blended reference" : "daily rails only"}
+                  className={`h-[34px] flex-1 text-[13px] font-semibold disabled:cursor-not-allowed disabled:opacity-40 ${
+                    atMarket
+                      ? "bg-black text-white"
+                      : "rounded-[6px] border border-[#CECECE] bg-white text-[#757575] hover:text-[#1E1E1E]"
+                  }`}
+                >
+                  Market · 90%
+                </button>
+              </div>
+            </div>
 
-            <label className="flex items-start gap-2 text-[13px] leading-5">
-              <input
-                type="checkbox"
-                checked={atMarket}
-                disabled={!railConfig.market}
-                onChange={(event) => setMarketWanted(event.target.checked)}
-                className="mt-1 accent-[#1743FF] disabled:opacity-40"
-              />
-              <span className={railConfig.market ? "text-[#1E1E1E]" : "text-[#C9C9C9]"}>
-                list at market — 90% of the blended reference
-                {!railConfig.market ? " (daily rails only)" : ""}
-              </span>
-            </label>
+            <input
+              value={atMarket ? "" : price}
+              onChange={(event) => setPrice(event.target.value)}
+              disabled={atMarket}
+              inputMode="decimal"
+              placeholder={blended !== null ? formatMicroPerMtok(blended) : "0.00"}
+              aria-label="price in USD per MTok"
+              className="h-[34px] w-full rounded-[6px] border border-[#CECECE] bg-white px-2.5 text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF] disabled:text-[#C9C9C9]"
+            />
+
+            <p className={`text-[13px] leading-5 ${MUTED}`}>
+              {atMarket && marketAnchor !== null
+                ? `you'll list at ${formatMicroPerMtok(marketAnchor)} USD / MTok — 90% of ${formatMicroPerMtok(blended ?? 0n)}`
+                : blended !== null
+                  ? `reference ${formatMicroPerMtok(blended)} USD / MTok`
+                  : "no reference price for this model yet"}
+            </p>
 
             {!atMarket && price.trim() !== "" && typed === null ? (
               <p className="text-[13px] leading-5 text-[#F6465D]">That price is not a USD amount.</p>
@@ -490,7 +565,7 @@ export function Sell() {
 
             <label className="block">
               <span className={`mb-1 block text-[13px] ${MUTED}`}>Capacity, in MTokens</span>
-              <span className="flex items-center gap-2 border border-[#CECECE] bg-white px-2.5 focus-within:border-[#1743FF]">
+              <span className="flex items-center gap-2 rounded-[6px] border border-[#CECECE] bg-white px-2.5 focus-within:border-[#1743FF]">
                 <input
                   value={capacity}
                   onChange={(event) => setCapacity(event.target.value)}
@@ -530,16 +605,14 @@ export function Sell() {
               </div>
               <div className="flex justify-between py-3">
                 <dt className="text-[15px] font-semibold text-[#1E1E1E]">You receive</dt>
-                <dd className="text-[16px] font-semibold tabular-nums text-[#1E1E1E]">
+                <dd className="text-[18px] font-semibold tabular-nums text-[#1743FF]">
                   {earning > 0n ? formatUsd(earning) : "—"}
                 </dd>
               </div>
             </dl>
 
             <p className={`text-[13px] leading-5 ${MUTED}`}>
-              {atMarket && marketAnchor !== null
-                ? `at market: ${formatMicroPerMtok(marketAnchor)} USD / MTok, 90% of the ${formatMicroPerMtok(blended ?? 0n)} reference`
-                : `capacity ${formatMtok(capacityTokens)} MTok · paid daily at 01:00 UTC`}
+              capacity {formatMtok(capacityTokens)} MTok · paid daily at 01:00 UTC
             </p>
 
             {stored ? (
@@ -563,8 +636,16 @@ export function Sell() {
                   value={credential}
                   onChange={(event) => setCredential(event.target.value)}
                   placeholder={rail === "0g" ? "sk-… from pc.testnet.0g.ai" : "the rail's API key"}
-                  className="h-[34px] w-full border border-[#CECECE] bg-white px-2.5 text-[14px] text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF]"
+                  className="h-[34px] w-full rounded-[6px] border border-[#CECECE] bg-white px-2.5 text-[14px] text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF]"
                 />
+                <span
+                  className={`mt-1 block text-[12px] leading-4 ${keyHint.ok ? "text-[#2EBD85]" : MUTED}`}
+                >
+                  {keyHint.text}
+                </span>
+                <span className={`mt-0.5 block text-[12px] leading-4 ${MUTED}`}>
+                  probed once, then sealed with AES-256-GCM — it never leaves the server
+                </span>
               </label>
             )}
 
@@ -579,136 +660,130 @@ export function Sell() {
             <p className={`text-center text-[13px] leading-5 ${MUTED}`}>
               {failure ?? (listed ? `listed ${listed.slice(0, 8)}…, live in the book` : (blocker ?? "the key is probed once, then sealed"))}
             </p>
-
-            <div className="border border-[#CECECE] bg-white px-3 py-3">
-              <p className="text-[14px] text-[#1E1E1E]">Your key never leaves the server.</p>
-              <p className="mt-1 text-[13px] leading-5 text-[#757575]">
-                It is probed once, then sealed with AES-256-GCM and opened only inside the request
-                that uses it.
-              </p>
-            </div>
           </div>
         </div>
       </div>
 
-      <div className="mt-10 border-t border-[#CECECE] pt-8">
-        <p className="text-[13px] text-[#1E1E1E]">[ your listings ]</p>
-        <h2 className="mt-3 font-serif text-[32px] leading-[1.1] text-[#1E1E1E]">
-          Capacity, on the record.
-        </h2>
-
-        <div className="mt-4 flex items-center gap-5">
+      <div className="mt-6">
+        <div className="flex flex-wrap items-center gap-5 border-b border-[#D9D9D9] pb-2.5 text-[14px]">
           {(["listings", "payouts"] as const).map((item) => (
             <button
               key={item}
               type="button"
               onClick={() => setTab(item)}
               aria-pressed={tab === item}
-              className={`text-[14px] ${
+              className={`${
                 tab === item
-                  ? "text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
+                  ? "font-semibold text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
                   : "text-[#757575] hover:text-[#1E1E1E]"
               }`}
             >
               {item}
             </button>
           ))}
-          <span className={`text-[13px] ${MUTED}`}>
+          <span className={`ml-auto text-[13px] ${MUTED}`}>
             {tab === "listings"
               ? `${mine.length} listed`
               : `${formatUsd(BigInt(paid?.unpaid_usd_micro ?? "0"))} earned and unpaid · paid daily, 01:00 UTC`}
           </span>
         </div>
 
-        <div className="mt-4">
-          {tab === "listings" ? (
-            <>
-              <div className={`hidden border-y border-[#CECECE] py-2 text-[12px] md:grid md:grid-cols-5 ${MUTED}`}>
-                {["Market", "Rail", "Price", "Left", "Status"].map((head, i) => (
-                  <span key={head} className={i === 0 ? "pr-2" : "text-right"}>
-                    {head}
-                  </span>
-                ))}
-              </div>
-              {mine.length === 0 ? (
-                <p className="border-t border-[#CECECE] py-5 text-[14px] text-[#757575] md:border-t-0">
-                  {address ? "Nothing listed for this seller yet." : "Connect the seller wallet to see its listings."}
-                </p>
-              ) : (
-                mine.map((row) => {
-                  const total = BigInt(row.capacity_tokens);
-                  const left = total - BigInt(row.used_tokens) - BigInt(row.reserved_tokens);
-                  return (
-                    <div
-                      key={row.listing_id}
-                      className="grid grid-cols-3 gap-y-1 border-t border-[#CECECE] py-3 text-[13px] tabular-nums text-[#1E1E1E] md:grid-cols-5"
-                    >
-                      <span className="pr-2">{row.model}</span>
-                      <span className="text-right">{row.rail}</span>
-                      <span className="text-right">
-                        {row.price_micro_per_mtok === null ? "market" : formatMicroPerMtok(BigInt(row.price_micro_per_mtok))}
-                      </span>
-                      <span className="text-right">
-                        {formatMtok(left)} of {formatMtok(total)} MTok
-                      </span>
-                      <span className={`text-right ${row.status === "active" ? "text-[#2EBD85]" : MUTED}`}>{row.status}</span>
-                    </div>
-                  );
-                })
-              )}
-              {mine.length > 0 ? (
-                <p className={`border-t border-[#CECECE] pt-3 text-[13px] ${MUTED}`}>
-                  Amend or cancel an ask under Open Orders on{" "}
-                  <Link href="/trade" className="text-[#1743FF] hover:underline">
-                    Trade
-                  </Link>
-                  .
-                </p>
-              ) : null}
-            </>
-          ) : (
-            <>
-              <div className={`hidden border-y border-[#CECECE] py-2 text-[12px] md:grid md:grid-cols-4 ${MUTED}`}>
-                {["Day", "Amount", "Schedule", "Status"].map((head, i) => (
-                  <span key={head} className={i === 0 ? "pr-2" : "text-right"}>
-                    {head}
-                  </span>
-                ))}
-              </div>
-              {!paid || paid.data.length === 0 ? (
-                <p className="border-t border-[#CECECE] py-5 text-[14px] text-[#757575] md:border-t-0">
-                  No payouts yet. The keeper closes the day at 00:00 UTC; schedules land by 01:00.
-                </p>
-              ) : (
-                paid.data.map((row) => (
+        {tab === "listings" ? (
+          <>
+            <div className={`hidden gap-x-3 py-1.5 text-[11px] md:grid md:grid-cols-5 ${MUTED}`}>
+              {["Market", "Rail", "Price", "Left", "Status"].map((head, i) => (
+                <span key={head} className={i === 0 ? "pr-2" : "text-right"}>
+                  {head}
+                </span>
+              ))}
+            </div>
+            {mine.length === 0 ? (
+              <p className="border-t border-[#D9D9D9] py-5 text-[13px] text-[#757575] md:border-t-0">
+                {address ? "Nothing listed for this seller yet." : "Connect the seller wallet to see its listings."}
+              </p>
+            ) : (
+              mine.map((row) => {
+                const total = BigInt(row.capacity_tokens);
+                const left = total - BigInt(row.used_tokens) - BigInt(row.reserved_tokens);
+                return (
                   <div
-                    key={row.day}
-                    className="grid grid-cols-2 gap-y-1 border-t border-[#CECECE] py-3 text-[13px] tabular-nums text-[#1E1E1E] md:grid-cols-4"
+                    key={row.listing_id}
+                    className="grid grid-cols-3 gap-x-3 gap-y-1 border-t border-[#D9D9D9] py-2.5 text-[13px] tabular-nums text-[#1E1E1E] md:grid-cols-5"
                   >
-                    <span className="pr-2">{row.day}</span>
-                    <span className="text-right">{formatUsd(BigInt(row.amount_usd_micro))}</span>
+                    <span className="pr-2">{row.model}</span>
+                    <span className="text-right">{row.rail}</span>
                     <span className="text-right">
-                      {row.schedule_id ? (
-                        <a
-                          href={`https://hashscan.io/${paid.network}/schedule/${row.schedule_id}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-[#1743FF] hover:underline"
-                        >
-                          {row.schedule_id}
-                        </a>
-                      ) : (
-                        "—"
-                      )}
+                      {row.price_micro_per_mtok === null ? "market" : formatMicroPerMtok(BigInt(row.price_micro_per_mtok))}
                     </span>
-                    <span className={`text-right ${row.status === "executed" ? "text-[#2EBD85]" : MUTED}`}>{row.status}</span>
+                    <span className="text-right">
+                      {formatMtok(left)} of {formatMtok(total)} MTok
+                    </span>
+                    <span className={`text-right ${row.status === "active" ? "text-[#2EBD85]" : MUTED}`}>{row.status}</span>
                   </div>
-                ))
-              )}
-            </>
-          )}
-        </div>
+                );
+              })
+            )}
+            {mine.length > 0 ? (
+              <p className={`border-t border-[#D9D9D9] py-2 text-[12px] ${MUTED}`}>
+                Amend or cancel an ask under Open Orders on{" "}
+                <Link href="/trade" className="text-[#1743FF] hover:underline">
+                  Trade
+                </Link>
+                .
+              </p>
+            ) : null}
+          </>
+        ) : (
+          <>
+            <div className={`hidden gap-x-3 py-1.5 text-[11px] md:grid md:grid-cols-4 ${MUTED}`}>
+              {["Day", "Amount", "Schedule", "Status"].map((head, i) => (
+                <span key={head} className={i === 0 ? "pr-2" : "text-right"}>
+                  {head}
+                </span>
+              ))}
+            </div>
+            {!paid || paid.data.length === 0 ? (
+              <p className="border-t border-[#D9D9D9] py-5 text-[13px] text-[#757575] md:border-t-0">
+                No payouts yet. The keeper closes the day at 00:00 UTC; schedules land by 01:00.
+              </p>
+            ) : (
+              paid.data.map((row) => (
+                <div
+                  key={row.day}
+                  className="grid grid-cols-2 gap-x-3 gap-y-1 border-t border-[#D9D9D9] py-2.5 text-[13px] tabular-nums text-[#1E1E1E] md:grid-cols-4"
+                >
+                  <span className="pr-2">{row.day}</span>
+                  <span className="text-right">{formatUsd(BigInt(row.amount_usd_micro))}</span>
+                  <span className="text-right">
+                    {row.schedule_id ? (
+                      <a
+                        href={`https://hashscan.io/${paid.network}/schedule/${row.schedule_id}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[#1743FF] hover:underline"
+                      >
+                        {row.schedule_id}
+                      </a>
+                    ) : (
+                      "—"
+                    )}
+                  </span>
+                  <span className={`text-right ${row.status === "executed" ? "text-[#2EBD85]" : MUTED}`}>{row.status}</span>
+                </div>
+              ))
+            )}
+          </>
+        )}
       </div>
     </section>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-[11px] leading-4 text-[#757575]">{label}</p>
+      <p className="text-[14px] font-semibold text-[#1E1E1E]">{value}</p>
+    </div>
   );
 }

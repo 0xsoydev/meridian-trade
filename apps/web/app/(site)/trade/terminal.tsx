@@ -26,6 +26,7 @@ import type { Balance, Bid, Book, RouterError, TradeResult } from "../../../lib/
 import { useModels } from "../models";
 import { useWalletDeposit } from "../wallet-deposit";
 import { FillsChart, INTERVALS, type ScaleMode } from "./chart";
+import { OrderBook } from "./order-book";
 import { OrdersPanel } from "./orders-panel";
 
 const KEY_STORAGE = "router_key";
@@ -55,7 +56,6 @@ export function Trade({ initialModel }: { initialModel: string }) {
   const models = useModels();
   const [book, setBook] = useState<Book | null>(null);
   const [bookFailed, setBookFailed] = useState<"unknown" | "down" | null>(null);
-  const [pane, setPane] = useState<"book" | "tape">("book");
   const [side, setSide] = useState<"buy" | "sell">("buy");
   const [bucket, setBucket] = useState(60);
   const [scale, setScale] = useState<ScaleMode>("linear");
@@ -242,11 +242,6 @@ export function Trade({ initialModel }: { initialModel: string }) {
   const first = points[0]?.value ?? null;
   const delta = last !== null && first !== null ? (last - first) / first : null;
   const depth = asks.reduce((total, ask) => total + BigInt(ask.tokens_left), 0n);
-  const bidDepth = bidLevels.reduce((total, level) => total + BigInt(level.tokens), 0n);
-  const widest = [...asks.map((ask) => BigInt(ask.tokens_left)), ...bidLevels.map((level) => BigInt(level.tokens))].reduce(
-    (max, size) => (size > max ? size : max),
-    0n,
-  );
 
   const day = useMemo(() => {
     const cutoff = nowRef.current - 86_400_000;
@@ -330,7 +325,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
         setProblem({
           message:
             code === "invalid_api_key"
-              ? "router key rejected — paste it again on Keys"
+              ? "router key rejected; create a new one on Keys"
               : code === "no_liquidity"
                 ? "the asks moved before the fill; retry"
                 : body?.error?.message ?? `request failed (${res.status})`,
@@ -405,8 +400,13 @@ export function Trade({ initialModel }: { initialModel: string }) {
   };
 
   return (
-    <section>
-      <div className="flex flex-wrap items-center gap-x-8 gap-y-3 border border-[#CECECE] bg-white px-4 py-3">
+    <section className="relative -mx-4 -my-4 bg-[#F1F1F1] px-4 py-4 lg:-mx-6 lg:-my-6 lg:px-10 lg:py-6">
+      <div aria-hidden className="pointer-events-none absolute inset-y-0 left-6 hidden w-px bg-[#CECECE] lg:block" />
+      <div aria-hidden className="pointer-events-none absolute inset-y-0 right-6 hidden w-px bg-[#CECECE] lg:block" />
+      <div className="flex flex-wrap items-center gap-x-8 gap-y-3 rounded-[6px] border border-[#E4E4E4] bg-white px-4 py-3">
+        <p className="w-full text-[10px] font-medium tracking-[0.14em] text-[#757575] uppercase">
+          Live book · {model}
+        </p>
         <ProfileDropdown
           accounts={modelAccounts}
           defaultAccountId={model}
@@ -449,8 +449,8 @@ export function Trade({ initialModel }: { initialModel: string }) {
       ) : null}
 
       <div className={`mt-5 grid gap-[17px] ${expanded ? "" : "lg:grid-cols-[minmax(0,1fr)_250px_290px]"}`}>
-        <div className="flex flex-col self-start border border-[#CECECE] bg-white">
-          <div className="flex items-center gap-5 border-b border-[#D9D9D9] px-4 py-2.5 text-[14px]">
+        <div className="flex flex-col self-start rounded-[6px] border border-[#E4E4E4] bg-white">
+          <div className="flex items-center gap-5 border-b border-[#ECECEC] px-4 py-2.5 text-[14px]">
             <span className="font-semibold text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4">
               Chart
             </span>
@@ -540,123 +540,18 @@ export function Trade({ initialModel }: { initialModel: string }) {
 
         {!expanded && (
           <>
-            <div className="flex flex-col self-start border border-[#CECECE] bg-white lg:h-[calc(100svh-277px)] lg:min-h-[423px]">
-              <div className="flex items-center gap-5 border-b border-[#D9D9D9] px-4 py-2.5 text-[14px]">
-                {(["book", "tape"] as const).map((item) => (
-                  <button
-                    key={item}
-                    type="button"
-                    onClick={() => setPane(item)}
-                    aria-pressed={pane === item}
-                    className={`${
-                      pane === item
-                        ? "font-semibold text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
-                        : "text-[#757575] hover:text-[#1E1E1E]"
-                    }`}
-                  >
-                    {item === "book" ? "Order book" : "Trades"}
-                  </button>
-                ))}
-                <span className={`ml-auto text-[12px] ${MUTED}`}>
-                  {pane === "book" ? `${asks.length} asks` : `${venueFills.length} prints`}
-                </span>
-              </div>
-
-              {pane === "book" ? (
-                <>
-                  <div className="flex items-center justify-between px-4 py-1.5 text-[11px] text-[#757575]">
-                    <span>Price</span>
-                    <span>Size (MTok)</span>
-                    <span>Total</span>
-                  </div>
-                  <div className="max-h-[420px] min-h-0 flex-1 overflow-auto lg:max-h-none">
-                    {[...asks].reverse().map((ask) => (
-                      <div
-                        key={ask.offer_id ?? ask.listing_id}
-                        title={`${ask.kind === "resale" ? "resale, " : ""}${ask.rail}${ask.verifiable ? ", TEE" : ""}`}
-                        className="flex items-center justify-between gap-3 px-4 py-[5px] text-[13px] tabular-nums"
-                        style={{
-                          background: `linear-gradient(90deg, rgba(246, 70, 93, ${widest === 0n ? 0 : (Number(BigInt(ask.tokens_left)) / Number(widest)) * 0.12}), rgba(246, 70, 93, 0) 100%)`,
-                        }}
-                      >
-                        <span className="text-[#F6465D]">{formatMicroPerMtok(BigInt(ask.price_micro_per_mtok))}</span>
-                        <span className="text-[#1E1E1E]">{formatMtok(BigInt(ask.tokens_left))}</span>
-                        <span className={MUTED}>
-                          {formatUsd(charge(BigInt(ask.tokens_left), BigInt(ask.price_micro_per_mtok)))}
-                        </span>
-                      </div>
-                    ))}
-                    {asks.length === 0 ? (
-                      <p className="px-4 py-6 text-center text-[13px] text-[#757575]">no asks yet for {model}</p>
-                    ) : null}
-                  </div>
-
-                  <div className="flex items-center justify-between border-y border-[#D9D9D9] px-4 py-2 text-[13px]">
-                    <span className={MUTED}>Best ask</span>
-                    <span className="tabular-nums text-[#1E1E1E]">
-                      {bestAsk !== null ? formatMicroPerMtok(bestAsk) : "—"}
-                    </span>
-                    <span className="tabular-nums text-[#F6465D]">
-                      {bestAsk !== null && listPrice !== null && listPrice > 0n
-                        ? `${(Number(((listPrice - bestAsk) * 10_000n) / listPrice) / 100).toFixed(2)}% under list`
-                        : ""}
-                    </span>
-                  </div>
-
-                  {bidLevels.map((level) => (
-                    <div
-                      key={level.price_micro_per_mtok}
-                      className="flex items-center justify-between gap-3 px-4 py-[5px] text-[13px] tabular-nums"
-                      style={{
-                        background: `linear-gradient(90deg, rgba(46, 189, 133, ${widest === 0n ? 0 : (Number(BigInt(level.tokens)) / Number(widest)) * 0.16}), rgba(46, 189, 133, 0) 100%)`,
-                      }}
-                    >
-                      <span className="text-[#2EBD85]">{formatMicroPerMtok(BigInt(level.price_micro_per_mtok))}</span>
-                      <span className="text-[#1E1E1E]">{formatMtok(BigInt(level.tokens))}</span>
-                      <span className={MUTED}>
-                        {formatUsd(charge(BigInt(level.tokens), BigInt(level.price_micro_per_mtok)))}
-                      </span>
-                    </div>
-                  ))}
-
-                  <p className="px-4 py-2 text-[12px] text-[#757575]">
-                    asks: {formatMtok(depth)} MTok · bids: {bidLevels.length === 0 ? "none yet; place a limit buy below the best ask" : `${formatMtok(bidDepth)} MTok`}
-                  </p>
-                </>
-              ) : (
-                <div className="max-h-[420px] min-h-0 flex-1 overflow-auto lg:max-h-none">
-                  {venueFills.slice(0, 40).map((fill, index) => {
-                    const next = venueFills[index + 1];
-                    const up = next === undefined || BigInt(fill.price_micro_per_mtok) >= BigInt(next.price_micro_per_mtok);
-                    return (
-                      <div key={`${fill.listing_id}-${fill.created_at}`} className="flex items-center justify-between gap-3 border-t border-[#D9D9D9] px-4 py-[5px] text-[13px] tabular-nums">
-                        <span className={MUTED}>{timeShort(fill.created_at)}</span>
-                        <span className={up ? "text-[#2EBD85]" : "text-[#F6465D]"}>
-                          {formatMicroPerMtok(BigInt(fill.price_micro_per_mtok))}
-                        </span>
-                        <span className={MUTED}>{formatMtok(BigInt(fill.tokens))} MTok</span>
-                      </div>
-                    );
-                  })}
-                  {venueFills.length === 0 ? (
-                    <p className="px-4 py-6 text-center text-[13px] text-[#757575]">
-                      the venue has not printed a fill for {model} yet
-                    </p>
-                  ) : null}
-                </div>
-              )}
-            </div>
+            <OrderBook book={book} model={model} listPrice={listPrice} />
 
             <div className="flex flex-col gap-[17px] self-start lg:h-[calc(100svh-277px)] lg:min-h-[423px]">
-              <div className="flex min-h-0 flex-1 flex-col border border-[#CECECE] bg-white">
-                <div className="flex shrink-0 border-b border-[#D9D9D9]">
+              <div className="flex min-h-0 flex-1 flex-col rounded-[6px] border border-[#E4E4E4] bg-white">
+                <div className="flex shrink-0 border-b border-[#ECECEC]">
                   {(["buy", "sell"] as const).map((item) => (
                     <button
                       key={item}
                       type="button"
                       onClick={() => setSide(item)}
                       aria-pressed={side === item}
-                      className={`w-1/2 py-2 text-[14px] font-semibold ${item === "sell" ? "border-l border-[#CECECE]" : ""} ${
+                      className={`w-1/2 py-2 text-[14px] font-semibold ${item === "sell" ? "border-l border-[#E4E4E4]" : ""} ${
                         side === item ? "bg-black text-white" : "text-[#757575] hover:text-[#1E1E1E]"
                       }`}
                     >
@@ -681,7 +576,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
 
                   <label className="block">
                     <span className={`mb-1 block text-[13px] ${MUTED}`}>Size, in MTokens</span>
-                    <span className="flex items-center gap-2 border border-[#CECECE] bg-white px-2.5 focus-within:border-[#1743FF]">
+                    <span className="flex items-center gap-2 rounded-[6px] border border-[#E4E4E4] bg-white px-2.5 focus-within:border-[#1743FF]">
                       <input
                         value={size}
                         onChange={(event) => setSize(event.target.value)}
@@ -733,7 +628,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
                       onChange={(event) => setLimitPrice(event.target.value)}
                       inputMode="decimal"
                       placeholder="market"
-                      className={`h-[34px] w-full border bg-white px-2.5 text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF] ${limitBad || limitHigh ? "border-[#F6465D]" : "border-[#CECECE]"}`}
+                      className={`h-[34px] w-full border bg-white px-2.5 text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF] ${limitBad || limitHigh ? "border-[#F6465D]" : "border-[#E4E4E4]"}`}
                     />
                     {limitNote ? (
                       <span className={`mt-1 block text-[12px] leading-4 ${limitNote.bad ? "text-[#F6465D]" : MUTED}`}>{limitNote.text}</span>
@@ -741,21 +636,21 @@ export function Trade({ initialModel }: { initialModel: string }) {
                   </label>
 
                   {side === "buy" ? (
-                    <dl className="border-t border-[#D9D9D9]">
-                      <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
+                    <dl className="border-t border-[#ECECEC]">
+                      <div className="flex justify-between border-b border-[#ECECEC] py-2 text-[14px]">
                         <dt className={MUTED}>Average ask</dt>
                         <dd className="tabular-nums text-[#1E1E1E]">{preview.fillable > 0n ? formatMicroPerMtok(preview.avg) : "—"}</dd>
                       </div>
-                      <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
+                      <div className="flex justify-between border-b border-[#ECECEC] py-2 text-[14px]">
                         <dt className={MUTED}>Venue fee, 10 percent</dt>
                         <dd className="tabular-nums text-[#1E1E1E]">{preview.fee > 0n ? formatUsd(preview.fee) : "—"}</dd>
                       </div>
-                      <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
+                      <div className="flex justify-between border-b border-[#ECECEC] py-2 text-[14px]">
                         <dt className={MUTED}>Seller receives</dt>
                         <dd className="tabular-nums text-[#1E1E1E]">{preview.net > 0n ? formatUsd(preview.net) : "—"}</dd>
                       </div>
                       {hold > 0n ? (
-                        <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
+                        <div className="flex justify-between border-b border-[#ECECEC] py-2 text-[14px]">
                           <dt className={MUTED}>Held for the bid</dt>
                           <dd className="tabular-nums text-[#1E1E1E]">{formatUsd(hold)}</dd>
                         </div>
@@ -768,23 +663,23 @@ export function Trade({ initialModel }: { initialModel: string }) {
                       </div>
                     </dl>
                   ) : (
-                    <dl className="border-t border-[#D9D9D9]">
-                      <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
+                    <dl className="border-t border-[#ECECEC]">
+                      <div className="flex justify-between border-b border-[#ECECEC] py-2 text-[14px]">
                         <dt className={MUTED}>Best bid</dt>
                         <dd className="tabular-nums text-[#1E1E1E]">{bestBid !== null ? formatMicroPerMtok(bestBid) : "none"}</dd>
                       </div>
-                      <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
+                      <div className="flex justify-between border-b border-[#ECECEC] py-2 text-[14px]">
                         <dt className={MUTED}>Average bid</dt>
                         <dd className="tabular-nums text-[#1E1E1E]">
                           {sellPreview.fillable > 0n ? formatMicroPerMtok(sellPreview.avg) : "—"}
                         </dd>
                       </div>
-                      <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
+                      <div className="flex justify-between border-b border-[#ECECEC] py-2 text-[14px]">
                         <dt className={MUTED}>Venue fee, 10 percent</dt>
                         <dd className="tabular-nums text-[#1E1E1E]">{sellPreview.fee > 0n ? formatUsd(sellPreview.fee) : "—"}</dd>
                       </div>
                       {limit !== null && listing > 0n ? (
-                        <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
+                        <div className="flex justify-between border-b border-[#ECECEC] py-2 text-[14px]">
                           <dt className={MUTED}>Rests as an ask</dt>
                           <dd className="tabular-nums text-[#1E1E1E]">
                             {formatMtok(listing)} MTok at {formatMicroPerMtok(limit)}
@@ -827,11 +722,10 @@ export function Trade({ initialModel }: { initialModel: string }) {
                   ) : null}
 
                   {key === null ? (
-                    <div className="border border-[#CECECE] bg-white px-3 py-3">
+                    <div className="border-t border-[#ECECEC] pt-3">
                       <p className="text-[14px] text-[#1E1E1E]">{side === "buy" ? "Buying" : "Selling"} needs a router key.</p>
                       <p className="mt-1 text-[13px] leading-5 text-[#757575]">
-                        Create one with your wallet on Keys, or paste an agent&apos;s key there. It stays in this
-                        browser, never in a URL.
+                        Create one with your wallet on Keys. It stays in this browser, never in a URL.
                       </p>
                     </div>
                   ) : null}
@@ -919,13 +813,13 @@ export function Trade({ initialModel }: { initialModel: string }) {
                   ) : null}
 
                   {problem ? (
-                    <div className="border border-[#F6465D]/40 bg-white px-3 py-2">
+                    <div className="rounded-[6px] border border-[#F6465D]/40 bg-white px-3 py-2">
                       <p className="text-[13px] leading-5 text-[#F6465D]">{problem.message}</p>
                       {problem.shortfall !== null ? (
                         <button
                           type="button"
                           onClick={() => void copyTopup()}
-                          className="mt-2 w-full border border-[#CECECE] bg-white px-2 py-1.5 text-left text-[13px] tabular-nums text-[#1E1E1E] hover:border-[#1743FF]"
+                          className="mt-2 w-full rounded-[6px] border border-[#E4E4E4] bg-white px-2 py-1.5 text-left text-[13px] tabular-nums text-[#1E1E1E] hover:border-[#1743FF]"
                         >
                           {copied ? "Copied — run it from your agent. " : "Copy top-up, "}
                           {`POST /api/v1/topup?usd=${formatMicroPerMtok(problem.shortfall)}`}
@@ -975,7 +869,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
         ? createPortal(
             <div
               role="status"
-              className="absolute bottom-full right-4 mb-4 w-[min(290px,calc(100vw-2rem))] border border-[#CECECE] bg-white p-4 shadow-[0_8px_24px_rgba(30,30,30,0.08)] transition-[opacity,translate] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] starting:translate-y-2 starting:opacity-0 motion-reduce:transition-none lg:right-6"
+              className="absolute bottom-full right-4 mb-4 w-[min(290px,calc(100vw-2rem))] rounded-[6px] border border-[#E4E4E4] bg-white p-4 shadow-[0_8px_24px_rgba(30,30,30,0.08)] transition-[opacity,translate] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] starting:translate-y-2 starting:opacity-0 motion-reduce:transition-none lg:right-6"
             >
               <div className="flex items-center justify-between">
                 <p className="text-[14px] font-semibold text-[#1E1E1E]">Announcements</p>
@@ -1000,9 +894,9 @@ export function Trade({ initialModel }: { initialModel: string }) {
                   </p>
                 </li>
                 <li>
-                  <p className="text-[#1E1E1E]">Buying needs an agent key</p>
+                  <p className="text-[#1E1E1E]">Buying needs an API key</p>
                   <p className={MUTED}>
-                    Paste it once on{" "}
+                    Create one on{" "}
                     <Link href="/keys" className="text-[#1743FF] hover:underline">
                       keys
                     </Link>
@@ -1039,10 +933,4 @@ function Stat({
       </p>
     </div>
   );
-}
-
-function timeShort(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "--:--:--";
-  return clockFormat.format(date);
 }
