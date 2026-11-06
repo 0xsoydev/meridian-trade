@@ -338,7 +338,7 @@ export function Sell() {
                 <p className={`mt-1 text-[13px] leading-5 ${MUTED}`}>
                   The rail decides the capping story and whether listing at market is allowed.
                 </p>
-                <div className="mt-3 flex flex-wrap gap-2">
+                <div className="mt-3 flex flex-wrap gap-3">
                   {RAILS.map((item) => (
                     <button
                       key={item.id}
@@ -346,7 +346,7 @@ export function Sell() {
                       onClick={() => setRail(item.id)}
                       aria-pressed={rail === item.id}
                       title={item.story}
-                      className={`h-[34px] rounded-[6px] px-4 text-[14px] font-semibold ${
+                      className={`h-[43px] rounded-[6px] px-6 text-[16px] font-semibold ${
                         rail === item.id
                           ? "bg-black text-white"
                           : "border border-[#CECECE] bg-white text-[#757575] hover:border-[#1743FF] hover:text-[#1E1E1E]"
