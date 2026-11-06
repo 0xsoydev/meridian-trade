@@ -5,7 +5,7 @@ import { DEMO_HREF } from "./copy";
 const COLOSSEUM_FILTER = "brightness(112%) contrast(92%)";
 export const CTA =
   "group bg-[#1E1E1E] transition-[background-color,scale] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-[#1743FF] active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-[10px] focus-visible:outline-[#1743FF] motion-reduce:transition-none";
-const CORNER =
+export const CORNER =
   "absolute size-[10px] border-[#1743FF] transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none";
 export const CORNERS = [
   `${CORNER} -left-[6px] -top-[6px] border-l border-t group-hover:-translate-x-[3px] group-hover:-translate-y-[3px]`,

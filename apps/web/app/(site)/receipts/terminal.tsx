@@ -137,67 +137,42 @@ export function Receipts({
 
   return (
     <section>
-      <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <h1 className="font-serif text-[50px] leading-[1.05] text-[#1E1E1E]">
-          Check our <span className="text-[#A3A3A3]">math</span>
-        </h1>
-        <span className={`text-[13px] tabular-nums ${MUTED}`}>{clock ?? "--:--:--"} UTC</span>
-      </div>
-      <p className="mt-4 max-w-[560px] text-[14px] leading-[18px] text-black">
-        Every fill becomes a public rollup, every top-up a USDC transfer, every index move a transaction. Recompute
-        the index yourself.
-      </p>
-
-      <div className="mt-7 border border-[#CECECE] bg-[#EBEBEB] p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex gap-5">
-            {markets.map((id) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setModel(id)}
-                aria-pressed={id === model}
-                className={`text-[14px] ${
-                  id === model
-                    ? "text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
-                    : "text-[#757575] hover:text-[#1E1E1E]"
-                }`}
-              >
-                {id}
-              </button>
-            ))}
-          </div>
-          <button type="button" onClick={() => router.refresh()} className={`text-[14px] ${LINK}`}>
-            refresh page data
-          </button>
+      <div className="flex flex-wrap items-center gap-x-8 gap-y-3 rounded-[6px] border border-[#CECECE] bg-white px-4 py-3">
+        <div className="flex flex-wrap items-center gap-5 text-[14px]">
+          {markets.map((id) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setModel(id)}
+              aria-pressed={id === model}
+              className={`${
+                id === model
+                  ? "font-semibold text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
+                  : "text-[#757575] hover:text-[#1E1E1E]"
+              }`}
+            >
+              {id}
+            </button>
+          ))}
         </div>
 
-        <dl className="mt-4 flex flex-wrap gap-x-[26px] gap-y-3">
-          <div>
-            <dt className={`text-[13px] ${MUTED}`}>TWAP, window</dt>
-            <dd className="text-[13px] tabular-nums text-[#1E1E1E]">{average === null ? "—" : formatUsd(average)}</dd>
-          </div>
-          <div>
-            <dt className={`text-[13px] ${MUTED}`}>clamp band</dt>
-            <dd className="text-[13px] tabular-nums text-[#1E1E1E]">
-              {band === null ? "—" : `${formatUsd(band[0])} – ${formatUsd(band[1])}`}
-            </dd>
-          </div>
-          <div>
-            <dt className={`text-[13px] ${MUTED}`}>keeper next</dt>
-            <dd className="text-[13px] tabular-nums text-[#1E1E1E]">{next === null ? "—" : formatUsd(next)}</dd>
-          </div>
-          <div>
-            <dt className={`text-[13px] ${MUTED}`}>on chain</dt>
-            <dd className="text-[13px] tabular-nums text-[#1E1E1E]">{onChain === null ? "—" : formatUsd(BigInt(onChain))}</dd>
-          </div>
-        </dl>
+        <div className="flex flex-wrap items-center gap-x-7 gap-y-2">
+          <Stat label="TWAP, window" value={average === null ? "—" : formatUsd(average)} />
+          <Stat label="Clamp band" value={band === null ? "—" : `${formatUsd(band[0])} – ${formatUsd(band[1])}`} />
+          <Stat label="Keeper next" value={next === null ? "—" : formatUsd(next)} />
+          <Stat label="On chain" value={onChain === null ? "—" : formatUsd(BigInt(onChain))} />
+        </div>
 
-        <p aria-live="polite" className="mt-3 text-[13px] leading-[18px]">
-          {verdictLine}
-        </p>
+        <div className="ml-auto flex items-center gap-5 text-[13px]">
+          <button type="button" onClick={() => router.refresh()} className={LINK}>
+            refresh page data
+          </button>
+          <span className={`tabular-nums ${MUTED}`}>{clock ?? "--:--:--"} UTC</span>
+        </div>
+      </div>
 
-        <div className="mt-4 flex flex-wrap items-center gap-4">
+      <div className="mt-5 rounded-[6px] border border-[#CECECE] bg-white">
+        <div className="flex flex-wrap items-center gap-4 border-b border-[#D9D9D9] px-4 py-2.5">
           <button
             type="button"
             onClick={() => void recompute()}
@@ -217,9 +192,13 @@ export function Receipts({
           </span>
         </div>
 
-        <details className="mt-3">
-          <summary className={`text-[13px] ${LINK} cursor-pointer`}>raw inputs</summary>
-          <pre className="mt-2 overflow-x-auto border border-[#CECECE] bg-white p-3 text-[12px] leading-[16px] text-[#1E1E1E]">
+        <p aria-live="polite" className="px-4 py-3 text-[13px] leading-[18px]">
+          {verdictLine}
+        </p>
+
+        <details className="border-t border-[#D9D9D9] px-4 py-2.5">
+          <summary className={`cursor-pointer text-[13px] ${LINK}`}>raw inputs</summary>
+          <pre className="mt-2 overflow-x-auto rounded-[6px] border border-[#CECECE] bg-white p-3 text-[12px] leading-[16px] text-[#1E1E1E]">
             {JSON.stringify(
               {
                 model,
@@ -240,26 +219,26 @@ export function Receipts({
         </details>
       </div>
 
-      <div className="mt-8 border-t border-[#CECECE] pt-5">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <p className="text-[13px] text-[#1E1E1E]">[ minute rollups ]</p>
+      <div className="mt-5 overflow-hidden rounded-[6px] border border-[#CECECE] bg-white">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#D9D9D9] px-4 py-2.5">
+          <p className="text-[14px] font-semibold text-[#1E1E1E]">Minute rollups</p>
           {mirror ? (
             <a href={mirror} target="_blank" rel="noreferrer" className={`text-[13px] ${LINK}`}>
               source: mirror ↗
             </a>
           ) : null}
         </div>
-        <div className="mt-3 overflow-x-auto">
+        <div className="overflow-x-auto px-4">
           <table className="w-full whitespace-nowrap text-left text-[13px] [&_td]:pr-4 [&_th]:pr-4">
             <thead>
               <tr className={MUTED}>
-                <th scope="col" className="pb-2 font-normal">UTC</th>
-                <th scope="col" className="pb-2 font-normal">model</th>
-                <th scope="col" className="pb-2 font-normal">fills</th>
-                <th scope="col" className="pb-2 font-normal">MTok</th>
-                <th scope="col" className="pb-2 font-normal">VWAP</th>
-                <th scope="col" className="pb-2 font-normal">charge</th>
-                <th scope="col" className="pb-2 font-normal">seq</th>
+                <th scope="col" className="py-1.5 text-[11px] font-normal">UTC</th>
+                <th scope="col" className="py-1.5 text-[11px] font-normal">model</th>
+                <th scope="col" className="py-1.5 text-[11px] font-normal">fills</th>
+                <th scope="col" className="py-1.5 text-[11px] font-normal">MTok</th>
+                <th scope="col" className="py-1.5 text-[11px] font-normal">VWAP</th>
+                <th scope="col" className="py-1.5 text-[11px] font-normal">charge</th>
+                <th scope="col" className="py-1.5 text-[11px] font-normal">seq</th>
               </tr>
             </thead>
             <tbody>
@@ -289,19 +268,28 @@ export function Receipts({
             </tbody>
           </table>
           {config.ok === false ? (
-            <p className="py-6 text-center text-[14px] text-[#757575]">
+            <p className="py-6 text-center text-[13px] text-[#757575]">
               the public log is not configured on this deployment
             </p>
           ) : rollups === null && problem === null ? (
-            <p className="py-6 text-center text-[14px] text-[#757575]">reading the public log…</p>
+            <p className="py-6 text-center text-[13px] text-[#757575]">reading the public log…</p>
           ) : null}
           {rollups !== null && shown.length === 0 && !problem ? (
-            <p className="py-6 text-center text-[14px] text-[#757575]">
+            <p className="py-6 text-center text-[13px] text-[#757575]">
               the keeper publishes a rollup for each minute with fills. nothing yet.
             </p>
           ) : null}
         </div>
       </div>
     </section>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-[11px] leading-4 text-[#757575]">{label}</p>
+      <p className="text-[14px] font-semibold tabular-nums text-[#1E1E1E]">{value}</p>
+    </div>
   );
 }

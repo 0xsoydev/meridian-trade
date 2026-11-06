@@ -20,8 +20,8 @@ export function OrderBook({ book, model, listPrice }: { book: Book | null; model
   );
 
   return (
-    <div className="flex flex-col self-start border border-[#CECECE] bg-white lg:h-[calc(100svh-277px)] lg:min-h-[423px]">
-      <div className="flex items-center gap-5 border-b border-[#D9D9D9] px-4 py-2.5 text-[14px]">
+    <div className="flex flex-col self-start rounded-[6px] border border-[#E4E4E4] bg-white lg:h-[calc(100svh-277px)] lg:min-h-[423px]">
+      <div className="flex items-center gap-5 border-b border-[#ECECEC] px-4 py-2.5 text-[14px]">
         {(["book", "tape"] as const).map((item) => (
           <button
             key={item}
@@ -71,7 +71,7 @@ export function OrderBook({ book, model, listPrice }: { book: Book | null; model
             ) : null}
           </div>
 
-          <div className="flex items-center justify-between border-y border-[#D9D9D9] px-4 py-2 text-[13px]">
+          <div className="flex items-center justify-between border-y border-[#ECECEC] px-4 py-2 text-[13px]">
             <span className={MUTED}>Best ask</span>
             <span className="tabular-nums text-[#1E1E1E]">
               {bestAsk !== null ? formatMicroPerMtok(bestAsk) : "—"}
@@ -109,7 +109,7 @@ export function OrderBook({ book, model, listPrice }: { book: Book | null; model
             const next = venueFills[index + 1];
             const up = next === undefined || BigInt(fill.price_micro_per_mtok) >= BigInt(next.price_micro_per_mtok);
             return (
-              <div key={`${fill.listing_id}-${fill.created_at}`} className="flex items-center justify-between gap-3 border-t border-[#D9D9D9] px-4 py-[5px] text-[13px] tabular-nums">
+              <div key={`${fill.listing_id}-${fill.created_at}`} className="flex items-center justify-between gap-3 border-t border-[#ECECEC] px-4 py-[5px] text-[13px] tabular-nums">
                 <span className={MUTED}>{timeShort(fill.created_at)}</span>
                 <span className={up ? "text-[#2EBD85]" : "text-[#F6465D]"}>
                   {formatMicroPerMtok(BigInt(fill.price_micro_per_mtok))}

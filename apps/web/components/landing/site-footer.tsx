@@ -51,7 +51,7 @@ export function SiteFooter({ variant }: { variant: "page" | "canvas" }) {
 
   return (
     <>
-      <div className="absolute left-[55px] top-[3351px] h-[730px] w-[1617px] border border-[#CECECE] bg-[#EBEBEB]" />
+      <div className="absolute left-[55px] top-[3351px] h-[730px] w-[1617px] rounded-[6px] border border-[#CECECE] bg-[#EBEBEB]" />
       <p className="absolute left-[864px] top-[3747px] -translate-x-1/2 font-['Instrument_Sans','Instrument_Serif_Fallback'] font-black text-[320px] leading-none text-[#757575]/30">MERIDIAN</p>
 
       <div

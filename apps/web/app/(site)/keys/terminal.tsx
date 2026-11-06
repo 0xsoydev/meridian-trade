@@ -47,10 +47,10 @@ const usageSchema = z.object({
   ),
 });
 
-const COLUMN = "flex flex-col self-start border border-[#CECECE] bg-white lg:h-[calc(100svh-277px)] lg:min-h-[423px]";
+const COLUMN = "flex flex-col self-start rounded-[6px] border border-[#CECECE] bg-white lg:h-[calc(100svh-277px)] lg:min-h-[423px]";
 const TAB_ROW = "flex shrink-0 items-center gap-5 border-b border-[#D9D9D9] px-4 py-2.5 text-[14px]";
 const INPUT =
-  "h-[34px] w-full border border-[#CECECE] bg-white px-2.5 text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF]";
+  "h-[34px] w-full rounded-[6px] border border-[#CECECE] bg-white px-2.5 text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF]";
 const BUTTON =
   "h-[34px] w-full rounded-[6px] bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4] disabled:text-white";
 const KEY_CTA = `${CTA} relative mt-6 inline-flex h-[46px] w-fit items-center px-9 text-[16px] text-white disabled:pointer-events-none disabled:bg-[#D4D4D4]`;
@@ -397,7 +397,7 @@ export function Keys() {
       </div>
       <div className="mt-5 grid grid-cols-1 gap-[17px] lg:grid-cols-[minmax(0,1fr)_290px_290px]">
         <div className="flex flex-col gap-[17px] self-start lg:h-[calc(100svh-277px)] lg:min-h-[423px]">
-          <div className="flex min-h-0 flex-1 flex-col justify-center-safe overflow-auto border border-[#CECECE] bg-white px-6 py-6 *:shrink-0">
+          <div className="flex min-h-0 flex-1 flex-col justify-center-safe overflow-auto rounded-[6px] border border-[#CECECE] bg-white px-6 py-6 *:shrink-0">
             <div className="grid items-start gap-6 xl:grid-cols-2 xl:gap-8">
               <div className="flex flex-col">
                 <p className="text-[13px] text-[#1E1E1E]">[ api keys ]</p>
@@ -448,7 +448,7 @@ export function Keys() {
               {entries.length > 0 ? (
                 <ul className="space-y-3">
                   {entries.map((entry) => (
-                    <li key={entry.key} className="border border-[#CECECE] px-4 py-3 text-[13px]">
+                    <li key={entry.key} className="rounded-[6px] border border-[#CECECE] px-4 py-3 text-[13px]">
                       <div className="flex items-baseline justify-between gap-4">
                         <span className="min-w-0 truncate text-[14px] font-semibold text-[#1E1E1E]">{entry.name}</span>
                         {entry.key === key ? (
@@ -505,7 +505,7 @@ export function Keys() {
             </div>
           </div>
 
-          <div className="flex shrink-0 flex-col border border-[#CECECE] bg-white lg:h-[240px]">
+          <div className="flex shrink-0 flex-col rounded-[6px] border border-[#CECECE] bg-white lg:h-[240px]">
             <div className={TAB_ROW}>
               {(["connect", "usage"] as const).map((item) => (
                 <button key={item} type="button" onClick={() => setPane(item)} aria-pressed={pane === item} className={tabClass(pane === item)}>
@@ -578,7 +578,7 @@ export function Keys() {
         </div>
 
         <div className="flex flex-col gap-[17px] self-start lg:h-[calc(100svh-277px)] lg:min-h-[423px]">
-          <div className="flex min-h-0 flex-1 flex-col border border-[#CECECE] bg-white">
+          <div className="flex min-h-0 flex-1 flex-col rounded-[6px] border border-[#CECECE] bg-white">
             <div className={TAB_ROW}>
               {(["wallet", "transfer", "agent"] as const).map((item) => (
                 <button
@@ -603,7 +603,7 @@ export function Keys() {
                   <button
                     type="button"
                     onClick={() => void copy("agent", `POST ${origin}/api/v1/topup?usd=1.00`)}
-                    className="w-full border border-[#CECECE] bg-white px-3 py-2 text-left text-[13px] tabular-nums text-[#1E1E1E] hover:border-[#1743FF]"
+                    className="w-full rounded-[6px] border border-[#CECECE] bg-white px-3 py-2 text-left text-[13px] tabular-nums text-[#1E1E1E] hover:border-[#1743FF]"
                   >
                     {copied === "agent" ? "Copied. Run it from your agent." : "Copy top-up call"}
                   </button>
@@ -619,7 +619,7 @@ export function Keys() {
                     </div>
                     <label className="block">
                       <span className={`mb-1 block text-[13px] ${MUTED}`}>Amount, USD</span>
-                      <span className="flex items-center gap-2 border border-[#CECECE] bg-white px-2.5 focus-within:border-[#1743FF]">
+                      <span className="flex items-center gap-2 rounded-[6px] border border-[#CECECE] bg-white px-2.5 focus-within:border-[#1743FF]">
                         <input
                           value={walletAmount}
                           onChange={(event) => setWalletAmount(event.target.value)}
@@ -797,11 +797,11 @@ export function Keys() {
             <div>
               <span className={`mb-1 block text-[13px] ${MUTED}`}>Default model</span>
               <details ref={modelPicker} className="relative">
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-2 border border-[#CECECE] bg-white px-2.5 py-2 text-[14px] text-[#1E1E1E] [&::-webkit-details-marker]:hidden">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-2 rounded-[6px] border border-[#CECECE] bg-white px-2.5 py-2 text-[14px] text-[#1E1E1E] [&::-webkit-details-marker]:hidden">
                   <span className="truncate">{defaultModel ?? "router default"}</span>
                   <span aria-hidden className="text-[#757575]">⌄</span>
                 </summary>
-                <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-auto border border-[#CECECE] bg-white py-1">
+                <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-auto rounded-[6px] border border-[#CECECE] bg-white py-1">
                   <li>
                     <button
                       type="button"
@@ -857,7 +857,7 @@ export function Keys() {
                   href={approval.verification_uri_complete}
                   target="_blank"
                   rel="noreferrer"
-                  className="flex h-[34px] w-full items-center justify-center border border-[#1743FF] bg-white text-[14px] text-[#1743FF] hover:bg-[#1743FF]/5"
+                  className="flex h-[34px] w-full items-center justify-center rounded-[6px] border border-[#1743FF] bg-white text-[14px] text-[#1743FF] hover:bg-[#1743FF]/5"
                 >
                   Approve with World ID: {approval.user_code}
                 </a>
@@ -871,7 +871,7 @@ export function Keys() {
       <dialog
         ref={namer}
         aria-labelledby="new-key-title"
-        className="m-auto w-[min(400px,calc(100vw-2rem))] border border-[#CECECE] bg-white p-6 text-[#1E1E1E] backdrop:bg-[#1E1E1E]/20"
+        className="m-auto w-[min(400px,calc(100vw-2rem))] rounded-[6px] border border-[#CECECE] bg-white p-6 text-[#1E1E1E] backdrop:bg-[#1E1E1E]/20"
       >
         <form
           onSubmit={(event) => {

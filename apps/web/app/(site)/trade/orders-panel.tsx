@@ -11,10 +11,10 @@ import type { Balance, BookFill } from "../../../lib/types";
 const MUTED = "text-[#757575]";
 const POLL_MS = 15_000;
 const TABS = ["Balances", "Open Orders", "Trade History", "Venue Fills"] as const;
-const ROW = "grid grid-cols-3 gap-x-3 gap-y-1 border-t border-[#CECECE] py-3 text-[13px] tabular-nums text-[#1E1E1E] md:grid-cols-6";
+const ROW = "grid grid-cols-3 gap-x-3 gap-y-1 border-t border-[#E4E4E4] px-4 py-3 text-[13px] tabular-nums text-[#1E1E1E] md:grid-cols-6";
 const SCROLL = "max-h-[225px] overflow-y-auto";
-const HEAD = `hidden border-y border-[#CECECE] py-2 text-[12px] md:grid md:grid-cols-6 md:gap-x-3 ${MUTED}`;
-const INPUT = "h-[26px] w-20 border border-[#CECECE] bg-white px-1.5 text-right outline-none focus:border-[#1743FF]";
+const HEAD = `hidden border-y border-[#E4E4E4] px-4 py-2 text-[11px] md:grid md:grid-cols-6 md:gap-x-3 ${MUTED}`;
+const INPUT = "h-[26px] w-20 rounded-[6px] border border-[#E4E4E4] bg-white px-1.5 text-right outline-none focus:border-[#1743FF]";
 
 const text = z.string();
 const holdingsSchema = z.object({
@@ -170,34 +170,33 @@ export function OrdersPanel({
   const needsKey = routerKey === null && tab !== "Venue Fills" && !(tab === "Open Orders" && asks.length > 0);
 
   return (
-    <div id="orders" className="mt-10 border-t border-[#CECECE] pt-8">
-      <p className="text-[13px] text-[#1E1E1E]">[ your account ]</p>
-      <h2 className="mt-3 font-serif text-[32px] leading-[1.1] text-[#1E1E1E]">Balances, orders and fills.</h2>
-
-      <div className="mt-4 flex flex-wrap items-center gap-5">
+    <div id="orders" className="mt-5 rounded-[6px] border border-[#E4E4E4] bg-white">
+      <div className="flex flex-wrap items-center gap-5 border-b border-[#ECECEC] px-4 py-2.5 text-[14px]">
         {TABS.map((item) => (
           <button
             key={item}
             type="button"
             onClick={() => setTab(item)}
             aria-pressed={tab === item}
-            className={`text-[14px] ${
-              tab === item ? "text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4" : "text-[#757575] hover:text-[#1E1E1E]"
+            className={`${
+              tab === item
+                ? "font-semibold text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
+                : "text-[#757575] hover:text-[#1E1E1E]"
             }`}
           >
             {item}
           </button>
         ))}
-        <span className={`text-[13px] ${MUTED}`}>{counts[tab]}</span>
+        <span className={`ml-auto text-[13px] ${MUTED}`}>{counts[tab]}</span>
       </div>
 
       {notice ? (
-        <p className={`mt-3 text-[13px] ${notice.ok ? "text-[#2EBD85]" : "text-[#F6465D]"}`}>{notice.text}</p>
+        <p className={`px-4 py-2 text-[13px] ${notice.ok ? "text-[#2EBD85]" : "text-[#F6465D]"}`}>{notice.text}</p>
       ) : null}
 
-      <div className="mt-4">
+      <div>
         {needsKey ? (
-          <p className="border-t border-[#CECECE] py-5 text-[14px] text-[#757575]">
+          <p className="border-t border-[#E4E4E4] px-4 py-5 text-[14px] text-[#757575]">
             This needs a router key in this browser.{" "}
             <Link href="/keys" className="text-[#1743FF] hover:underline">
               Create one on Keys
@@ -208,7 +207,7 @@ export function OrdersPanel({
 
         {tab === "Balances" && !needsKey ? (
           <>
-            <dl className="grid grid-cols-2 gap-x-6 gap-y-1 border-t border-[#CECECE] py-3 text-[13px] md:grid-cols-5">
+            <dl className="grid grid-cols-2 gap-x-6 gap-y-1 border-t border-[#E4E4E4] px-4 py-3 text-[13px] md:grid-cols-5">
               {(account
                 ? [
                     ["Balance", formatUsd(BigInt(account.balance_usd_micro))],
@@ -231,7 +230,7 @@ export function OrdersPanel({
               ))}
             </div>
             {holdings.length === 0 ? (
-              <p className="border-t border-[#CECECE] py-5 text-[14px] text-[#757575] md:border-t-0">
+              <p className="border-t border-[#E4E4E4] px-4 py-5 text-[14px] text-[#757575] md:border-t-0">
                 No MTokens held. Buy on the ticket above; what you hold can be spent on inference or sold.
               </p>
             ) : (
@@ -259,7 +258,7 @@ export function OrdersPanel({
               ))}
             </div>
             {orders === 0 ? (
-              <p className="border-t border-[#CECECE] py-5 text-[14px] text-[#757575] md:border-t-0">
+              <p className="border-t border-[#E4E4E4] px-4 py-5 text-[14px] text-[#757575] md:border-t-0">
                 No open orders. A limit below the best ask rests as a bid; a limit sell above the best bid rests as an ask.
               </p>
             ) : null}
@@ -395,7 +394,7 @@ export function OrdersPanel({
               })}
             </div>
             {!address ? (
-              <p className={`border-t border-[#CECECE] py-3 text-[13px] ${MUTED}`}>
+              <p className={`border-t border-[#E4E4E4] px-4 py-3 text-[13px] ${MUTED}`}>
                 Connect your seller wallet to see and change the asks your provider keys post.
               </p>
             ) : null}
@@ -410,7 +409,7 @@ export function OrdersPanel({
               ))}
             </div>
             {history.length === 0 ? (
-              <p className="border-t border-[#CECECE] py-5 text-[14px] text-[#757575] md:border-t-0">No fills on this key yet.</p>
+              <p className="border-t border-[#E4E4E4] px-4 py-5 text-[14px] text-[#757575] md:border-t-0">No fills on this key yet.</p>
             ) : (
               <div className={SCROLL}>
                 {history.map((row, index) => (
@@ -433,7 +432,7 @@ export function OrdersPanel({
 
         {tab === "Venue Fills" ? (
           venueFills.length === 0 ? (
-            <p className="border-t border-[#CECECE] py-5 text-[14px] text-[#757575]">The venue has not printed a fill for {model} yet.</p>
+            <p className="border-t border-[#E4E4E4] px-4 py-5 text-[14px] text-[#757575]">The venue has not printed a fill for {model} yet.</p>
           ) : (
             <div className={SCROLL}>
               {venueFills.map((fill) => (

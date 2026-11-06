@@ -258,7 +258,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
 
   return (
     <section>
-      <div className="flex flex-wrap items-center gap-x-8 gap-y-3 border border-[#CECECE] bg-white px-4 py-3">
+      <div className="flex flex-wrap items-center gap-x-8 gap-y-3 rounded-[6px] border border-[#CECECE] bg-white px-4 py-3">
         <ProfileDropdown
           accounts={marketRows.map((row) => ({
             id: row.id,
@@ -312,7 +312,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
       ) : null}
 
       <div className={`mt-5 grid gap-[17px] ${expanded ? "" : "lg:grid-cols-[minmax(0,1fr)_250px_290px]"}`}>
-        <div className="flex flex-col self-start border border-[#CECECE] bg-white lg:h-[calc(100svh-277px)] lg:min-h-[423px]">
+        <div className="flex flex-col self-start rounded-[6px] border border-[#CECECE] bg-white lg:h-[calc(100svh-277px)] lg:min-h-[423px]">
           <div className="flex items-center gap-5 border-b border-[#D9D9D9] px-4 py-2.5 text-[14px]">
             {(["Chart", "Funding"] as const).map((item) => (
               <button
@@ -427,7 +427,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
                 accrual lands on every modify and every liquidation, off the keeper&apos;s index — the
                 same TWAP of venue fills you can recompute on /receipts.
               </p>
-              <dl className="mt-5 border border-[#CECECE] bg-white px-4 py-3">
+              <dl className="mt-5 rounded-[6px] border border-[#CECECE] bg-white px-4 py-3">
                 {FUNDING_FORMULAS.map((row) => (
                   <div key={row.name} className="border-b border-[#D9D9D9] py-2 last:border-0">
                     <dt className={`text-[13px] ${MUTED}`}>{row.name}</dt>
@@ -444,7 +444,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
           <>
             <OrderBook book={book} model={model} listPrice={listPrice} />
 
-            <div className="flex flex-col self-start border border-[#CECECE] bg-white lg:h-[calc(100svh-277px)] lg:min-h-[423px]">
+            <div className="flex flex-col self-start rounded-[6px] border border-[#CECECE] bg-white lg:h-[calc(100svh-277px)] lg:min-h-[423px]">
               <div className="flex shrink-0 border-b border-[#D9D9D9]">
                 {(["long", "short"] as const).map((item) => (
                   <button
@@ -477,7 +477,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
 
                 <label className="block">
                   <span className={`mb-1 block text-[13px] ${MUTED}`}>Size, in MTokens</span>
-                  <span className="flex items-center gap-2 border border-[#CECECE] bg-white px-2.5 focus-within:border-[#1743FF]">
+                  <span className="flex items-center gap-2 rounded-[6px] border border-[#CECECE] bg-white px-2.5 focus-within:border-[#1743FF]">
                     <input
                       value={size}
                       onChange={(event) => setSize(event.target.value)}
@@ -612,7 +612,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
                         );
                       }
                     }}
-                    className="flex h-[34px] w-full items-center justify-center border border-[#CECECE] bg-white text-[13px] text-[#1E1E1E] hover:border-[#1743FF] disabled:text-[#C9C9C9]"
+                    className="flex h-[34px] w-full items-center justify-center rounded-[6px] border border-[#CECECE] bg-white text-[13px] text-[#1E1E1E] hover:border-[#1743FF] disabled:text-[#C9C9C9]"
                   >
                     Get 100 test USDC
                   </button>
@@ -704,7 +704,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
                       <span className="pr-2">
                         {row.model}
                         {leverage !== null ? (
-                          <span className="ml-1.5 border border-[#CECECE] bg-white px-1 text-[11px] text-[#1743FF]">
+                          <span className="ml-1.5 rounded-[6px] border border-[#CECECE] bg-white px-1 text-[11px] text-[#1743FF]">
                             {leverage.toFixed(1)}x
                           </span>
                         ) : null}
@@ -759,7 +759,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
                             inputMode="decimal"
                             placeholder="USD"
                             aria-label={`USD of margin to add to or remove from ${row.model}`}
-                            className="h-[28px] w-24 border border-[#CECECE] bg-white px-2 text-right outline-none focus:border-[#1743FF]"
+                            className="h-[28px] w-24 rounded-[6px] border border-[#CECECE] bg-white px-2 text-right outline-none focus:border-[#1743FF]"
                           />
                           <button
                             type="button"
