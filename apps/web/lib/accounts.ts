@@ -1,8 +1,8 @@
 import { randomBytes } from "node:crypto";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, notExists, or } from "drizzle-orm";
 import { hashKey } from "./auth.ts";
 import { db } from "./db.ts";
-import { accounts, keys } from "./schema.ts";
+import { accounts, bids, keys, offers, prepaid } from "./schema.ts";
 import type { KeySummary } from "./types";
 
 export async function ensureAccount(
@@ -38,6 +38,35 @@ export async function createKey(accountId: string): Promise<{ id: string; raw: s
     .returning({ id: keys.id });
   if (!row) throw new Error("key creation failed");
   return { id: row.id, raw };
+}
+
+export async function revokeKey(id: string): Promise<boolean> {
+  const rows = await db()
+    .update(keys)
+    .set({ hash: randomBytes(32) })
+    .where(
+      and(
+        eq(keys.id, id),
+        eq(keys.balanceUsdMicro, 0n),
+        eq(keys.reservedUsdMicro, 0n),
+        notExists(db().select({ id: bids.id }).from(bids).where(and(eq(bids.keyId, id), eq(bids.status, "open")))),
+        notExists(db().select({ id: offers.id }).from(offers).where(and(eq(offers.keyId, id), eq(offers.status, "open")))),
+        notExists(
+          db()
+            .select({ id: prepaid.id })
+            .from(prepaid)
+            .where(
+              and(
+                eq(prepaid.keyId, id),
+                gt(prepaid.tokensRemaining, 0n),
+                or(isNull(prepaid.expiresAt), gt(prepaid.expiresAt, new Date())),
+              ),
+            ),
+        ),
+      ),
+    )
+    .returning({ id: keys.id });
+  return rows.length > 0;
 }
 
 export async function listKeys(accountId: string): Promise<KeySummary[]> {

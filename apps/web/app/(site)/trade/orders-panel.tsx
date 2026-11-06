@@ -199,7 +199,7 @@ export function OrdersPanel({
           <p className="border-t border-[#E4E4E4] px-4 py-5 text-[14px] text-[#757575]">
             This needs a router key in this browser.{" "}
             <Link href="/keys" className="text-[#1743FF] hover:underline">
-              Create or paste one on Keys
+              Create one on Keys
             </Link>
             .
           </p>
