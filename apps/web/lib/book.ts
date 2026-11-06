@@ -18,6 +18,11 @@ export type Ask = {
   createdAt: Date;
 };
 
+export function byCheapest(sorted: ReadonlyArray<Pick<Ask, "model">>, models: ReadonlyArray<string>): string[] {
+  const ranked = [...new Set(sorted.map((ask) => ask.model).filter((model) => models.includes(model)))];
+  return [...ranked, ...models.filter((model) => !ranked.includes(model))];
+}
+
 export async function asks(model: string | null): Promise<Ask[]> {
   const rails = await catalog();
   const railById = new Map<string, Rail>(rails.map((rail) => [rail.id, rail]));
