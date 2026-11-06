@@ -4,7 +4,7 @@ Length 2:45 to 2:55, 1080p, recorded with a human voice (ETHGlobal does not acce
 
 ## Before recording
 
-- The live strip at the top of any page reads "keeper posted …s ago", and the market you show is open.
+- The live strip at the top of any app page reads "keeper posted …s ago", and the market you show is open.
 - `NEXT_PUBLIC_WORLD_BYPASS=false` in both env copies, and a World App with an orb-verified identity on the phone.
 - A seller ask on `deepseek-v4.1-flash` with capacity left. Without one the market reads "no spot price yet".
 - The demo agent's Hedera account holds USDC, and its Galileo address holds 0G gas.
@@ -15,7 +15,7 @@ Length 2:45 to 2:55, 1080p, recorded with a human voice (ETHGlobal does not acce
 
 | Time | Screen | Do | Say |
 |---|---|---|---|
-| 0:00 | Landing | Hold on the hero and the live strip | Provider credits expire and can't be cashed out. Celestial Trade is a market for that capacity: buy it, resell it, hedge it. |
+| 0:00 | Landing | Hold on the hero | Provider credits expire and can't be cashed out. Celestial Trade is a market for that capacity: buy it, resell it, hedge it. |
 | 0:20 | `/sell` | Verify with World ID; pick Command Code and `deepseek-v4.1-flash`; price it below list; reuse the stored key; list. Open the Listings tab. | One human, one seller, proven with World ID. The key is checked once, sealed, and never leaves the server. |
 | 0:45 | Terminal | `pnpm --filter demo-agent start`; open the printed HashScan link | This agent has no balance. Its first request gets a 402; it pays in USDC on Hedera over x402, and the answer streams. Here's the payment on HashScan. |
 | 1:10 | `/trade` | Market-buy 1 MTok. Switch to Sell: list 0.5 MTok above the best bid, then sell 0.2 into a bid. Open Open Orders, then Trade History. | MTokens trade like any asset. Buy at the cheapest ask; resell what you hold into the bids, or list it as an ask. The agent spends what it bought at no further charge. |

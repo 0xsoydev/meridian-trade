@@ -48,8 +48,8 @@ export function Navbar({ variant = "page" }: { variant?: "page" | "canvas" }) {
             <nav className="absolute right-[56px] top-[37px] flex h-[24px] items-center gap-[39px] text-[20px] leading-[24px] text-[#1E1E1E]">
               <NavLinks />
             </nav>
-            <div aria-hidden className="pointer-events-none absolute left-[54px] top-0 h-[4081px] w-px bg-[#CECECE]" />
-            <div aria-hidden className="pointer-events-none absolute left-[1671px] top-[90px] h-[3991px] w-px bg-[#CECECE]" />
+            <div aria-hidden className="pointer-events-none absolute left-[54px] top-0 h-[4548px] w-px bg-[#CECECE]" />
+            <div aria-hidden className="pointer-events-none absolute left-[1671px] top-[90px] h-[4458px] w-px bg-[#CECECE]" />
           </>
         ) : (
           <>
