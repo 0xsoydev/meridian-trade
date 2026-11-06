@@ -190,6 +190,26 @@ export function Trade({ initialModel }: { initialModel: string }) {
 
   const bestAsk = asks[0] ? BigInt(asks[0].price_micro_per_mtok) : null;
   const listPrice = selected ? BigInt(selected.reference_blended_micro_per_mtok) : null;
+  const ceiling = selected ? BigInt(selected.list_ceiling_micro_per_mtok) : null;
+  const limitNote =
+    limit === null || limitBad
+      ? null
+      : ceiling !== null && limit > ceiling
+        ? { bad: true, text: `Above the ${formatMicroPerMtok(ceiling)} list price: no ask can sit above it.` }
+        : resting === 0n
+          ? { bad: false, text: "At or above the best ask: fills now at the asks, never above your limit." }
+          : preview.fillable === 0n
+            ? { bad: false, text: `Below the best ask: waits on the book as a bid at ${formatMicroPerMtok(limit)}.` }
+            : null;
+  const limitHigh = limitNote?.bad === true;
+  const action =
+    limit === null
+      ? `buy ${formatMtok(wanted)} MTok`
+      : resting === 0n
+        ? `buy ${formatMtok(wanted)} MTok now (limit ${formatMicroPerMtok(limit)})`
+        : preview.fillable === 0n
+          ? `bid for ${formatMtok(wanted)} MTok at ${formatMicroPerMtok(limit)}`
+          : `buy ${formatMtok(preview.fillable)} MTok now, bid for ${formatMtok(resting)} at ${formatMicroPerMtok(limit)}`;
   const last = points.at(-1)?.value ?? null;
   const first = points[0]?.value ?? null;
   const delta = last !== null && first !== null ? (last - first) / first : null;
@@ -229,7 +249,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
   };
 
   const buy = async () => {
-    if (!key || wanted === 0n || pending || limitBad) return;
+    if (!key || wanted === 0n || pending || limitBad || limitHigh) return;
     setPending(true);
     setProblem(null);
     setFills([]);
@@ -653,14 +673,17 @@ export function Trade({ initialModel }: { initialModel: string }) {
                 </div>
 
                 <label className="block">
-                  <span className={`mb-1 block text-[13px] ${MUTED}`}>Limit price, USD per MTok — blank buys at market</span>
+                  <span className={`mb-1 block text-[13px] ${MUTED}`}>Limit price, USD per MTok (blank: market)</span>
                   <input
                     value={limitPrice}
                     onChange={(event) => setLimitPrice(event.target.value)}
                     inputMode="decimal"
                     placeholder="market"
-                    className={`h-[34px] w-full border bg-white px-2.5 text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF] ${limitBad ? "border-[#F6465D]" : "border-[#CECECE]"}`}
+                    className={`h-[34px] w-full border bg-white px-2.5 text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF] ${limitBad || limitHigh ? "border-[#F6465D]" : "border-[#CECECE]"}`}
                   />
+                  {limitNote ? (
+                    <span className={`mt-1 block text-[12px] leading-4 ${limitNote.bad ? "text-[#F6465D]" : MUTED}`}>{limitNote.text}</span>
+                  ) : null}
                 </label>
 
                 <dl className="border-t border-[#D9D9D9]">
@@ -737,7 +760,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
                   <button
                     type="button"
                     onClick={() => void buy()}
-                    disabled={pending || wanted === 0n || needed === 0n || overCap || limitBad || payBlocked !== null}
+                    disabled={pending || wanted === 0n || needed === 0n || overCap || limitBad || limitHigh || payBlocked !== null}
                     className="h-[34px] w-full bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4] disabled:text-white"
                   >
                     {paying
@@ -748,9 +771,11 @@ export function Trade({ initialModel }: { initialModel: string }) {
                           ? "Enter a size"
                           : limitBad
                             ? "Enter a limit price in USD"
-                            : payFromWallet
-                              ? `Pay ${formatUsd(shortfall)} and ${limit === null ? "buy" : "limit buy"} ${formatMtok(wanted)} MTok`
-                              : `${limit === null ? "Buy" : "Limit buy"} ${formatMtok(wanted)} MTok`}
+                            : limitHigh
+                              ? "Lower the limit to the list price or below"
+                              : payFromWallet
+                                ? `Pay ${formatUsd(shortfall)} and ${action}`
+                                : `${action.charAt(0).toUpperCase()}${action.slice(1)}`}
                   </button>
                 )}
 
