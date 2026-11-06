@@ -57,7 +57,7 @@ export type Rail = {
 
 | Rail | Protocol | Base URL | Auth | Notes |
 |---|---|---|---|---|
-| `0g` | openai-chat | `OG_ROUTER_URL` | key | trust and max-price headers; prices from `/models`; credits reset daily |
+| `0g` | openai-chat | `OG_ROUTER_URL` | key | trust and max-price headers; models and prices from `OG_MODELS_URL`, 0G's public mainnet `/models`, so a testnet router without providers does not delist 0G markets; credits reset daily |
 | `anthropic` | openai-chat | `ANTHROPIC_BASE_URL` (default `https://api.anthropic.com/v1`) | key | Anthropic's OpenAI-compatible layer; Console workspace key; Max/Team API credits are monthly; prices seeded as USD per MTok in `rails.ts`; no catalog request |
 | `openai` | openai-chat | `OPENAI_BASE_URL` (default `https://api.openai.com/v1`) | key | project key with a budget; `maxTokensField: max_completion_tokens`; prices seeded as USD per MTok; no catalog request |
 | `openrouter` | openai-chat | `https://openrouter.ai/api/v1` | key | prices from `/models`; `GET /api/v1/key` returns remaining credits; no expiry |
@@ -720,6 +720,7 @@ shadcn components: `table`, `card`, `button`, `input`, `select`, `dialog`, `tabs
 | `SECRETS_KEY` | web, keeper | 32 bytes base64 |
 | `PUBLIC_HOST` | web | deployed host |
 | `OG_ROUTER_URL` | web, keeper | `https://router-api.0g.ai/v1` (dev: testnet URL) |
+| `OG_MODELS_URL` | web, keeper | `https://router-api.0g.ai/v1/models` |
 | `HEDERA_NETWORK` | web, keeper, agent | `hedera:testnet` |
 | `HEDERA_TREASURY_ID`, `HEDERA_TREASURY_KEY` | web (payTo id only), keeper | ECDSA account associated with USDC |
 | `HEDERA_USDC` | all | `0.0.429274` |

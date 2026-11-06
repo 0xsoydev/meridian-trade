@@ -90,7 +90,7 @@ function configs(): RailConfig[] {
       id: "0g",
       protocol: "openai-chat",
       baseUrl: og,
-      modelsUrl: `${og}/models`,
+      modelsUrl: process.env.OG_MODELS_URL ?? "https://router-api.0g.ai/v1/models",
       check: "probe",
       auth: "key",
       extraHeaders: {},
