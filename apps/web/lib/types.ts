@@ -191,6 +191,26 @@ export type Holding = {
   expires_at: string | null;
 };
 
+export type VenueStatus = {
+  keeper_last_post_s: number | null;
+  markets: { model: string; index_micro_per_mtok: string | null; age_s: number | null; open: boolean }[];
+  payouts: { pending: number; scheduled: number; last_executed_day: string | null };
+  venue: { fills_24h: number; volume_24h_tokens: string; open_asks: number };
+};
+
+export type KeyUsage = {
+  at: string;
+  model: string;
+  rail: string;
+  status: string;
+  prompt_tokens: number;
+  completion_tokens: number;
+  mixed_tokens: string;
+  charge_usd_micro: string;
+  paid_from: "prepaid" | "balance";
+  upstream_request_id: string | null;
+};
+
 export type KeyFill = {
   at: string;
   model: string;

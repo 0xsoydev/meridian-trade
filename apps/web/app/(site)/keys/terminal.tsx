@@ -16,6 +16,28 @@ const TOPUP_PRESETS = ["0.50", "1.00", "5.00"];
 const maskKey = (key: string) => `${key.slice(0, 7)}…${key.slice(-4)}`;
 const createdSchema = z.object({ key: z.string().startsWith("rk_"), key_id: z.string() });
 const failureSchema = z.object({ error: z.object({ message: z.string() }) });
+const usageSchema = z.object({
+  data: z.array(
+    z.object({
+      at: z.string(),
+      model: z.string(),
+      rail: z.string(),
+      status: z.string(),
+      prompt_tokens: z.number(),
+      completion_tokens: z.number(),
+      charge_usd_micro: z.string(),
+      paid_from: z.enum(["prepaid", "balance"]),
+    }),
+  ),
+});
+const usageStamp = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "UTC",
+  hour12: false,
+  day: "2-digit",
+  month: "short",
+  hour: "2-digit",
+  minute: "2-digit",
+});
 
 export function Keys() {
   const { ready, authenticated, login, logout } = usePrivy();
@@ -47,7 +69,25 @@ export function Keys() {
 
   const [origin, setOrigin] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
+  const [calls, setCalls] = useState<z.infer<typeof usageSchema>["data"]>([]);
   const modelPicker = useRef<HTMLDetailsElement | null>(null);
+
+  useEffect(() => {
+    if (!key) {
+      setCalls([]);
+      return;
+    }
+    let alive = true;
+    fetch("/api/v1/usage", { cache: "no-store", headers: { authorization: `Bearer ${key}` } })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body: unknown) => {
+        if (alive) setCalls(usageSchema.safeParse(body).data?.data ?? []);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [key, version]);
 
   useEffect(() => {
     setKey(window.localStorage.getItem(KEY_STORAGE));
@@ -666,6 +706,39 @@ export function Keys() {
           </div>
         </div>
       </div>
+
+      {key ? (
+        <div className="mt-10 border-t border-[#CECECE] pt-8">
+          <p className="text-[13px] text-[#1E1E1E]">[ usage ]</p>
+          <h2 className="mt-3 font-serif text-[32px] leading-[1.1] text-[#1E1E1E]">Every call this key made.</h2>
+          <div className={`mt-4 hidden border-y border-[#CECECE] py-2 text-[12px] md:grid md:grid-cols-6 ${MUTED}`}>
+            {["Time, UTC", "Model", "Rail", "Tokens in / out", "Paid from", "Charge"].map((head) => (
+              <span key={head}>{head}</span>
+            ))}
+          </div>
+          {calls.length === 0 ? (
+            <p className="border-t border-[#CECECE] py-5 text-[14px] text-[#757575] md:border-t-0">
+              No calls yet. Point an agent at the router below and they show up here.
+            </p>
+          ) : (
+            calls.map((call, index) => (
+              <div
+                key={`${call.at}-${index}`}
+                className="grid grid-cols-3 gap-y-1 border-t border-[#CECECE] py-3 text-[13px] tabular-nums text-[#1E1E1E] md:grid-cols-6"
+              >
+                <span className={MUTED}>{usageStamp.format(new Date(call.at))}</span>
+                <span>{call.model}</span>
+                <span className={MUTED}>{call.rail}</span>
+                <span>
+                  {call.prompt_tokens.toLocaleString("en-US")} / {call.completion_tokens.toLocaleString("en-US")}
+                </span>
+                <span className={MUTED}>{call.status === "settled" ? call.paid_from : call.status}</span>
+                <span>{call.paid_from === "prepaid" ? "prepaid MTokens" : formatUsd(BigInt(call.charge_usd_micro))}</span>
+              </div>
+            ))
+          )}
+        </div>
+      ) : null}
 
       <div className="mt-10 border-t border-[#CECECE] pt-8">
         <p className="text-[13px] text-[#1E1E1E]">[ the router ]</p>

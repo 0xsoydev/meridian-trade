@@ -5,7 +5,7 @@ export function Panorama({ variant }: { variant: "page" | "canvas" }) {
         <div
           className="h-[230px] w-full bg-cover"
           style={{
-            backgroundImage: "url(/images/panorama.png)",
+            backgroundImage: "url(/images/panorama.webp)",
             filter: "contrast(98%) saturate(0%)",
           }}
         />
@@ -20,7 +20,7 @@ export function Panorama({ variant }: { variant: "page" | "canvas" }) {
       <div
         className="absolute left-[55px] top-[2151px] h-[539px] w-[1617px] bg-cover"
         style={{
-          backgroundImage: "url(/images/panorama.png)",
+          backgroundImage: "url(/images/panorama.webp)",
           filter: "contrast(98%) saturate(0%)",
         }}
       />
