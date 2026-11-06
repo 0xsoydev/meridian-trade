@@ -76,7 +76,7 @@ export async function closeDay(day: string): Promise<number> {
     ), t as (
       select trades.id, listings.seller_id, trades.seller_earning_usd_micro as amount
       from trades join listings on listings.id = trades.listing_id
-      where trades.payout_id is null
+      where trades.payout_id is null and trades.seller_key_id is null
         and trades.seller_earning_usd_micro > 0 and trades.created_at < ${cutoff}::timestamptz
     ), totals as (
       select seller_id, sum(amount)::bigint as amount

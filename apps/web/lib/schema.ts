@@ -191,6 +191,7 @@ export const trades = pgTable(
     chargeUsdMicro: bigint("charge_usd_micro", { mode: "bigint" }).notNull(),
     sellerEarningUsdMicro: bigint("seller_earning_usd_micro", { mode: "bigint" }).notNull(),
     payoutId: uuid("payout_id").references(() => payouts.id),
+    sellerKeyId: uuid("seller_key_id").references(() => keys.id),
     createdAt: createdAt(),
   },
   (t) => [
@@ -198,6 +199,7 @@ export const trades = pgTable(
     index("trades_created_idx").on(t.createdAt),
     index("trades_listing_payout_idx").on(t.listingId, t.payoutId),
     index("trades_key_created_idx").on(t.keyId, t.createdAt),
+    index("trades_seller_key_created_idx").on(t.sellerKeyId, t.createdAt),
   ],
 );
 
@@ -243,6 +245,35 @@ export const prepaid = pgTable(
   (t) => [
     check("prepaid_tokens_non_negative", sql`${t.tokensRemaining} >= 0`),
     index("prepaid_key_model_expires_idx").on(t.keyId, t.model, t.expiresAt),
+  ],
+);
+
+export const offers = pgTable(
+  "offers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    keyId: uuid("key_id")
+      .notNull()
+      .references(() => keys.id),
+    prepaidId: uuid("prepaid_id")
+      .notNull()
+      .references(() => prepaid.id),
+    listingId: uuid("listing_id")
+      .notNull()
+      .references(() => listings.id),
+    model: text("model").notNull(),
+    priceMicroPerMtok: bigint("price_micro_per_mtok", { mode: "bigint" }).notNull(),
+    tokens: bigint("tokens", { mode: "bigint" }).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    status: text("status").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    check("offers_status", sql`${t.status} in ('open','filled','cancelled')`),
+    check("offers_price_positive", sql`${t.priceMicroPerMtok} > 0`),
+    check("offers_tokens_non_negative", sql`${t.tokens} >= 0`),
+    index("offers_model_status_price_idx").on(t.model, t.status, t.priceMicroPerMtok),
+    index("offers_key_status_idx").on(t.keyId, t.status),
   ],
 );
 

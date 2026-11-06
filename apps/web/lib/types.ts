@@ -170,8 +170,40 @@ export type PerpFill = {
   reward_usd_micro: string;
 };
 
+export type Offer = {
+  offer_id: string;
+  model: string;
+  listing_id: string;
+  tokens: string;
+  price_micro_per_mtok: string;
+  expires_at: string | null;
+  created_at: string;
+};
+
+export type SellResult = { fills: Trade[]; offers: Offer[]; holding_tokens: string };
+
+export type Holding = {
+  prepaid_id: string;
+  model: string;
+  listing_id: string;
+  rail: string;
+  tokens: string;
+  expires_at: string | null;
+};
+
+export type KeyFill = {
+  at: string;
+  model: string;
+  side: "buy" | "sell";
+  tokens: string;
+  price_micro_per_mtok: string;
+  amount_usd_micro: string;
+};
+
 export type BookAsk = {
   listing_id: string;
+  offer_id: string | null;
+  kind: "listing" | "resale";
   rail: RailId;
   price_micro_per_mtok: string;
   tokens_left: string;
@@ -201,6 +233,12 @@ export type SellerListing = {
 };
 
 export type SellerListings = { verified: boolean; listings: SellerListing[] };
+
+export type SellerPayouts = {
+  network: string;
+  unpaid_usd_micro: string;
+  data: { day: string; amount_usd_micro: string; schedule_id: string | null; execute_at: string | null; status: string }[];
+};
 
 export type Rollup = {
   v: 1;

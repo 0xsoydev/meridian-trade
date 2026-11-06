@@ -109,7 +109,11 @@ export type FillPreview = {
   partial: boolean;
 };
 
-export function previewFill(asks: ReadonlyArray<BookAsk>, wanted: bigint, takeBps: bigint): FillPreview {
+export function previewFill(
+  asks: ReadonlyArray<Pick<BookAsk, "price_micro_per_mtok" | "tokens_left">>,
+  wanted: bigint,
+  takeBps: bigint,
+): FillPreview {
   let left = wanted;
   let cost = 0n;
   let fillable = 0n;

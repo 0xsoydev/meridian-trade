@@ -19,7 +19,7 @@ import {
   reservation,
   sellerEarning,
 } from "./price.ts";
-import type { BookAsk, Pricing, Rail } from "./types.ts";
+import type { Pricing, Rail } from "./types.ts";
 
 const glm: Pricing = { prompt: 1_400_000n, completion: 4_400_000n };
 
@@ -142,9 +142,9 @@ test("reservation covers the actual charge for a fixed sample", () => {
   assert.equal(hold.micro, charge(hold.tokens, 1_500_000n));
 });
 
-const previewAsks: BookAsk[] = [
-  { listing_id: "cheap", rail: "0g", price_micro_per_mtok: "1400000", tokens_left: "500", verifiable: false },
-  { listing_id: "dear", rail: "0g", price_micro_per_mtok: "1500000", tokens_left: "1000", verifiable: false },
+const previewAsks = [
+  { price_micro_per_mtok: "1400000", tokens_left: "500" },
+  { price_micro_per_mtok: "1500000", tokens_left: "1000" },
 ];
 
 test("the fill preview walks the sorted book and splits the fee", () => {
