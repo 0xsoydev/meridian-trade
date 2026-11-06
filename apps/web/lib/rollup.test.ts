@@ -33,8 +33,9 @@ test("vwap is charge per MTok and twap is the mean over filled minutes", () => {
   assert.equal(twap([]), null);
 });
 
-test("index clamps to half..one times the reference", () => {
-  assert.equal(clampIndex(1_000_000n, 4_000_000n), 2_000_000n);
+test("index clamps to a tenth..one times the reference, so deep discounts still move it", () => {
+  assert.equal(clampIndex(1_000_000n, 4_000_000n), 1_000_000n);
+  assert.equal(clampIndex(100_000n, 4_000_000n), 400_000n);
   assert.equal(clampIndex(9_000_000n, 4_000_000n), 4_000_000n);
   assert.equal(clampIndex(3_000_000n, 4_000_000n), 3_000_000n);
 });
@@ -62,7 +63,7 @@ test("recomputeIndex replays the keeper's math and reports the pending move", ()
   assert.deepEqual(recomputeIndex({ rollups: [], reference: 4_000_000n, latest: 0n }), {
     state: "no-post",
     twap: null,
-    band: [2_000_000n, 4_000_000n],
+    band: [400_000n, 4_000_000n],
   });
   assert.deepEqual(recomputeIndex({ rollups: [], reference: 4_000_000n, latest: 4_000_000n }), {
     state: "no-input",
@@ -71,7 +72,7 @@ test("recomputeIndex replays the keeper's math and reports the pending move", ()
   assert.deepEqual(recomputeIndex({ rollups: window, reference: 5_000_000n, latest: 4_500_000n }), {
     state: "sync",
     twap: 4_500_000n,
-    band: [2_500_000n, 5_000_000n],
+    band: [500_000n, 5_000_000n],
     next: 4_500_000n,
     latest: 4_500_000n,
   });
@@ -79,14 +80,14 @@ test("recomputeIndex replays the keeper's math and reports the pending move", ()
   assert.deepEqual(recomputeIndex({ rollups: high, reference: 5_000_000n, latest: 5_000_000n }), {
     state: "sync",
     twap: 7_000_000n,
-    band: [2_500_000n, 5_000_000n],
+    band: [500_000n, 5_000_000n],
     next: 5_000_000n,
     latest: 5_000_000n,
   });
   assert.deepEqual(recomputeIndex({ rollups: window, reference: 5_000_000n, latest: 4_000_000n }), {
     state: "pending",
     twap: 4_500_000n,
-    band: [2_500_000n, 5_000_000n],
+    band: [500_000n, 5_000_000n],
     next: 4_400_000n,
     latest: 4_000_000n,
     diffBps: 1_000n,
