@@ -57,6 +57,7 @@ interface ProfileDropdownProps {
   items?: ProfileMenuItem[];
   /** Quiet label + value row at the top of the menu, such as the balance. */
   info?: { label: string; value: string };
+  badge?: string;
   className?: string;
 }
 
@@ -249,6 +250,7 @@ export default function ProfileDropdown({
   onAccountChange,
   items = [],
   info,
+  badge = "spot",
   className,
 }: ProfileDropdownProps) {
   const uid = useId();
@@ -462,7 +464,7 @@ export default function ProfileDropdown({
           />
         </span>
         <span className="shrink-0 rounded-[6px] border border-[#CECECE] px-1.5 py-0.5 text-[11px] leading-none text-[#1E1E1E]">
-          spot
+          {badge}
         </span>
         <ChevronsUpDown
           aria-hidden="true"
