@@ -4,16 +4,11 @@ import { Panorama } from "../components/landing/panorama";
 import { Proof } from "../components/landing/proof";
 import { SiteFooter } from "../components/landing/site-footer";
 import { WhatWeDo } from "../components/landing/what-we-do";
-import { LiveStrip } from "../components/live-strip";
 import { Navbar, NavLinks } from "../components/site-nav";
 
 export default function Home() {
   return (
     <main className="bg-white">
-      <div className="border-b border-[#CECECE] bg-[#F5F5F5] px-6">
-        <LiveStrip />
-      </div>
-
       <div className="lg:hidden">
         <nav className="flex flex-wrap items-center justify-center gap-x-7 gap-y-2 border-b border-[#CECECE] px-6 py-4 text-[15px] leading-[20px] text-[#1E1E1E]">
           <NavLinks />
