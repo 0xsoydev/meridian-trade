@@ -268,7 +268,7 @@ export function Sell() {
         <Stat label="Rule" value="one human, one seller" />
       </div>
 
-      <div className="mt-5 grid gap-[17px] lg:grid-cols-[1fr_400px]">
+      <div className="mt-5 grid gap-8 lg:grid-cols-[1fr_400px]">
         <div>
           <div className="flex items-center gap-5 border-b border-[#D9D9D9] pb-2.5 text-[14px]">
             <span className="font-semibold text-[#1E1E1E]">Seller gate</span>
