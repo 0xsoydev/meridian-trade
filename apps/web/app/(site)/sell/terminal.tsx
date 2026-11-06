@@ -346,7 +346,7 @@ export function Sell() {
                       onClick={() => setRail(item.id)}
                       aria-pressed={rail === item.id}
                       title={item.story}
-                      className={`group relative h-[43px] px-6 text-[16px] font-semibold ${
+                      className={`group relative h-[43px] px-5 text-[16px] font-semibold transition-transform duration-200 hover:scale-[0.98] ${
                         rail === item.id
                           ? "bg-black text-white"
                           : "border border-[#CECECE] bg-white text-[#757575] hover:border-[#1743FF] hover:text-[#1E1E1E]"
