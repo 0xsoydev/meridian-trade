@@ -46,6 +46,7 @@ export async function mirrorAccount(evmAddress: string): Promise<string | null> 
 
 export async function scheduleState(scheduleId: string): Promise<"executed" | "failed" | "cancelled" | "waiting"> {
   const response = await fetch(mirrorUrl(`/api/v1/schedules/${scheduleId}`));
+  if (response.status === 404) return "waiting";
   if (!response.ok) throw new Error(`mirror returned ${response.status} for schedule ${scheduleId}`);
   const schedule = scheduleSchema.parse(await response.json());
   if (!schedule.executed_timestamp) return schedule.deleted ? "cancelled" : "waiting";
