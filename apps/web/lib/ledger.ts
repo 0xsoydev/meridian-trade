@@ -1,7 +1,9 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { and, eq, lt, sql } from "drizzle-orm";
+import { walletOf } from "./accounts.ts";
 import { hashKey } from "./auth.ts";
 import { db } from "./db.ts";
+import { evmAddressOf, treasuryEvm } from "./mirror.ts";
 import { keys, usage } from "./schema.ts";
 import type { Balance, RailId } from "./types";
 
@@ -106,7 +108,7 @@ export async function settle(input: SettleInput): Promise<void> {
       returning reserved_tokens, reserved_usd_micro, listing_id, key_id, prepaid_id, charge_usd_micro
     ), p as (
       update prepaid set
-        tokens_remaining = prepaid.tokens_remaining + u.reserved_tokens - least(${input.mixedTokens}::bigint, u.reserved_tokens)
+        tokens_remaining = greatest(prepaid.tokens_remaining + u.reserved_tokens - ${input.mixedTokens}::bigint, 0)
       from u
       where prepaid.id = u.prepaid_id
       returning prepaid.id
@@ -188,6 +190,10 @@ export type FillInput = {
   sellerEarningMicro: bigint;
   expiresAt: Date | null;
 };
+
+export function nextUtcMidnight(now: Date): Date {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+}
 
 export async function fill(input: FillInput): Promise<{ listingOk: boolean; keyOk: boolean }> {
   const result = await db().execute<{ listing_ok: number; key_ok: number }>(sql`
@@ -292,6 +298,9 @@ export async function balanceOf(keyId: string): Promise<Balance | null> {
   return {
     memo: keyId,
     treasury: process.env.HEDERA_TREASURY_ID ?? null,
+    treasury_evm: await treasuryEvm().catch(() => null),
+    usdc_evm: evmAddressOf(process.env.HEDERA_USDC ?? "0.0.429274"),
+    wallet: await walletOf(row.accountId),
     balance_usd_micro: row.balanceUsdMicro.toString(),
     reserved_usd_micro: row.reservedUsdMicro.toString(),
     topped_up_today_usd_micro: (await toppedUpToday(keyId)).toString(),

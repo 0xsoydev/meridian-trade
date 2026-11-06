@@ -10,7 +10,7 @@ export function Hero({ variant, nav }: { variant: "page" | "canvas"; nav?: React
       <section className="px-6 pt-10">
         <div
           className="h-[210px] w-full bg-cover bg-top"
-          style={{ backgroundImage: "url(/images/colosseum.svg)", filter: COLOSSEUM_FILTER }}
+          style={{ backgroundImage: "url(/images/colosseum.webp)", filter: COLOSSEUM_FILTER }}
         />
         <h1 className="mt-9 font-serif text-[44px] leading-[1.06] text-[#1E1E1E]">
           Compute expires. Markets don't.
@@ -35,7 +35,7 @@ export function Hero({ variant, nav }: { variant: "page" | "canvas"; nav?: React
       <div
         className="absolute left-0 top-0 h-[1184px] w-[1728px]"
         style={{
-          backgroundImage: "url(/images/colosseum.svg)",
+          backgroundImage: "url(/images/colosseum.webp)",
           backgroundSize: "100% 100%",
           filter: COLOSSEUM_FILTER,
         }}

@@ -6,5 +6,5 @@ export const metadata: Metadata = {
 };
 
 export default function SellPage() {
-  return <Sell privyReady={Boolean(process.env.NEXT_PUBLIC_PRIVY_APP_ID)} />;
+  return <Sell />;
 }

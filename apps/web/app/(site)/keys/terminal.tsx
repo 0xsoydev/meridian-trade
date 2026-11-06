@@ -1,23 +1,51 @@
 "use client";
 
+import { usePrivy } from "@privy-io/react-auth";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { formatMicroPerMtok, formatUsd, parseUsd } from "../../../lib/price";
-import type { Balance, DepositResult, ModelRow, RouterError } from "../../../lib/types";
+import { BaseError } from "viem";
+import { useConnection, useSignMessage } from "wagmi";
+import { z } from "zod";
+import { formatMicroPerMtok, formatUsd, parseUsd, stampFormat, TOPUP_MAX_MICRO } from "../../../lib/price";
+import type { ApprovalStart, Balance, DepositResult, RouterError } from "../../../lib/types";
+import { useModels } from "../models";
+import { useWalletDeposit } from "../wallet-deposit";
 
 const KEY_STORAGE = "router_key";
 const MUTED = "text-[#757575]";
 const TOPUP_PRESETS = ["0.50", "1.00", "5.00"];
 
 const maskKey = (key: string) => `${key.slice(0, 7)}…${key.slice(-4)}`;
+const createdSchema = z.object({ key: z.string().startsWith("rk_"), key_id: z.string() });
+const failureSchema = z.object({ error: z.object({ message: z.string() }) });
+const usageSchema = z.object({
+  data: z.array(
+    z.object({
+      at: z.string(),
+      model: z.string(),
+      rail: z.string(),
+      status: z.string(),
+      prompt_tokens: z.number(),
+      completion_tokens: z.number(),
+      charge_usd_micro: z.string(),
+      paid_from: z.enum(["prepaid", "balance"]),
+    }),
+  ),
+});
 
-export function Keys({ privyReady }: { privyReady: boolean }) {
+export function Keys() {
+  const { ready, authenticated, login, logout } = usePrivy();
+  const { address } = useConnection();
+  const { mutateAsync: signMessage } = useSignMessage();
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [approval, setApproval] = useState<ApprovalStart | null>(null);
   const [key, setKey] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [balance, setBalance] = useState<Balance | null>(null);
   const [accountError, setAccountError] = useState<"rejected" | "down" | null>(null);
   const [version, setVersion] = useState(0);
 
-  const [models, setModels] = useState<ModelRow[]>([]);
+  const models = useModels();
   const [autoTopup, setAutoTopup] = useState("");
   const [dailyCap, setDailyCap] = useState("");
   const [defaultModel, setDefaultModel] = useState<string | null>(null);
@@ -25,30 +53,38 @@ export function Keys({ privyReady }: { privyReady: boolean }) {
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  const walletDeposit = useWalletDeposit();
+  const [walletAmount, setWalletAmount] = useState("1.00");
+  const [walletPaying, setWalletPaying] = useState(false);
   const [depositTx, setDepositTx] = useState("");
   const [depositResult, setDepositResult] = useState<{ ok: true; result: DepositResult } | { ok: false; message: string } | null>(null);
   const [depositing, setDepositing] = useState(false);
 
   const [origin, setOrigin] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
+  const [calls, setCalls] = useState<z.infer<typeof usageSchema>["data"]>([]);
   const modelPicker = useRef<HTMLDetailsElement | null>(null);
 
   useEffect(() => {
-    setKey(window.localStorage.getItem(KEY_STORAGE));
-    setOrigin(window.location.origin);
-  }, []);
-
-  useEffect(() => {
+    if (!key) {
+      setCalls([]);
+      return;
+    }
     let alive = true;
-    fetch("/api/v1/models")
-      .then((res) => (res.ok ? (res.json() as Promise<{ data: ModelRow[] }>) : null))
-      .then((body) => {
-        if (alive && body) setModels(body.data);
+    fetch("/api/v1/usage", { cache: "no-store", headers: { authorization: `Bearer ${key}` } })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body: unknown) => {
+        if (alive) setCalls(usageSchema.safeParse(body).data?.data ?? []);
       })
       .catch(() => undefined);
     return () => {
       alive = false;
     };
+  }, [key, version]);
+
+  useEffect(() => {
+    setKey(window.localStorage.getItem(KEY_STORAGE));
+    setOrigin(window.location.origin);
   }, []);
 
   useEffect(() => {
@@ -125,6 +161,33 @@ export function Keys({ privyReady }: { privyReady: boolean }) {
     setSaved(false);
   };
 
+  const createKey = async () => {
+    if (!address || creating) return;
+    setCreating(true);
+    setCreateError(null);
+    try {
+      const message = JSON.stringify({ domain: window.location.host, action: "create_key", issued_at: new Date().toISOString() });
+      const signature = await signMessage({ message });
+      const res = await fetch("/api/v1/keys", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ address, message, signature }),
+      });
+      const body: unknown = await res.json().catch(() => null);
+      const created = createdSchema.safeParse(body);
+      if (!res.ok || !created.success) {
+        setCreateError(failureSchema.safeParse(body).data?.error.message ?? `create failed (${res.status})`);
+        return;
+      }
+      window.localStorage.setItem(KEY_STORAGE, created.data.key);
+      setKey(created.data.key);
+    } catch (cause) {
+      setCreateError(cause instanceof Error ? cause.message : "the wallet did not sign");
+    } finally {
+      setCreating(false);
+    }
+  };
+
   const deposit = async () => {
     if (!key || depositing) return;
     const tx = depositTx.trim();
@@ -151,6 +214,25 @@ export function Keys({ privyReady }: { privyReady: boolean }) {
       setDepositResult({ ok: false, message: "the deposit route is unreachable; retry in a moment" });
     } finally {
       setDepositing(false);
+    }
+  };
+
+  const depositFromWallet = async () => {
+    const amount = parseUsd(walletAmount);
+    if (!key || walletPaying || amount === null || amount <= 0n) return;
+    setWalletPaying(true);
+    setDepositResult(null);
+    try {
+      const result = await walletDeposit(key, amount, balance);
+      setDepositResult({ ok: true, result });
+      refresh();
+    } catch (cause) {
+      setDepositResult({
+        ok: false,
+        message: cause instanceof BaseError ? cause.shortMessage : cause instanceof Error ? cause.message : "the wallet deposit failed",
+      });
+    } finally {
+      setWalletPaying(false);
     }
   };
 
@@ -192,10 +274,12 @@ export function Keys({ privyReady }: { privyReady: boolean }) {
           setAccountError("rejected");
           setSaveError("router key rejected — paste it again");
         } else {
+          setApproval(body?.approval ?? null);
           setSaveError(body?.error?.message ?? `save failed (${res.status})`);
         }
         return;
       }
+      setApproval(null);
       setBalance((await res.json()) as Balance);
       setSaved(true);
     } catch {
@@ -318,10 +402,54 @@ export function Keys({ privyReady }: { privyReady: boolean }) {
 
           <div className="mt-5 border-t border-[#D9D9D9] pt-4">
             <p className="text-[13px] text-[#1E1E1E]">[ deposit ]</p>
-            <p className={`mt-2 text-[13px] leading-5 ${MUTED}`}>
-              Send USDC to the venue treasury on Hedera with this memo, then paste the transaction
-              id. The mirror verifies the transfer before it credits.
-            </p>
+            {balance?.wallet ? (
+              <>
+                <p className={`mt-2 text-[13px] leading-5 ${MUTED}`}>
+                  Pay up to {formatUsd(TOPUP_MAX_MICRO)} at a time in Hedera testnet USDC from{" "}
+                  {`${balance.wallet.slice(0, 6)}…${balance.wallet.slice(-4)}`}, the wallet that created this key.
+                  The mirror verifies the transfer before it credits.
+                </p>
+                <div className="mt-3 flex gap-2">
+                  <span className="flex w-28 items-center gap-1 border border-[#CECECE] bg-white px-2.5 focus-within:border-[#1743FF]">
+                    <span className={`text-[13px] ${MUTED}`}>$</span>
+                    <input
+                      value={walletAmount}
+                      onChange={(event) => setWalletAmount(event.target.value)}
+                      inputMode="decimal"
+                      aria-label="deposit amount in USD"
+                      className="h-[34px] w-full bg-transparent text-[14px] tabular-nums text-[#1E1E1E] outline-none"
+                    />
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void depositFromWallet()}
+                    disabled={
+                      !key ||
+                      walletPaying ||
+                      address?.toLowerCase() !== balance.wallet ||
+                      (parseUsd(walletAmount) ?? 0n) <= 0n ||
+                      (parseUsd(walletAmount) ?? 0n) > TOPUP_MAX_MICRO
+                    }
+                    className="h-[34px] flex-1 bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4] disabled:text-white"
+                  >
+                    {walletPaying
+                      ? "Paying from your wallet…"
+                      : address?.toLowerCase() === balance.wallet
+                        ? "Deposit from wallet"
+                        : `Connect ${balance.wallet.slice(0, 6)}…${balance.wallet.slice(-4)} below`}
+                  </button>
+                </div>
+                <p className={`mt-3 text-[13px] leading-5 ${MUTED}`}>
+                  Or send USDC to the treasury with this memo from any Hedera wallet, then paste the
+                  transaction id.
+                </p>
+              </>
+            ) : (
+              <p className={`mt-2 text-[13px] leading-5 ${MUTED}`}>
+                Send USDC to the venue treasury on Hedera with this memo, then paste the transaction
+                id. The mirror verifies the transfer before it credits.
+              </p>
+            )}
             {balance ? (
               <div className="mt-3 border-t border-[#CECECE]">
                 {[
@@ -348,11 +476,11 @@ export function Keys({ privyReady }: { privyReady: boolean }) {
               </div>
             ) : null}
             <label className="mt-3 block">
-              <span className={`mb-1 block text-[13px] ${MUTED}`}>Hedera transaction id</span>
+              <span className={`mb-1 block text-[13px] ${MUTED}`}>Hedera transaction id or EVM hash</span>
               <input
                 value={depositTx}
                 onChange={(event) => setDepositTx(event.target.value)}
-                placeholder="0.0.12345@1700000000.000000000"
+                placeholder="0.0.12345@1700000000.000000000 or 0x…"
                 className="h-[34px] w-full border border-[#CECECE] bg-white px-2.5 text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF]"
               />
             </label>
@@ -393,27 +521,47 @@ export function Keys({ privyReady }: { privyReady: boolean }) {
 
           <div className="mt-5 border-t border-[#D9D9D9] pt-4">
             <p className="text-[13px] text-[#1E1E1E]">[ wallet ]</p>
-            <button
-              type="button"
-              disabled
-              className="mt-2 h-[34px] w-full border border-[#CECECE] bg-white text-[14px] text-[#C9C9C9]"
-            >
-              Create a key with your wallet
-            </button>
+            {authenticated && address ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => void createKey()}
+                  disabled={creating}
+                  className="mt-2 h-[34px] w-full bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4]"
+                >
+                  {creating ? "Waiting for the signature…" : "Create a key with your wallet"}
+                </button>
+                <p className={`mt-1.5 text-[13px] leading-5 ${MUTED}`}>
+                  {createError ?? `${address.slice(0, 6)}…${address.slice(-4)} signs once; the key stays in this browser.`}{" "}
+                  <button type="button" onClick={() => void logout()} className="underline">
+                    disconnect
+                  </button>
+                </p>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => login()}
+                disabled={!ready}
+                className="mt-2 h-[34px] w-full bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4]"
+              >
+                Connect wallet
+              </button>
+            )}
+            {approval ? (
+              <a
+                href={approval.verification_uri_complete}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-3 flex h-[34px] w-full items-center justify-center border border-[#1743FF] bg-white text-[14px] text-[#1743FF]"
+              >
+                Approve with World ID · {approval.user_code}
+              </a>
+            ) : null}
             <p className={`mt-1.5 text-[13px] leading-5 ${MUTED}`}>
-              {privyReady
-                ? "Privy is configured; the provider mount lands next."
-                : "needs NEXT_PUBLIC_PRIVY_APP_ID before the provider can mount."}
-            </p>
-            <button
-              type="button"
-              disabled
-              className="mt-3 h-[34px] w-full border border-[#CECECE] bg-white text-[14px] text-[#C9C9C9]"
-            >
-              Raise the daily cap with World
-            </button>
-            <p className={`mt-1.5 text-[13px] leading-5 ${MUTED}`}>
-              waits on the approvals API — the route is not.
+              {approval
+                ? "Approve in the new tab, then save the settings again."
+                : "Raising the daily cap asks for a World ID approval."}
             </p>
           </div>
         </div>
@@ -463,7 +611,7 @@ export function Keys({ privyReady }: { privyReady: boolean }) {
               />
             </label>
             <p className={`text-[13px] leading-5 ${MUTED}`}>
-              Lowering is free. Raising needs a World approval — the route lands next.
+              Lowering is free. Raising asks for a World ID approval first.
             </p>
 
             <div>
@@ -519,7 +667,7 @@ export function Keys({ privyReady }: { privyReady: boolean }) {
             </button>
 
             {!key ? (
-              <p className={`text-center text-[13px] ${MUTED}`}>paste a key first</p>
+              <p className={`text-center text-[13px] ${MUTED}`}>create or paste a key first</p>
             ) : saved ? (
               <p className="text-center text-[13px] text-[#2EBD85]">Saved.</p>
             ) : saveError ? (
@@ -538,6 +686,39 @@ export function Keys({ privyReady }: { privyReady: boolean }) {
           </div>
         </div>
       </div>
+
+      {key ? (
+        <div className="mt-10 border-t border-[#CECECE] pt-8">
+          <p className="text-[13px] text-[#1E1E1E]">[ usage ]</p>
+          <h2 className="mt-3 font-serif text-[32px] leading-[1.1] text-[#1E1E1E]">Every call this key made.</h2>
+          <div className={`mt-4 hidden border-y border-[#CECECE] py-2 text-[12px] md:grid md:grid-cols-6 ${MUTED}`}>
+            {["Time, UTC", "Model", "Rail", "Tokens in / out", "Paid from", "Charge"].map((head) => (
+              <span key={head}>{head}</span>
+            ))}
+          </div>
+          {calls.length === 0 ? (
+            <p className="border-t border-[#CECECE] py-5 text-[14px] text-[#757575] md:border-t-0">
+              No calls yet. Point an agent at the router below and they show up here.
+            </p>
+          ) : (
+            calls.map((call, index) => (
+              <div
+                key={`${call.at}-${index}`}
+                className="grid grid-cols-3 gap-y-1 border-t border-[#CECECE] py-3 text-[13px] tabular-nums text-[#1E1E1E] md:grid-cols-6"
+              >
+                <span className={MUTED}>{stampFormat.format(new Date(call.at))}</span>
+                <span>{call.model}</span>
+                <span className={MUTED}>{call.rail}</span>
+                <span>
+                  {call.prompt_tokens.toLocaleString("en-US")} / {call.completion_tokens.toLocaleString("en-US")}
+                </span>
+                <span className={MUTED}>{call.status === "settled" ? call.paid_from : call.status}</span>
+                <span>{call.paid_from === "prepaid" ? "prepaid MTokens" : formatUsd(BigInt(call.charge_usd_micro))}</span>
+              </div>
+            ))
+          )}
+        </div>
+      ) : null}
 
       <div className="mt-10 border-t border-[#CECECE] pt-8">
         <p className="text-[13px] text-[#1E1E1E]">[ the router ]</p>

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Perps } from "./terminal";
 
-const DEMO_MODEL = "glm-5.3";
+const DEMO_MODEL = "0gm-1.0-35b-a3b";
 
 export const metadata: Metadata = {
   title: "Perps — LLM Token Exchange",

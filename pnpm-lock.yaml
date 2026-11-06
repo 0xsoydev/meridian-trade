@@ -8,6 +8,34 @@ importers:
 
   .: {}
 
+  agents/demo:
+    dependencies:
+      '@hiero-ledger/sdk':
+        specifier: 2.85.0
+        version: 2.85.0(bn.js@5.2.5)(bufferutil@4.1.0)(react-native@0.88.1(@babel/core@7.29.7)(@types/react@19.3.0)(bufferutil@4.1.0)(react@19.3.1)(utf-8-validate@5.0.10))(utf-8-validate@5.0.10)
+      '@x402/core':
+        specifier: 2.28.0
+        version: 2.28.0
+      '@x402/fetch':
+        specifier: 2.28.0
+        version: 2.28.0
+      '@x402/hedera':
+        specifier: 2.28.0
+        version: 2.28.0(ansi-regex@6.2.2)(ansi-styles@6.2.3)(bn.js@5.2.5)(bufferutil@4.1.0)(debug@4.4.3)(protobufjs@8.2.0)(react-native@0.88.1(@babel/core@7.29.7)(@types/react@19.3.0)(bufferutil@4.1.0)(react@19.3.1)(utf-8-validate@5.0.10))(strip-ansi@7.1.2)(utf-8-validate@5.0.10)
+      openai:
+        specifier: 7.45.0
+        version: 7.45.0(ws@8.21.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.6.7)
+      viem:
+        specifier: 2.57.5
+        version: 2.57.5(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10)(zod@4.6.7)
+    devDependencies:
+      '@types/node':
+        specifier: 22.7.5
+        version: 22.7.5
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+
   apps/web:
     dependencies:
       '@hiero-ledger/sdk':
@@ -3789,6 +3817,33 @@ packages:
     resolution: {integrity: sha512-7x81NCL719oNbsq/3mh+hVrAWmFuEYUqrq/Iw3kUzH8ReypT9QQ0BLoJS7/G9k6N81XjW4qHWtjWwe/9eLy1EQ==}
     engines: {node: '>=12'}
 
+  openai@7.45.0:
+    resolution: {integrity: sha512-krAWw8RRzV5OGGjD9JR3QKDEB+DU5k4YIOyHfdJaNAU9qkV2W1OvGszk9+bxQo9kZ8+//1gEDflgXVFpMH7Lrg==}
+    engines: {node: '>=22.0.0'}
+    peerDependencies:
+      '@aws-sdk/credential-provider-node': '>=3.972.0 <4'
+      '@smithy/hash-node': '>=4.3.0 <5'
+      '@smithy/signature-v4': '>=5.4.0 <6'
+      google-auth-library: '>=9.15.1 <11'
+      undici: '>=5 <9'
+      ws: ^8.21.0
+      zod: ^3.25 || ^4.0
+    peerDependenciesMeta:
+      '@aws-sdk/credential-provider-node':
+        optional: true
+      '@smithy/hash-node':
+        optional: true
+      '@smithy/signature-v4':
+        optional: true
+      google-auth-library:
+        optional: true
+      undici:
+        optional: true
+      ws:
+        optional: true
+      zod:
+        optional: true
+
   openapi-fetch@0.13.8:
     resolution: {integrity: sha512-yJ4QKRyNxE44baQ9mY5+r/kAzZ8yXMemtNAOFwOzRXJscdjSxxzWSNlyBAr+o5JjkUw9Lc3W7OIoca0cY3PYnQ==}
 
@@ -6882,7 +6937,7 @@ snapshots:
 
   '@scure/bip32@1.7.0':
     dependencies:
-      '@noble/curves': 1.9.1
+      '@noble/curves': 1.9.7
       '@noble/hashes': 1.8.0
       '@scure/base': 1.2.6
 
@@ -8715,6 +8770,11 @@ snapshots:
       typescript: 7.0.2
       zod: 4.6.7
 
+  abitype@1.3.0(typescript@7.0.2)(zod@3.22.4):
+    optionalDependencies:
+      typescript: 7.0.2
+      zod: 3.22.4
+
   abitype@1.3.0(typescript@7.0.2)(zod@3.25.76):
     optionalDependencies:
       typescript: 7.0.2
@@ -10009,6 +10069,11 @@ snapshots:
       is-docker: 2.2.1
       is-wsl: 2.2.0
 
+  openai@7.45.0(ws@8.21.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.6.7):
+    optionalDependencies:
+      ws: 8.21.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)
+      zod: 4.6.7
+
   openapi-fetch@0.13.8:
     dependencies:
       openapi-typescript-helpers: 0.0.15
@@ -10023,7 +10088,7 @@ snapshots:
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.2.3(typescript@7.0.2)(zod@3.22.4)
+      abitype: 1.3.0(typescript@7.0.2)(zod@3.22.4)
       eventemitter3: 5.0.1
     optionalDependencies:
       typescript: 7.0.2
@@ -10038,7 +10103,7 @@ snapshots:
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.2.3(typescript@7.0.2)(zod@3.25.76)
+      abitype: 1.3.0(typescript@7.0.2)(zod@3.25.76)
       eventemitter3: 5.0.1
     optionalDependencies:
       typescript: 7.0.2
@@ -10053,7 +10118,7 @@ snapshots:
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.2.3(typescript@7.0.2)(zod@4.6.7)
+      abitype: 1.3.0(typescript@7.0.2)(zod@4.6.7)
       eventemitter3: 5.0.1
     optionalDependencies:
       typescript: 7.0.2
@@ -10063,11 +10128,11 @@ snapshots:
   ox@0.6.7(typescript@7.0.2)(zod@3.25.76):
     dependencies:
       '@adraffy/ens-normalize': 1.11.1
-      '@noble/curves': 1.8.1
-      '@noble/hashes': 1.7.1
-      '@scure/bip32': 1.6.2
-      '@scure/bip39': 1.5.4
-      abitype: 1.0.8(typescript@7.0.2)(zod@3.25.76)
+      '@noble/curves': 1.9.7
+      '@noble/hashes': 1.8.0
+      '@scure/bip32': 1.7.0
+      '@scure/bip39': 1.6.0
+      abitype: 1.3.0(typescript@7.0.2)(zod@3.25.76)
       eventemitter3: 5.0.1
     optionalDependencies:
       typescript: 7.0.2
@@ -10110,7 +10175,7 @@ snapshots:
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.0.8(typescript@7.0.2)(zod@4.6.7)
+      abitype: 1.3.0(typescript@7.0.2)(zod@4.6.7)
       eventemitter3: 5.0.1
     optionalDependencies:
       typescript: 7.0.2

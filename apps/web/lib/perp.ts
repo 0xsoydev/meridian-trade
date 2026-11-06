@@ -1,8 +1,9 @@
 import { keccak256, toBytes, type Account, type Address, type Chain, type Hash, type Transport, type WalletClient } from "viem";
 import { indexOracleAbi, mockUsdcAbi, perpMarketAbi } from "./abi.ts";
-import { addresses, publicClient } from "./chain.ts";
+import { addresses, galileo, publicClient } from "./chain.ts";
 
-export const MARKETS = ["glm-5.3", "deepseek-v4.1-flash"] as const;
+export const MARKETS = ["glm-5.3", "0gm-1.0-35b-a3b", "deepseek-v4.1-flash"] as const;
+export const LOG_CHUNK = 2_000n;
 
 const MM_BPS = 500n;
 const SEARCH_CEILING = 1n << 128n;
@@ -43,6 +44,59 @@ export function liquidationPrice(p: PositionMath): bigint {
   return liq;
 }
 
+export function tradeFee(sizeDelta: bigint, price: bigint): bigint {
+  const size = sizeDelta < 0n ? -sizeDelta : sizeDelta;
+  return (size * price * 10n + 9_999_999_999n) / 10_000_000_000n;
+}
+
+export function openMargin(sizeDelta: bigint, price: bigint, maxLeverage: bigint): bigint {
+  const value = notional(sizeDelta, price);
+  return value / maxLeverage + value / 100n + tradeFee(sizeDelta, price) + 1n;
+}
+
+export function positionAfter(
+  current: PositionMath | null,
+  legs: ReadonlyArray<{ sizeDelta: bigint; margin: bigint }>,
+  price: bigint,
+): PositionMath | null {
+  const held = current?.size ?? 0n;
+  const size = legs.reduce((sum, leg) => sum + leg.sizeDelta, held);
+  const last = legs.at(-1);
+  if (size === 0n || !last) return null;
+  const fee = tradeFee(last.sizeDelta, price);
+  if (!current || held === 0n || legs.length === 2) return { size, margin: last.margin - fee, entryPrice: price, fundingOwed: 0n };
+  const settled = current.margin - current.fundingOwed - fee;
+  if (last.margin === 0n) {
+    return { size, margin: settled + pnl(held - size, current.entryPrice, price), entryPrice: current.entryPrice, fundingOwed: 0n };
+  }
+  const before = held < 0n ? -held : held;
+  const total = size < 0n ? -size : size;
+  return {
+    size,
+    margin: settled + last.margin,
+    entryPrice: (before * current.entryPrice + (total - before) * price) / total,
+    fundingOwed: 0n,
+  };
+}
+
+export function orderPlan(
+  current: bigint,
+  delta: bigint,
+  price: bigint,
+  maxLeverage: bigint,
+): { sizeDelta: bigint; margin: bigint }[] {
+  if (delta === 0n) return [];
+  if (current === 0n || (current > 0n) === (delta > 0n)) {
+    return [{ sizeDelta: delta, margin: openMargin(delta, price, maxLeverage) }];
+  }
+  const rest = current + delta;
+  if (rest === 0n || (rest > 0n) === (current > 0n)) return [{ sizeDelta: delta, margin: 0n }];
+  return [
+    { sizeDelta: -current, margin: 0n },
+    { sizeDelta: rest, margin: openMargin(rest, price, maxLeverage) },
+  ];
+}
+
 export async function readMarket(model: string) {
   const client = publicClient();
   const { perpMarket, indexOracle } = addresses();
@@ -71,6 +125,7 @@ export async function readPosition(model: string, account: Address) {
     margin: position.margin,
     entryPrice: position.entryPrice,
     equity,
+    fundingOwed,
     liquidationPrice: liquidationPrice({ ...position, fundingOwed }),
   };
 }
@@ -88,6 +143,7 @@ export async function modify(wallet: PerpWallet, model: string, sizeDelta: bigin
     if (allowance < marginDelta) {
       const { request } = await client.simulateContract({
         account: wallet.account,
+        chain: galileo,
         address: mockUsdc,
         abi: mockUsdcAbi,
         functionName: "approve",
@@ -99,6 +155,7 @@ export async function modify(wallet: PerpWallet, model: string, sizeDelta: bigin
   }
   const { request } = await client.simulateContract({
     account: wallet.account,
+    chain: galileo,
     address: perpMarket,
     abi: [...perpMarketAbi, ...mockUsdcAbi],
     functionName: "modify",
@@ -144,13 +201,3 @@ export async function postIndex(
   return wallet.writeContract(request);
 }
 
-export async function positionAccounts(fromBlock: bigint, toBlock: bigint) {
-  const events = await publicClient().getContractEvents({
-    address: addresses().perpMarket,
-    abi: perpMarketAbi,
-    eventName: "PositionModified",
-    fromBlock,
-    toBlock,
-  });
-  return events.flatMap((e) => (e.args.account && e.args.market ? [{ account: e.args.account, market: e.args.market }] : []));
-}

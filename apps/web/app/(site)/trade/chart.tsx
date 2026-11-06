@@ -10,92 +10,29 @@ import {
   createChart,
   type IChartApi,
   type ISeriesApi,
-  type UTCTimestamp,
 } from "lightweight-charts";
-import type { BookFill } from "../../../lib/types";
+import { candlesFromPoints, type CandlePoint, type ChartPoint } from "../../../lib/price";
 
 export type ScaleMode = "linear" | "log" | "percent";
 
-export type ChartPoint = {
-  time: UTCTimestamp;
-  value: number;
-  volume: number;
-};
-
-export const CANDLE_BUCKET = 60;
-
-export type CandlePoint = {
-  time: UTCTimestamp;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
-};
+export const INTERVALS = [
+  { label: "1m", seconds: 60 },
+  { label: "5m", seconds: 300 },
+  { label: "15m", seconds: 900 },
+  { label: "1h", seconds: 3600 },
+] as const;
 
 const BAR = "rgba(23, 67, 255, 0.25)";
 
-export function fillsToPoints(
-  fills: BookFill[],
-  windowMs: number | null,
-  nowMs: number,
-): ChartPoint[] {
-  const cutoff = windowMs === null ? Number.NEGATIVE_INFINITY : nowMs - windowMs;
-  const bySecond = new Map<number, { value: number; volume: number }>();
-  for (let i = fills.length - 1; i >= 0; i -= 1) {
-    const row = fills[i];
-    if (!row) continue;
-    const at = Date.parse(row.created_at);
-    if (!Number.isFinite(at) || at < cutoff) continue;
-    const second = Math.floor(at / 1000);
-    const value = Number(row.price_micro_per_mtok) / 1e6;
-    const volume = Number(row.tokens) / 1e6;
-    const seen = bySecond.get(second);
-    if (seen) {
-      seen.value = value;
-      seen.volume += volume;
-    } else {
-      bySecond.set(second, { value, volume });
-    }
-  }
-
-  const points: ChartPoint[] = [];
-  for (const second of [...bySecond.keys()].sort((a, b) => a - b)) {
-    const point = bySecond.get(second);
-    if (!point) continue;
-    points.push({
-      time: second as UTCTimestamp,
-      value: point.value,
-      volume: point.volume,
-    });
-  }
-  return points;
-}
-
-export function candlesFromPoints(points: ChartPoint[]): CandlePoint[] {
-  const candles: CandlePoint[] = [];
-  for (const point of points) {
-    const time = (Math.floor(point.time / CANDLE_BUCKET) * CANDLE_BUCKET) as UTCTimestamp;
-    const last = candles.at(-1);
-    if (last && last.time === time) {
-      last.high = Math.max(last.high, point.value);
-      last.low = Math.min(last.low, point.value);
-      last.close = point.value;
-      last.volume += point.volume;
-    } else {
-      candles.push({ time, open: point.value, high: point.value, low: point.value, close: point.value, volume: point.volume });
-    }
-  }
-  return candles;
-}
-
 export function FillsChart({
   points,
+  bucket,
   scale,
   emptyNote = "no fills yet — the first trade prints here",
   className = "h-[360px]",
 }: {
   points: ChartPoint[];
+  bucket: number;
   scale: ScaleMode;
   emptyNote?: string;
   className?: string;
@@ -105,6 +42,7 @@ export function FillsChart({
   const candles = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volume = useRef<ISeriesApi<"Histogram"> | null>(null);
   const drawn = useRef<ChartPoint[]>([]);
+  const drawnBucket = useRef(bucket);
   const drawnCandles = useRef<CandlePoint[]>([]);
 
   useEffect(() => {
@@ -170,11 +108,13 @@ export function FillsChart({
     const series = candles.current;
     const bars = volume.current;
     if (!series || !bars) return;
-    const next = candlesFromPoints(points);
+    const next = candlesFromPoints(points, bucket);
     const shaped =
       drawn.current.length === 0 ||
+      drawnBucket.current !== bucket ||
       points.length < drawn.current.length ||
       drawn.current[0]?.time !== points[0]?.time;
+    drawnBucket.current = bucket;
 
     if (shaped) {
       series.setData(next.map(({ time, open, high, low, close }) => ({ time, open, high, low, close })));
@@ -216,7 +156,7 @@ export function FillsChart({
     }
     drawn.current = points;
     drawnCandles.current = next;
-  }, [points]);
+  }, [points, bucket]);
 
   useEffect(() => {
     const current = chart.current;

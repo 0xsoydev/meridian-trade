@@ -6,6 +6,7 @@ import { POST as chat } from "../app/api/v1/chat/completions/route.ts";
 import { POST as trade } from "../app/api/v1/trades/route.ts";
 import { db } from "./db.ts";
 import { releaseStale, reserve } from "./ledger.ts";
+import { mixedTokens } from "./price.ts";
 import { keys, listings, prepaid, trades, usage } from "./schema.ts";
 import {
   cleanup,
@@ -21,6 +22,7 @@ import {
   stubRail,
   suffix,
   type ChatCall,
+  type StubUsage,
 } from "./testkit.ts";
 import type { Book, TradeResult } from "./types";
 
@@ -34,6 +36,7 @@ let failNext = false;
 let cheap = "";
 let dear = "";
 let buyer = { id: "", raw: "" };
+let replyUsage: StubUsage = { prompt_tokens: 10, completion_tokens: 5 };
 
 before(async () => {
   if (!hasDb) return;
@@ -42,7 +45,7 @@ before(async () => {
       failNext = false;
       return status(response, 500);
     }
-    reply(response, `chatcmpl-${suffix}-${rail?.calls.length ?? 0}`);
+    reply(response, `chatcmpl-${suffix}-${rail?.calls.length ?? 0}`, replyUsage);
   });
   sellerId = await makeSeller();
   cheap = await makeListing({ sellerId, model: MODEL, credential: "sk-ok", price: 1_200_000n, capacity: 100_000n });
@@ -101,7 +104,15 @@ test("the book shows live asks and recent fills", { skip }, async () => {
   assert.equal(response.status, 200);
   const result = (await response.json()) as Book;
   assert.deepEqual(result.asks, [
-    { listing_id: dear, rail: "stub", price_micro_per_mtok: "1500000", tokens_left: "950000", verifiable: false },
+    {
+      listing_id: dear,
+      offer_id: null,
+      kind: "listing",
+      rail: "stub",
+      price_micro_per_mtok: "1500000",
+      tokens_left: "950000",
+      verifiable: false,
+    },
   ]);
   assert.equal(result.fills.length, 2);
   assert.equal(result.fills[0]?.listing_id, dear);
@@ -145,6 +156,31 @@ test("a failed prepaid attempt hands the MTokens back and fails over", { skip },
     ],
   );
   assert.equal((await keyRow(buyer.id)).balanceUsdMicro, 805_000n);
+});
+
+test("a cancelled listing still serves the prepaid MTokens it already sold", { skip }, async () => {
+  await db().update(listings).set({ status: "cancelled" }).where(eq(listings.id, cheap));
+  const response = await ask({ model: MODEL, messages: ping, max_tokens: 16 });
+  assert.equal(response.status, 200);
+
+  const [cheapHold] = await holdings();
+  assert.equal(cheapHold?.tokensRemaining, 100_000n - 18n);
+  const last = (await db().select().from(usage).where(eq(usage.keyId, buyer.id)).orderBy(asc(usage.createdAt))).at(-1);
+  assert.deepEqual([last?.prepaidId, last?.status, last?.chargeUsdMicro], [cheapHold?.id, "settled", 0n]);
+});
+
+test("a prepaid request that runs past its reservation is deducted its actual MTokens", { skip }, async () => {
+  const [before] = await holdings();
+  replyUsage = { prompt_tokens: 400, completion_tokens: 100 };
+  const response = await ask({ model: MODEL, messages: ping, max_tokens: 16 });
+  replyUsage = { prompt_tokens: 10, completion_tokens: 5 };
+  assert.equal(response.status, 200);
+
+  const [after] = await holdings();
+  const last = (await db().select().from(usage).where(eq(usage.keyId, buyer.id)).orderBy(asc(usage.createdAt))).at(-1);
+  assert.ok((last?.reservedTokens ?? 0n) < mixedTokens(400n, 100n));
+  assert.equal(last?.mixedTokens, mixedTokens(400n, 100n));
+  assert.equal((before?.tokensRemaining ?? 0n) - (after?.tokensRemaining ?? 0n), mixedTokens(400n, 100n));
 });
 
 test("the sweep releases holds a dead function left open", { skip }, async () => {

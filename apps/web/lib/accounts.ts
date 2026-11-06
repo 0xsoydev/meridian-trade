@@ -24,6 +24,12 @@ export async function ensureAccount(
   return created ? { id: created.id } : { conflict: true };
 }
 
+export async function walletOf(accountId: string | null): Promise<string | null> {
+  if (!accountId) return null;
+  const [row] = await db().select({ address: accounts.address }).from(accounts).where(eq(accounts.id, accountId)).limit(1);
+  return row?.address ?? null;
+}
+
 export async function createKey(accountId: string): Promise<{ id: string; raw: string }> {
   const raw = `rk_${randomBytes(32).toString("base64url")}`;
   const [row] = await db()

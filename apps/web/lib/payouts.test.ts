@@ -4,18 +4,30 @@ import { createServer } from "node:http";
 import { after, before, test } from "node:test";
 import { eq, inArray } from "drizzle-orm";
 import { db } from "./db.ts";
-import { checkScheduled, closeDay, mirrorAccount, payAt, scheduleState, utcDay } from "./payouts.ts";
-import { payouts, trades, usage } from "./schema.ts";
-import { cleanup, first, hasDb, makeKey, makeListing, makeSeller, skip, suffix } from "./testkit.ts";
+import {
+  checkScheduled,
+  closeDay,
+  mirrorAccount,
+  payAt,
+  resetDailyListings,
+  scheduleExpiry,
+  scheduleSlot,
+  scheduleState,
+  utcDay,
+} from "./payouts.ts";
+import { listings, payouts, trades, usage } from "./schema.ts";
+import { cleanup, first, hasDb, makeKey, makeListing, makeSeller, reply, skip, stubRail, suffix, type ChatCall } from "./testkit.ts";
 
 const MODEL = `t-${suffix}-payout`;
 const DAY = "2001-01-01";
+let rail: { calls: ChatCall[]; close: () => void } | null = null;
 let sellerId = "";
 let listingId = "";
 let keyId = "";
 
 before(async () => {
   if (!hasDb) return;
+  rail = await stubRail([MODEL], (_call, response) => reply(response, `chatcmpl-${suffix}-payout`));
   sellerId = await makeSeller();
   listingId = await makeListing({ sellerId, model: MODEL, credential: "sk-ok", price: 1_000_000n, capacity: 10_000_000n });
   keyId = (await makeKey(0n)).id;
@@ -26,6 +38,7 @@ after(async () => {
   await db().delete(usage).where(eq(usage.keyId, keyId));
   await db().delete(trades).where(eq(trades.keyId, keyId));
   await db().delete(payouts).where(eq(payouts.sellerId, sellerId));
+  rail?.close();
   await cleanup();
 });
 
@@ -33,6 +46,38 @@ test("utcDay and payAt pin the payout to 01:00 UTC the next day", () => {
   assert.equal(utcDay(Date.parse("2026-11-06T23:59:59.999Z")), "2026-11-06");
   assert.equal(payAt("2026-11-06").toISOString(), "2026-11-07T01:00:00.000Z");
   assert.equal(payAt("2026-12-31").toISOString(), "2027-01-01T01:00:00.000Z");
+});
+
+test("a payout scheduled after its 01:00 UTC slot executes ten minutes out instead of getting stuck", () => {
+  assert.equal(scheduleExpiry("2026-11-06", Date.parse("2026-11-07T00:30:00Z")).toISOString(), "2026-11-07T01:00:00.000Z");
+  assert.equal(scheduleExpiry("2026-11-03", Date.parse("2026-11-04T15:00:00Z")).toISOString(), "2026-11-04T15:10:00.000Z");
+});
+
+test("a late payout keeps the slot its first attempt claimed, so a retry rebuilds the identical schedule", { skip }, async () => {
+  const day = "2001-04-01";
+  const { id } = first(await db().insert(payouts).values({ sellerId, day, amountUsdMicro: 1n, status: "pending" }).returning({ id: payouts.id }));
+  const firstTry = Date.parse("2026-11-04T15:00:00Z");
+  assert.equal((await scheduleSlot(id, day, firstTry))?.toISOString(), "2026-11-04T15:10:00.000Z");
+  assert.equal((await scheduleSlot(id, day, firstTry + 60_000))?.toISOString(), "2026-11-04T15:10:00.000Z");
+  await db().update(payouts).set({ status: "scheduled" }).where(eq(payouts.id, id));
+  assert.equal(await scheduleSlot(id, day, firstTry), null);
+  await db().delete(payouts).where(eq(payouts.id, id));
+});
+
+test("the daily reset frees a daily-rail listing once per UTC day, whenever the keeper runs", { skip }, async () => {
+  const daily = await makeListing({ sellerId, model: MODEL, credential: "sk-ok", price: 1_000_000n, capacity: 10_000_000n, rail: "0g" });
+  const row = async () => first(await db().select().from(listings).where(eq(listings.id, daily)));
+  const today = utcDay(Date.now());
+  assert.equal((await row()).resetOn, today);
+
+  await db().update(listings).set({ usedTokens: 10_000_000n, status: "exhausted", resetOn: "2001-01-01" }).where(eq(listings.id, daily));
+  assert.ok((await resetDailyListings(today)) >= 1);
+  const freed = await row();
+  assert.deepEqual([freed.usedTokens, freed.status, freed.resetOn], [0n, "active", today]);
+
+  await db().update(listings).set({ usedTokens: 3_000_000n }).where(eq(listings.id, daily));
+  await resetDailyListings(today);
+  assert.equal((await row()).usedTokens, 3_000_000n);
 });
 
 test("mirror lookups map accounts and schedule states, and a failed transfer is not executed", async () => {

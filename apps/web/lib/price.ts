@@ -1,4 +1,5 @@
-import type { BookAsk, Micro, MicroPerMTok, Pricing, Rail, RailId } from "./types";
+import type { UTCTimestamp } from "lightweight-charts";
+import type { BookAsk, BookFill, Micro, MicroPerMTok, Pricing, Rail, RailId } from "./types";
 
 const MICRO_PER_MTOK = 1_000_000n;
 const PRICE_SCALE = 12;
@@ -23,6 +24,9 @@ export function parseUsdPerToken(decimal: string): MicroPerMTok {
   return negative ? -value : value;
 }
 
+export const TOPUP_MIN_MICRO = 100_000n;
+export const TOPUP_MAX_MICRO = 20_000_000n;
+
 export function parseUsd(decimal: string): Micro | null {
   const match = /^(\d{1,6})(?:\.(\d{1,6}))?$/.exec(decimal.trim());
   if (!match) return null;
@@ -33,11 +37,28 @@ export function formatMicroPerMtok(value: MicroPerMTok): string {
   const negative = value < 0n;
   const abs = negative ? -value : value;
   const whole = abs / 1_000_000n;
-  const fraction = (abs % 1_000_000n).toString().padStart(6, "0").replace(/0+$/, "");
-  return `${negative ? "-" : ""}${whole}${fraction ? `.${fraction}` : ""}`;
+  const fraction = (abs % 1_000_000n).toString().padStart(6, "0").replace(/0+$/, "").padEnd(2, "0");
+  return `${negative ? "-" : ""}${whole}.${fraction}`;
 }
 
 export const formatUsd = (micro: Micro): string => `$${formatMicroPerMtok(micro)}`;
+
+export const clockFormat = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "UTC",
+  hour12: false,
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+});
+
+export const stampFormat = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "UTC",
+  hour12: false,
+  day: "2-digit",
+  month: "short",
+  hour: "2-digit",
+  minute: "2-digit",
+});
 
 const group = (whole: bigint) => whole.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 
@@ -55,6 +76,18 @@ export function parseMtok(input: string): bigint {
 
 export function blended(p: Pricing): MicroPerMTok {
   return (3n * p.prompt + p.completion) / 4n;
+}
+
+export function listCeiling(model: string, rails: ReadonlyArray<Rail>): MicroPerMTok | null {
+  let ceiling: MicroPerMTok | null = null;
+  for (const rail of rails) {
+    if (!rail.enabled) continue;
+    const match = rail.models.find((entry) => entry.canonical === model);
+    if (!match) continue;
+    const price = blended({ prompt: match.listPrompt, completion: match.listCompletion });
+    if (ceiling === null || price > ceiling) ceiling = price;
+  }
+  return ceiling;
 }
 
 export function referenceFor(
@@ -93,7 +126,11 @@ export type FillPreview = {
   partial: boolean;
 };
 
-export function previewFill(asks: ReadonlyArray<BookAsk>, wanted: bigint, takeBps: bigint): FillPreview {
+export function previewFill(
+  asks: ReadonlyArray<Pick<BookAsk, "price_micro_per_mtok" | "tokens_left">>,
+  wanted: bigint,
+  takeBps: bigint,
+): FillPreview {
   let left = wanted;
   let cost = 0n;
   let fillable = 0n;
@@ -142,4 +179,44 @@ export function reservation(
 ): { tokens: bigint; micro: Micro } {
   const tokens = mixedTokens(estimatePromptTokens(utf8Bytes), maxTokens);
   return { tokens, micro: charge(tokens, ask) };
+}
+
+export type ChartPoint = { time: UTCTimestamp; value: number; volume: number };
+
+export type CandlePoint = { time: UTCTimestamp; open: number; high: number; low: number; close: number; volume: number };
+
+export function fillsToPoints(fills: BookFill[], sinceMs = Number.NEGATIVE_INFINITY): ChartPoint[] {
+  return fills
+    .filter((fill) => Date.parse(fill.created_at) >= sinceMs)
+    .reverse()
+    .map((fill) => ({
+      time: Math.floor(Date.parse(fill.created_at) / 1000) as UTCTimestamp,
+      value: Number(fill.price_micro_per_mtok) / 1e6,
+      volume: Number(fill.tokens) / 1e6,
+    }));
+}
+
+export function candlesFromPoints(points: ChartPoint[], bucket: number): CandlePoint[] {
+  const candles: CandlePoint[] = [];
+  for (const point of points) {
+    const time = (Math.floor(point.time / bucket) * bucket) as UTCTimestamp;
+    const last = candles.at(-1);
+    if (last && last.time === time) {
+      last.high = Math.max(last.high, point.value);
+      last.low = Math.min(last.low, point.value);
+      last.close = point.value;
+      last.volume += point.volume;
+    } else {
+      const open = last?.close ?? point.value;
+      candles.push({
+        time,
+        open,
+        high: Math.max(open, point.value),
+        low: Math.min(open, point.value),
+        close: point.value,
+        volume: point.volume,
+      });
+    }
+  }
+  return candles;
 }

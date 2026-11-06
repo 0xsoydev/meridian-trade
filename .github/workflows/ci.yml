@@ -19,6 +19,8 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm --filter web test
       - run: pnpm build
+        env:
+          NEXT_PUBLIC_PRIVY_APP_ID: ciplaceholder000000000000
 
   contracts:
     runs-on: ubuntu-latest

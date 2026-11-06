@@ -7,7 +7,7 @@ import {
   TokenId,
   TransferTransaction,
 } from "@hiero-ledger/sdk";
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "./db.ts";
 import { hederaClient } from "./hcs.ts";
@@ -15,6 +15,7 @@ import { catalog } from "./rails.ts";
 import { listings, payouts, sellers } from "./schema.ts";
 
 const DAY_MS = 86_400_000;
+const LATE_PAYOUT_MS = 10 * 60_000;
 
 const accountSchema = z.object({ account: z.string().regex(/^\d+\.\d+\.\d+$/) });
 const scheduleSchema = z.object({ executed_timestamp: z.string().nullable(), deleted: z.boolean() });
@@ -26,6 +27,19 @@ export function utcDay(ms: number): string {
 
 export function payAt(day: string): Date {
   return new Date(Date.parse(`${day}T01:00:00.000Z`) + DAY_MS);
+}
+
+export function scheduleExpiry(day: string, nowMs: number): Date {
+  return new Date(Math.max(payAt(day).getTime(), nowMs + LATE_PAYOUT_MS));
+}
+
+export async function scheduleSlot(payoutId: string, day: string, nowMs: number): Promise<Date | null> {
+  const [row] = await db()
+    .update(payouts)
+    .set({ executeAt: sql`coalesce(${payouts.executeAt}, ${scheduleExpiry(day, nowMs).toISOString()}::timestamptz)` })
+    .where(and(eq(payouts.id, payoutId), eq(payouts.status, "pending")))
+    .returning({ executeAt: payouts.executeAt });
+  return row?.executeAt ?? null;
 }
 
 function mirrorUrl(path: string): URL {
@@ -41,6 +55,7 @@ export async function mirrorAccount(evmAddress: string): Promise<string | null> 
 
 export async function scheduleState(scheduleId: string): Promise<"executed" | "failed" | "cancelled" | "waiting"> {
   const response = await fetch(mirrorUrl(`/api/v1/schedules/${scheduleId}`));
+  if (response.status === 404) return "waiting";
   if (!response.ok) throw new Error(`mirror returned ${response.status} for schedule ${scheduleId}`);
   const schedule = scheduleSchema.parse(await response.json());
   if (!schedule.executed_timestamp) return schedule.deleted ? "cancelled" : "waiting";
@@ -61,7 +76,7 @@ export async function closeDay(day: string): Promise<number> {
     ), t as (
       select trades.id, listings.seller_id, trades.seller_earning_usd_micro as amount
       from trades join listings on listings.id = trades.listing_id
-      where trades.payout_id is null
+      where trades.payout_id is null and trades.seller_key_id is null
         and trades.seller_earning_usd_micro > 0 and trades.created_at < ${cutoff}::timestamptz
     ), totals as (
       select seller_id, sum(amount)::bigint as amount
@@ -113,7 +128,7 @@ async function ensureAccount(sellerId: string, evmAddress: string): Promise<stri
   return account;
 }
 
-async function schedulePayout(payoutId: string, day: string, amount: bigint, account: string): Promise<string> {
+async function schedulePayout(payoutId: string, expiresAt: Date, amount: bigint, account: string): Promise<string> {
   const client = hederaClient();
   const treasury = client.operatorAccountId;
   const adminKey = client.operatorPublicKey;
@@ -123,7 +138,7 @@ async function schedulePayout(payoutId: string, day: string, amount: bigint, acc
     .setScheduledTransaction(
       new TransferTransaction().addTokenTransfer(usdc, treasury, -amount).addTokenTransfer(usdc, account, amount),
     )
-    .setExpirationTime(Timestamp.fromDate(payAt(day)))
+    .setExpirationTime(Timestamp.fromDate(expiresAt))
     .setWaitForExpiry(true)
     .setAdminKey(adminKey)
     .setScheduleMemo(payoutId);
@@ -152,18 +167,20 @@ export async function payPending(): Promise<string[]> {
     .innerJoin(sellers, eq(sellers.id, payouts.sellerId))
     .where(eq(payouts.status, "pending"));
   for (const row of rows) {
-    if (payAt(row.day).getTime() <= Date.now()) {
-      lines.push(`[payout] ${row.id}: still pending after 01:00 UTC, needs an operator`);
-      continue;
-    }
     try {
       const account = row.hederaAccount ?? (await ensureAccount(row.sellerId, row.address));
-      const scheduleId = await schedulePayout(row.id, row.day, row.amount, account);
+      const expiresAt = await scheduleSlot(row.id, row.day, Date.now());
+      if (!expiresAt) continue;
+      if (expiresAt.getTime() <= Date.now()) {
+        lines.push(`[payout] ${row.id}: still pending after its ${expiresAt.toISOString()} slot, needs an operator`);
+        continue;
+      }
+      const scheduleId = await schedulePayout(row.id, expiresAt, row.amount, account);
       await db()
         .update(payouts)
         .set({ scheduleId, status: "scheduled" })
         .where(and(eq(payouts.id, row.id), eq(payouts.status, "pending")));
-      lines.push(`[payout] ${row.id}: ${row.amount} micro-USDC to ${account}, schedule ${scheduleId}`);
+      lines.push(`[payout] ${row.id}: ${row.amount} micro-USDC to ${account}, schedule ${scheduleId}, executes ${expiresAt.toISOString()}`);
     } catch (error) {
       lines.push(`[payout] ${row.id}: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -174,11 +191,11 @@ export async function payPending(): Promise<string[]> {
 export async function checkScheduled(): Promise<string[]> {
   const lines: string[] = [];
   const rows = await db()
-    .select({ id: payouts.id, day: payouts.day, scheduleId: payouts.scheduleId })
+    .select({ id: payouts.id, scheduleId: payouts.scheduleId })
     .from(payouts)
     .where(eq(payouts.status, "scheduled"));
   for (const row of rows) {
-    if (!row.scheduleId || Date.now() < payAt(row.day).getTime() + 5 * 60_000) continue;
+    if (!row.scheduleId) continue;
     const state = await scheduleState(row.scheduleId).catch((error: unknown): "waiting" => {
       lines.push(`[payout] ${row.id}: ${error instanceof Error ? error.message : String(error)}`);
       return "waiting";
@@ -197,13 +214,19 @@ export async function checkScheduled(): Promise<string[]> {
   return lines;
 }
 
-export async function resetDailyListings(): Promise<number> {
+export async function resetDailyListings(today: string): Promise<number> {
   const daily = (await catalog()).filter((rail) => rail.resetPeriod === "daily").map((rail) => rail.id);
-  if (daily.length === 0) throw new Error("no daily-reset rail loaded, listing reset postponed");
+  if (daily.length === 0) return 0;
   const reset = await db()
     .update(listings)
-    .set({ usedTokens: 0n, status: "active" })
-    .where(and(inArray(listings.rail, daily), inArray(listings.status, ["active", "exhausted"])))
+    .set({ usedTokens: 0n, status: "active", resetOn: today })
+    .where(
+      and(
+        inArray(listings.rail, daily),
+        inArray(listings.status, ["active", "exhausted"]),
+        lt(listings.resetOn, today),
+      ),
+    )
     .returning({ id: listings.id });
   return reset.length;
 }

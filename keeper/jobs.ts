@@ -1,15 +1,17 @@
+import { matchAllBids } from "../apps/web/lib/bids.ts";
 import { asks } from "../apps/web/lib/book.ts";
 import { keeperWallet, publicClient } from "../apps/web/lib/chain.ts";
 import { buildRollups, markPublished, minuteFills, submitRollup } from "../apps/web/lib/hcs.ts";
 import { releaseStale } from "../apps/web/lib/ledger.ts";
 import { checkScheduled, closeDay, payPending, resetDailyListings, utcDay } from "../apps/web/lib/payouts.ts";
-import { MARKETS, liquidate, marketId, needsLiquidation, positionAccounts, postIndex, readMarket } from "../apps/web/lib/perp.ts";
+import { LOG_CHUNK, MARKETS, liquidate, needsLiquidation, postIndex, readMarket } from "../apps/web/lib/perp.ts";
+import { readPerpEvents, recordPerpEvents, recordedPerps } from "../apps/web/lib/perp-events.ts";
 import { blended, marketPrice, referenceFor } from "../apps/web/lib/price.ts";
 import { catalog } from "../apps/web/lib/rails.ts";
 import { clampIndex, minuteOf, readRollups, shouldPost, stepToward, twap } from "../apps/web/lib/rollup.ts";
 
 const SETTLE_GRACE_MS = 5_000;
-const LOG_CHUNK = 2_000n;
+const SCAN_CHUNKS_PER_TICK = 30;
 
 function required(name: string): string {
   const value = process.env[name];
@@ -100,19 +102,22 @@ export async function postIndexes(): Promise<void> {
 
 let scannedTo: bigint | null = null;
 const tracked = new Map<string, { account: `0x${string}`; model: string }>();
-const modelById = new Map<string, string>(MARKETS.map((m) => [marketId(m), m]));
 
 export async function liquidateUnderwater(): Promise<void> {
   const deployBlock = required("PERP_DEPLOY_BLOCK");
   if (!/^\d+$/.test(deployBlock)) throw new Error("PERP_DEPLOY_BLOCK must be a block number");
-  let done = scannedTo ?? BigInt(deployBlock) - 1n;
+  if (scannedTo === null) {
+    const recorded = await recordedPerps();
+    scannedTo = recorded.lastBlock ?? BigInt(deployBlock) - 1n;
+    for (const { account, model } of recorded.positions) tracked.set(`${account}|${model}`, { account, model });
+  }
+  let done = scannedTo;
   const head = await publicClient().getBlockNumber();
-  while (done < head) {
+  for (let chunk = 0; done < head && chunk < SCAN_CHUNKS_PER_TICK; chunk++) {
     const to: bigint = done + LOG_CHUNK < head ? done + LOG_CHUNK : head;
-    for (const { account, market } of await positionAccounts(done + 1n, to)) {
-      const model = modelById.get(market);
-      if (model) tracked.set(`${account}|${model}`, { account, model });
-    }
+    const events = await readPerpEvents(done + 1n, to);
+    await recordPerpEvents(events);
+    for (const { account, model } of events) tracked.set(`${account}|${model}`, { account, model });
     done = to;
     scannedTo = done;
   }
@@ -135,7 +140,11 @@ export async function sweepStale(): Promise<void> {
   if (released > 0) console.log(`[sweep] released ${released} stale usage rows`);
 }
 
-let resetDay: string | null = null;
+export async function matchRestingBids(): Promise<void> {
+  const filled = await matchAllBids();
+  if (filled > 0) console.log(`[match] ${filled} resting bid fills`);
+}
+
 const printed = new Set<string>();
 
 export async function dailyClose(): Promise<void> {
@@ -149,9 +158,6 @@ export async function dailyClose(): Promise<void> {
     printed.add(line);
     console.log(line);
   }
-  resetDay ??= today;
-  if (resetDay !== today) {
-    console.log(`[reset] ${await resetDailyListings()} daily listings reset for ${today}`);
-    resetDay = today;
-  }
+  const reset = await resetDailyListings(today);
+  if (reset > 0) console.log(`[reset] ${reset} daily listings reset for ${today}`);
 }

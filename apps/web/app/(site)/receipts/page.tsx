@@ -14,7 +14,7 @@ import { Receipts } from "./terminal";
 export const metadata: Metadata = { title: "Receipts — LLM Token Exchange" };
 export const dynamic = "force-dynamic";
 
-const DEMO_MODEL = "glm-5.3";
+const DEMO_MODEL = "0gm-1.0-35b-a3b";
 const POST_LIMIT = 8;
 const SCAN_BLOCKS = 50_000n;
 const SCAN_CHUNK = 10_000n;
@@ -77,7 +77,7 @@ async function TopupsLedger({ hashscan }: { hashscan: string | null }) {
       <p className="text-[13px] text-[#1E1E1E]">[ top-ups ]</p>
       {Array.isArray(rows) ? (
         <div className="mt-3 overflow-x-auto">
-          <table className="w-full text-left text-[13px]">
+          <table className="w-full whitespace-nowrap text-left text-[13px] [&_td]:pr-4 [&_th]:pr-4">
             <thead>
               <tr className="text-[#757575]">
                 <th scope="col" className="pb-2 font-normal">UTC</th>
@@ -195,7 +195,7 @@ async function PostsLedger() {
       </div>
       {Array.isArray(rows) ? (
         <div className="mt-3 overflow-x-auto">
-          <table className="w-full text-left text-[13px]">
+          <table className="w-full whitespace-nowrap text-left text-[13px] [&_td]:pr-4 [&_th]:pr-4">
             <thead>
               <tr className="text-[#757575]">
                 <th scope="col" className="pb-2 font-normal">UTC</th>
@@ -262,7 +262,7 @@ export default async function ReceiptsPage({ searchParams }: { searchParams: Pro
   return (
     <>
       <Receipts initialModel={picked} config={config} latest={latest} markets={[...MARKETS]} windowMin={windowMin} />
-      <div className="mt-8 grid gap-8 border-t border-[#CECECE] pt-5 lg:grid-cols-2">
+      <div className="mt-8 grid grid-cols-1 gap-8 border-t border-[#CECECE] pt-5 lg:grid-cols-2">
         <Suspense fallback={<LedgerFallback label="top-ups" />}>
           <TopupsLedger hashscan={config.ok ? `https://hashscan.io/${config.network}` : null} />
         </Suspense>

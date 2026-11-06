@@ -93,7 +93,7 @@ before(async () => {
   facilitator.listen(0, "127.0.0.1");
   await once(facilitator, "listening");
   const address = facilitator.address();
-  process.env.X402_FACILITATOR_URLS = `http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}`;
+  process.env.X402_FACILITATOR_URLS = `http://127.0.0.1:1,http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}`;
   process.env.HEDERA_TREASURY_ID = TREASURY;
   process.env.HEDERA_NETWORK = "hedera:testnet";
   process.env.HEDERA_USDC = USDC;
@@ -114,7 +114,7 @@ after(async () => {
 const keyRow = async (id: string) => first(await db().select().from(keys).where(eq(keys.id, id)));
 const errorCode = async (response: Response) => ((await response.json()) as RouterError).error.code;
 
-test("an unpaid top-up returns a USDC offer payable to the treasury", { skip }, async () => {
+test("an unpaid top-up skips an unreachable facilitator and offers USDC payable to the treasury", { skip }, async () => {
   const response = await topup(new Request("http://localhost/api/v1/topup?usd=0.50", { method: "POST" }));
   assert.equal(response.status, 402);
   const offer = decodePaymentRequiredHeader(response.headers.get("payment-required") ?? "");
@@ -235,7 +235,7 @@ test("models lists the stub model with its best ask", { skip }, async () => {
   const row = list.data.find((entry) => entry.id === MODEL);
   assert.ok(row);
   assert.equal(row.object, "model");
-  assert.deepEqual(row.rails, ["stub"]);
+  assert.deepEqual(row.rails, ["0g", "stub"]);
   assert.equal(row.best_ask_micro_per_mtok, "1500000");
   assert.equal(row.reference_blended_micro_per_mtok, "2150000");
   assert.equal(row.index_micro_per_mtok, null);

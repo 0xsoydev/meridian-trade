@@ -8,6 +8,7 @@ import {
   integer,
   numeric,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -75,6 +76,9 @@ export const listings = pgTable(
     reservedTokens: bigint("reserved_tokens", { mode: "bigint" }).notNull().default(sql`0`),
     throttledUntil: timestamp("throttled_until", { withTimezone: true }),
     status: text("status").notNull(),
+    resetOn: date("reset_on", { mode: "string" })
+      .notNull()
+      .default(sql`(now() at time zone 'utc')::date`),
     clientNonce: text("client_nonce").notNull().unique(),
     createdAt: createdAt(),
   },
@@ -103,6 +107,7 @@ export const payouts = pgTable(
     day: date("day", { mode: "string" }).notNull(),
     amountUsdMicro: bigint("amount_usd_micro", { mode: "bigint" }).notNull(),
     scheduleId: text("schedule_id"),
+    executeAt: timestamp("execute_at", { withTimezone: true }),
     status: text("status").notNull(),
     createdAt: createdAt(),
   },
@@ -186,6 +191,7 @@ export const trades = pgTable(
     chargeUsdMicro: bigint("charge_usd_micro", { mode: "bigint" }).notNull(),
     sellerEarningUsdMicro: bigint("seller_earning_usd_micro", { mode: "bigint" }).notNull(),
     payoutId: uuid("payout_id").references(() => payouts.id),
+    sellerKeyId: uuid("seller_key_id").references(() => keys.id),
     createdAt: createdAt(),
   },
   (t) => [
@@ -193,6 +199,31 @@ export const trades = pgTable(
     index("trades_created_idx").on(t.createdAt),
     index("trades_listing_payout_idx").on(t.listingId, t.payoutId),
     index("trades_key_created_idx").on(t.keyId, t.createdAt),
+    index("trades_seller_key_created_idx").on(t.sellerKeyId, t.createdAt),
+  ],
+);
+
+export const bids = pgTable(
+  "bids",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    keyId: uuid("key_id")
+      .notNull()
+      .references(() => keys.id),
+    model: text("model").notNull(),
+    priceMicroPerMtok: bigint("price_micro_per_mtok", { mode: "bigint" }).notNull(),
+    tokens: bigint("tokens", { mode: "bigint" }).notNull(),
+    holdUsdMicro: bigint("hold_usd_micro", { mode: "bigint" }).notNull(),
+    status: text("status").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    check("bids_status", sql`${t.status} in ('open','filled','cancelled')`),
+    check("bids_price_positive", sql`${t.priceMicroPerMtok} > 0`),
+    check("bids_tokens_non_negative", sql`${t.tokens} >= 0`),
+    check("bids_hold_non_negative", sql`${t.holdUsdMicro} >= 0`),
+    index("bids_model_status_price_idx").on(t.model, t.status, t.priceMicroPerMtok),
+    index("bids_key_status_idx").on(t.keyId, t.status),
   ],
 );
 
@@ -217,6 +248,35 @@ export const prepaid = pgTable(
   ],
 );
 
+export const offers = pgTable(
+  "offers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    keyId: uuid("key_id")
+      .notNull()
+      .references(() => keys.id),
+    prepaidId: uuid("prepaid_id")
+      .notNull()
+      .references(() => prepaid.id),
+    listingId: uuid("listing_id")
+      .notNull()
+      .references(() => listings.id),
+    model: text("model").notNull(),
+    priceMicroPerMtok: bigint("price_micro_per_mtok", { mode: "bigint" }).notNull(),
+    tokens: bigint("tokens", { mode: "bigint" }).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    status: text("status").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    check("offers_status", sql`${t.status} in ('open','filled','cancelled')`),
+    check("offers_price_positive", sql`${t.priceMicroPerMtok} > 0`),
+    check("offers_tokens_non_negative", sql`${t.tokens} >= 0`),
+    index("offers_model_status_price_idx").on(t.model, t.status, t.priceMicroPerMtok),
+    index("offers_key_status_idx").on(t.keyId, t.status),
+  ],
+);
+
 export const approvals = pgTable(
   "approvals",
   {
@@ -237,6 +297,30 @@ export const approvals = pgTable(
   (t) => [
     check("approvals_kind", sql`${t.kind} in ('link_human','raise_cap')`),
     check("approvals_status", sql`${t.status} in ('pending','approved','denied','expired')`),
+  ],
+);
+
+export const perpEvents = pgTable(
+  "perp_events",
+  {
+    txHash: text("tx_hash").notNull(),
+    logIndex: integer("log_index").notNull(),
+    account: text("account").notNull(),
+    model: text("model").notNull(),
+    kind: text("kind").notNull(),
+    size: bigint("size", { mode: "bigint" }).notNull(),
+    margin: bigint("margin", { mode: "bigint" }).notNull(),
+    price: bigint("price", { mode: "bigint" }).notNull(),
+    realizedPnl: bigint("realized_pnl", { mode: "bigint" }).notNull(),
+    fee: bigint("fee", { mode: "bigint" }).notNull(),
+    reward: bigint("reward", { mode: "bigint" }).notNull(),
+    block: bigint("block", { mode: "bigint" }).notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.txHash, t.logIndex] }),
+    check("perp_events_kind", sql`${t.kind} in ('modify','liquidate')`),
+    index("perp_events_account_block_idx").on(t.account, t.block),
   ],
 );
 

@@ -6,10 +6,15 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "node --env-file-if-exists=.env --test lib/*.test.ts",
+    "test": "node --experimental-strip-types --env-file-if-exists=.env --test lib/*.test.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node --env-file-if-exists=.env node_modules/drizzle-kit/bin.cjs migrate",
-    "stub:rail": "node --experimental-strip-types scripts/stub-rail.ts"
+    "stub:rail": "node --experimental-strip-types scripts/stub-rail.ts",
+    "hedera:setup": "node --experimental-strip-types --env-file-if-exists=.env scripts/hedera-setup.ts",
+    "seed": "node --experimental-strip-types --env-file-if-exists=.env scripts/seed.ts",
+    "e2e": "node --experimental-strip-types --env-file-if-exists=.env scripts/e2e.ts",
+    "perps-e2e": "node --experimental-strip-types --env-file-if-exists=.env scripts/perps-e2e.ts",
+    "agent:setup": "node --experimental-strip-types --env-file-if-exists=.env scripts/hedera-agent.ts"
   },
   "dependencies": {
     "@hiero-ledger/sdk": "2.85.0",

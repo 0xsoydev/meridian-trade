@@ -19,7 +19,7 @@ export function SiteFooter({ variant }: { variant: "page" | "canvas" | "site" })
         </div>
         <div
           className="mt-8 h-[220px] w-full bg-contain bg-center bg-no-repeat"
-          style={{ backgroundImage: "url(/images/goddess.png)" }}
+          style={{ backgroundImage: "url(/images/goddess.webp)" }}
         />
       </footer>
     );
@@ -32,7 +32,7 @@ export function SiteFooter({ variant }: { variant: "page" | "canvas" | "site" })
 
         <div
           className="absolute bottom-0 left-[calc(413*min(100vw,1728px)/1728_+_max(0px,(100vw_-_1728px)/2))] h-[min(38.0787vw,658px)] w-[min(76.0995vw,1315px)] bg-cover bg-center"
-          style={{ backgroundImage: "url(/images/goddess.png)" }}
+          style={{ backgroundImage: "url(/images/goddess.webp)" }}
         />
         <div className="absolute left-[calc(138*min(100vw,1728px)/1728_+_max(0px,(100vw_-_1728px)/2))] top-[min(1.9097vw,33px)] flex flex-col gap-[min(0.28935vw,5px)] text-[min(1.1574vw,20px)] text-[#1E1E1E]">
           <p className="leading-[min(2.0833vw,36px)]">Socials</p>
@@ -55,7 +55,7 @@ export function SiteFooter({ variant }: { variant: "page" | "canvas" | "site" })
 
       <div
         className="absolute left-[413px] top-[3427px] h-[658px] w-[1315px] bg-cover bg-center"
-        style={{ backgroundImage: "url(/images/goddess.png)" }}
+        style={{ backgroundImage: "url(/images/goddess.webp)" }}
       />
       <div className="absolute left-[138px] top-[3384px] flex w-[119px] flex-col gap-[5px] text-[20px] text-[#1E1E1E]">
         <p className="leading-[36px]">Socials</p>

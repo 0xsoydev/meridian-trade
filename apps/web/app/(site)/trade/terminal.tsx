@@ -1,33 +1,37 @@
 "use client";
 
+import { usePrivy } from "@privy-io/react-auth";
 import { KeyRound, ReceiptText, Tag } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { charge, formatMicroPerMtok, formatMtok, formatUsd, parseMtok, previewFill } from "../../../lib/price.ts";
-import type {
-  Balance,
-  Book,
-  ModelRow,
-  RouterError,
-  Trade,
-  TradeResult,
-} from "../../../lib/types";
+import { BaseError } from "viem";
+import { useConnection } from "wagmi";
+import { z } from "zod";
 import ProfileDropdown from "../../../components/kokonutui/profile-dropdown";
-import { FillsChart, fillsToPoints, type ScaleMode } from "./chart";
+import {
+  charge,
+  clockFormat,
+  fillsToPoints,
+  formatMicroPerMtok,
+  formatMtok,
+  formatUsd,
+  parseMtok,
+  parseUsd,
+  previewFill,
+  sellerEarning,
+  TOPUP_MAX_MICRO,
+} from "../../../lib/price.ts";
+import type { Balance, Bid, Book, RouterError, TradeResult } from "../../../lib/types";
+import { useModels } from "../models";
+import { useWalletDeposit } from "../wallet-deposit";
+import { FillsChart, INTERVALS, type ScaleMode } from "./chart";
+import { OrdersPanel } from "./orders-panel";
 
 const KEY_STORAGE = "router_key";
 const TAKE_BPS = 1000n;
 const MAX_TOKENS = 1_000_000_000n;
 const POLL_MS = 15_000;
-
-const WINDOWS = [
-  { id: "1h", label: "1h", ms: 3_600_000 },
-  { id: "6h", label: "6h", ms: 6 * 3_600_000 },
-  { id: "24h", label: "24h", ms: 86_400_000 },
-  { id: "all", label: "All", ms: null },
-] as const;
-type WindowId = (typeof WINDOWS)[number]["id"];
 
 const PRESETS = [
   { label: "1", value: "1" },
@@ -36,35 +40,40 @@ const PRESETS = [
   { label: "1K", value: "1000" },
 ];
 
-const clockFormat = new Intl.DateTimeFormat("en-GB", {
-  timeZone: "UTC",
-  hour12: false,
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-});
-
 const MUTED = "text-[#757575]";
 
-type SessionFill = Trade & { at: string };
+const digits = z.string().regex(/^\d+$/);
+const holdingSchema = z.object({ data: z.array(z.object({ tokens: digits })) });
+const soldSchema = z.object({
+  fills: z.array(z.object({ tokens: digits, charge_usd_micro: digits })),
+  offers: z.array(z.object({ tokens: digits, price_micro_per_mtok: digits })),
+});
 
 export function Trade({ initialModel }: { initialModel: string }) {
   const router = useRouter();
   const [model, setModel] = useState(initialModel);
-  const [models, setModels] = useState<ModelRow[]>([]);
+  const models = useModels();
   const [book, setBook] = useState<Book | null>(null);
   const [bookFailed, setBookFailed] = useState<"unknown" | "down" | null>(null);
   const [pane, setPane] = useState<"book" | "tape">("book");
-  const [dock, setDock] = useState<"mine" | "venue">("venue");
-  const [windowId, setWindowId] = useState<WindowId>("all");
+  const [side, setSide] = useState<"buy" | "sell">("buy");
+  const [bucket, setBucket] = useState(60);
   const [scale, setScale] = useState<ScaleMode>("linear");
   const [expanded, setExpanded] = useState(false);
   const [size, setSize] = useState("10");
+  const [limitPrice, setLimitPrice] = useState("");
+  const [rested, setRested] = useState<Bid | null>(null);
+  const [ordersVersion, setOrdersVersion] = useState(0);
+  const { ready, login } = usePrivy();
+  const { address } = useConnection();
+  const walletDeposit = useWalletDeposit();
+  const [paying, setPaying] = useState(false);
   const [key, setKey] = useState<string | null>(null);
   const [balance, setBalance] = useState<bigint | null>(null);
   const [account, setAccount] = useState<Balance | null>(null);
   const [pending, setPending] = useState(false);
-  const [fills, setFills] = useState<SessionFill[]>([]);
+  const [holding, setHolding] = useState<bigint | null>(null);
+  const [sold, setSold] = useState<z.infer<typeof soldSchema> | null>(null);
   const [problem, setProblem] = useState<{ message: string; shortfall: bigint | null } | null>(null);
   const [copied, setCopied] = useState(false);
   const [noticeOpen, setNoticeOpen] = useState(true);
@@ -78,19 +87,6 @@ export function Trade({ initialModel }: { initialModel: string }) {
     }, 1000);
     setClock(clockFormat.format(new Date()));
     return () => window.clearInterval(id);
-  }, []);
-
-  useEffect(() => {
-    let alive = true;
-    fetch("/api/v1/models")
-      .then((res) => (res.ok ? (res.json() as Promise<{ data: ModelRow[] }>) : null))
-      .then((body) => {
-        if (alive && body) setModels(body.data);
-      })
-      .catch(() => undefined);
-    return () => {
-      alive = false;
-    };
   }, []);
 
   useEffect(() => {
@@ -152,29 +148,103 @@ export function Trade({ initialModel }: { initialModel: string }) {
     };
   }, [refreshBook]);
 
+  const refreshHolding = useCallback(async () => {
+    const token = window.localStorage.getItem(KEY_STORAGE);
+    if (!token) {
+      setHolding(null);
+      return;
+    }
+    const res = await fetch(`/api/v1/holdings?model=${encodeURIComponent(model)}`, {
+      cache: "no-store",
+      headers: { authorization: `Bearer ${token}` },
+    }).catch(() => null);
+    const parsed = holdingSchema.safeParse(res?.ok ? await res.json().catch(() => null) : null);
+    setHolding(parsed.success ? parsed.data.data.reduce((sum, row) => sum + BigInt(row.tokens), 0n) : null);
+  }, [model]);
+
   useEffect(() => {
-    setFills([]);
     setProblem(null);
+    setSold(null);
     void refreshBalance();
-  }, [model, refreshBalance]);
+    void refreshHolding();
+  }, [model, refreshBalance, refreshHolding]);
 
   const selected = models.find((row) => row.id === model);
   const asks = book?.asks ?? [];
   const venueFills = book?.fills ?? [];
   const wanted = parseMtok(size);
-  const preview = useMemo(() => previewFill(asks, wanted, TAKE_BPS), [asks, wanted]);
-  const points = useMemo(
-    () => fillsToPoints(venueFills, WINDOWS.find((w) => w.id === windowId)?.ms ?? null, nowRef.current),
-    [venueFills, windowId],
+  const limit = limitPrice.trim() === "" ? null : parseUsd(limitPrice);
+  const limitBad = limitPrice.trim() !== "" && (limit === null || limit === 0n);
+  const preview = useMemo(
+    () => previewFill(limit === null ? asks : asks.filter((ask) => BigInt(ask.price_micro_per_mtok) <= limit), wanted, TAKE_BPS),
+    [asks, limit, wanted],
   );
+  const resting = limit !== null && wanted > preview.fillable ? wanted - preview.fillable : 0n;
+  const hold = limit !== null && resting > 0n ? charge(resting, limit) : 0n;
+  const needed = preview.cost + hold;
+  const points = useMemo(() => fillsToPoints(venueFills), [venueFills]);
+
+  const bidLevels = book?.bids ?? [];
+  const sellPreview = previewFill(
+    bidLevels
+      .filter((level) => limit === null || BigInt(level.price_micro_per_mtok) >= limit)
+      .map((level) => ({ price_micro_per_mtok: level.price_micro_per_mtok, tokens_left: level.tokens })),
+    wanted,
+    TAKE_BPS,
+  );
+  const listing = limit !== null && wanted > sellPreview.fillable ? wanted - sellPreview.fillable : 0n;
 
   const bestAsk = asks[0] ? BigInt(asks[0].price_micro_per_mtok) : null;
+  const bestBid = bidLevels[0] ? BigInt(bidLevels[0].price_micro_per_mtok) : null;
   const listPrice = selected ? BigInt(selected.reference_blended_micro_per_mtok) : null;
+  const ceiling = selected ? BigInt(selected.list_ceiling_micro_per_mtok) : null;
+  const limitHigh = limit !== null && ceiling !== null && limit > ceiling;
+  const limitNote =
+    limit === null || limitBad
+      ? null
+      : limitHigh && ceiling !== null
+        ? { bad: true, text: `Above the ${formatMicroPerMtok(ceiling)} list price: no ask can sit above it.` }
+        : side === "buy"
+          ? resting === 0n
+            ? { bad: false, text: "At or above the best ask: fills now at the asks, never above your limit." }
+            : preview.fillable === 0n
+              ? { bad: false, text: `Below the best ask: waits on the book as a bid at ${formatMicroPerMtok(limit)}.` }
+              : null
+          : listing === 0n
+            ? { bad: false, text: "At or below the best bid: sells now into the bids, never below your limit." }
+            : sellPreview.fillable === 0n
+              ? { bad: false, text: `Above the best bid: waits on the book as an ask at ${formatMicroPerMtok(limit)}.` }
+              : null;
+  const action =
+    limit === null
+      ? `buy ${formatMtok(wanted)} MTok`
+      : resting === 0n
+        ? `buy ${formatMtok(wanted)} MTok now (limit ${formatMicroPerMtok(limit)})`
+        : preview.fillable === 0n
+          ? `bid for ${formatMtok(wanted)} MTok at ${formatMicroPerMtok(limit)}`
+          : `buy ${formatMtok(preview.fillable)} MTok now, bid for ${formatMtok(resting)} at ${formatMicroPerMtok(limit)}`;
+  const sellAction =
+    limit === null
+      ? `sell ${formatMtok(wanted)} MTok`
+      : listing === 0n
+        ? `sell ${formatMtok(wanted)} MTok now (limit ${formatMicroPerMtok(limit)})`
+        : sellPreview.fillable === 0n
+          ? `list ${formatMtok(wanted)} MTok at ${formatMicroPerMtok(limit)}`
+          : `sell ${formatMtok(sellPreview.fillable)} MTok now, list ${formatMtok(listing)} at ${formatMicroPerMtok(limit)}`;
+  const shortHolding = holding !== null && wanted > holding;
+  const soldTokens = sold ? sold.fills.reduce((sum, fill) => sum + BigInt(fill.tokens), 0n) : 0n;
+  const soldNet = sold ? sold.fills.reduce((sum, fill) => sum + sellerEarning(BigInt(fill.charge_usd_micro), TAKE_BPS), 0n) : 0n;
+  const listedTokens = sold ? sold.offers.reduce((sum, offer) => sum + BigInt(offer.tokens), 0n) : 0n;
+  const listedAt = sold?.offers[0]?.price_micro_per_mtok ?? null;
   const last = points.at(-1)?.value ?? null;
   const first = points[0]?.value ?? null;
   const delta = last !== null && first !== null ? (last - first) / first : null;
   const depth = asks.reduce((total, ask) => total + BigInt(ask.tokens_left), 0n);
-  const widest = asks.reduce((max, ask) => (BigInt(ask.tokens_left) > max ? BigInt(ask.tokens_left) : max), 0n);
+  const bidDepth = bidLevels.reduce((total, level) => total + BigInt(level.tokens), 0n);
+  const widest = [...asks.map((ask) => BigInt(ask.tokens_left)), ...bidLevels.map((level) => BigInt(level.tokens))].reduce(
+    (max, size) => (size > max ? size : max),
+    0n,
+  );
 
   const day = useMemo(() => {
     const cutoff = nowRef.current - 86_400_000;
@@ -217,33 +287,53 @@ export function Trade({ initialModel }: { initialModel: string }) {
 
   const affordable =
     balance !== null && bestAsk !== null && balance > 0n ? (balance * 1_000_000n) / bestAsk : 0n;
-  const affordPct =
-    affordable > 0n
-      ? Math.max(0, Math.min(100, Math.round((Number(wanted) / Number(affordable)) * 100)))
-      : 0;
+  const sizeCap = side === "buy" ? affordable : (holding ?? 0n);
+  const sizePct =
+    sizeCap > 0n ? Math.max(0, Math.min(100, Math.round((Number(wanted) / Number(sizeCap)) * 100))) : 0;
   const overCap = wanted > MAX_TOKENS;
+  const shortfall =
+    balance !== null && needed > balance ? ((needed - balance + 9_999n) / 10_000n) * 10_000n : 0n;
+  const wallet = account?.wallet ?? null;
+  const payFromWallet = wallet !== null && shortfall > 0n;
+  const payBlocked = !payFromWallet
+    ? null
+    : shortfall > TOPUP_MAX_MICRO
+      ? `One wallet deposit carries at most ${formatUsd(TOPUP_MAX_MICRO)}; buy less, or deposit in parts on Keys.`
+      : address && address.toLowerCase() !== wallet
+        ? `Connect ${wallet}, the wallet that created this key, to pay.`
+        : null;
 
   const pick = (id: string) => {
     setModel(id);
-    setFills([]);
     router.replace(`/trade?model=${encodeURIComponent(id)}`, { scroll: false });
   };
 
   const buy = async () => {
-    if (!key || wanted === 0n || pending) return;
+    if (!key || wanted === 0n || pending || limitBad || limitHigh) return;
     setPending(true);
     setProblem(null);
-    setFills([]);
+    setRested(null);
     try {
+      if (payFromWallet) {
+        setPaying(true);
+        try {
+          await walletDeposit(key, shortfall, account);
+        } finally {
+          setPaying(false);
+        }
+      }
       const res = await fetch("/api/v1/trades", {
         method: "POST",
         headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
-        body: JSON.stringify({ model, tokens: wanted.toString() }),
+        body: JSON.stringify(
+          limit === null
+            ? { model, tokens: wanted.toString() }
+            : { model, tokens: wanted.toString(), limit_price_micro_per_mtok: limit.toString() },
+        ),
       });
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as RouterError | null;
         const code = body?.error?.code;
-        const shortfall = balance !== null && preview.cost > balance ? preview.cost - balance : null;
         setProblem({
           message:
             code === "invalid_api_key"
@@ -251,25 +341,63 @@ export function Trade({ initialModel }: { initialModel: string }) {
               : code === "no_liquidity"
                 ? "the asks moved before the fill; retry"
                 : body?.error?.message ?? `request failed (${res.status})`,
-          shortfall,
+          shortfall: wallet === null && balance !== null && needed > balance ? needed - balance : null,
         });
         return;
       }
       const result = (await res.json()) as TradeResult;
-      const at = new Date().toISOString();
-      setFills(result.fills.map((fill) => ({ ...fill, at })));
-      setDock("mine");
+      setRested(result.bid);
+      setOrdersVersion((value) => value + 1);
       void refreshBook();
       void refreshBalance();
-    } catch {
-      setProblem({ message: "network error — retry", shortfall: null });
+      void refreshHolding();
+    } catch (cause) {
+      setProblem({
+        message: cause instanceof BaseError ? cause.shortMessage : cause instanceof Error ? cause.message : "network error — retry",
+        shortfall: null,
+      });
+      void refreshBalance();
+    } finally {
+      setPending(false);
+    }
+  };
+
+  const sellNow = async () => {
+    if (!key || wanted === 0n || pending || limitBad || limitHigh || shortHolding) return;
+    setPending(true);
+    setProblem(null);
+    setSold(null);
+    try {
+      const res = await fetch("/api/v1/sells", {
+        method: "POST",
+        headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
+        body: JSON.stringify(
+          limit === null
+            ? { model, tokens: wanted.toString() }
+            : { model, tokens: wanted.toString(), limit_price_micro_per_mtok: limit.toString() },
+        ),
+      });
+      const body: unknown = await res.json().catch(() => null);
+      if (!res.ok) {
+        const failure = z.object({ error: z.object({ message: z.string() }) }).safeParse(body);
+        setProblem({ message: failure.data?.error.message ?? `request failed (${res.status})`, shortfall: null });
+        return;
+      }
+      const result = soldSchema.safeParse(body);
+      setSold(result.success ? result.data : null);
+      setOrdersVersion((value) => value + 1);
+      void refreshBook();
+      void refreshBalance();
+      void refreshHolding();
+    } catch (cause) {
+      setProblem({ message: cause instanceof Error ? cause.message : "network error — retry", shortfall: null });
     } finally {
       setPending(false);
     }
   };
 
   const topupCommand = () => {
-    const cents = ((preview.cost - (balance ?? 0n) + 9_999n) / 10_000n) * 10_000n;
+    const cents = ((needed - (balance ?? 0n) + 9_999n) / 10_000n) * 10_000n;
     return `POST ${window.location.origin}/api/v1/topup?usd=${formatMicroPerMtok(cents)}`;
   };
 
@@ -288,6 +416,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
     setKey(null);
     setBalance(null);
     setAccount(null);
+    setHolding(null);
   };
 
   return (
@@ -349,28 +478,30 @@ export function Trade({ initialModel }: { initialModel: string }) {
               onClick={() => setExpanded(!expanded)}
               aria-pressed={expanded}
               className="ml-auto text-[13px] text-[#1743FF] hover:underline"
-              aria-label={expanded ? "show the buy ticket" : "expand the chart"}
+              aria-label={expanded ? "show the ticket" : "expand the chart"}
             >
               {expanded ? "show the ticket" : "expand"}
             </button>
           </div>
 
           <div className="flex flex-wrap items-center gap-5 px-4 py-2 text-[14px]">
-            {WINDOWS.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setWindowId(item.id)}
-                aria-pressed={windowId === item.id}
-                className={`${
-                  windowId === item.id
-                    ? "text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
-                    : "text-[#757575] hover:text-[#1E1E1E]"
-                }`}
-              >
-                {item.label}
-              </button>
-            ))}
+            <div role="group" aria-label="candle interval" className="flex gap-5">
+              {INTERVALS.map((item) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={() => setBucket(item.seconds)}
+                  aria-pressed={bucket === item.seconds}
+                  className={`${
+                    bucket === item.seconds
+                      ? "text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
+                      : "text-[#757575] hover:text-[#1E1E1E]"
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
             <span aria-hidden className="h-4 w-px bg-[#D9D9D9]" />
             {(["percent", "log"] as const).map((mode) => (
               <button
@@ -422,8 +553,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
             ) : null}
           </div>
 
-          <FillsChart points={points} scale={scale} className="min-h-[420px] flex-1" />
-
+          <FillsChart points={points} bucket={bucket} scale={scale} className="min-h-[420px] flex-1" />
         </div>
 
         {!expanded && (
@@ -460,7 +590,8 @@ export function Trade({ initialModel }: { initialModel: string }) {
                   <div className="max-h-[420px] min-h-0 flex-1 overflow-auto">
                     {[...asks].reverse().map((ask) => (
                       <div
-                        key={ask.listing_id}
+                        key={ask.offer_id ?? ask.listing_id}
+                        title={`${ask.kind === "resale" ? "resale, " : ""}${ask.rail}${ask.verifiable ? ", TEE" : ""}`}
                         className="flex items-center justify-between gap-3 px-4 py-[5px] text-[13px] tabular-nums"
                         style={{
                           background: `linear-gradient(90deg, rgba(246, 70, 93, ${widest === 0n ? 0 : (Number(BigInt(ask.tokens_left)) / Number(widest)) * 0.12}), rgba(246, 70, 93, 0) 100%)`,
@@ -485,13 +616,29 @@ export function Trade({ initialModel }: { initialModel: string }) {
                     </span>
                     <span className="tabular-nums text-[#F6465D]">
                       {bestAsk !== null && listPrice !== null && listPrice > 0n
-                        ? `${formatMicroPerMtok(((listPrice - bestAsk) * 100_000_000n) / listPrice)}% under list`
+                        ? `${(Number(((listPrice - bestAsk) * 10_000n) / listPrice) / 100).toFixed(2)}% under list`
                         : ""}
                     </span>
                   </div>
 
+                  {bidLevels.map((level) => (
+                    <div
+                      key={level.price_micro_per_mtok}
+                      className="flex items-center justify-between gap-3 px-4 py-[5px] text-[13px] tabular-nums"
+                      style={{
+                        background: `linear-gradient(90deg, rgba(46, 189, 133, ${widest === 0n ? 0 : (Number(BigInt(level.tokens)) / Number(widest)) * 0.16}), rgba(46, 189, 133, 0) 100%)`,
+                      }}
+                    >
+                      <span className="text-[#2EBD85]">{formatMicroPerMtok(BigInt(level.price_micro_per_mtok))}</span>
+                      <span className="text-[#1E1E1E]">{formatMtok(BigInt(level.tokens))}</span>
+                      <span className={MUTED}>
+                        {formatUsd(charge(BigInt(level.tokens), BigInt(level.price_micro_per_mtok)))}
+                      </span>
+                    </div>
+                  ))}
+
                   <p className="px-4 py-2 text-[12px] text-[#757575]">
-                    no bids — asks supply this venue. depth: {formatMtok(depth)} MTok
+                    asks: {formatMtok(depth)} MTok · bids: {bidLevels.length === 0 ? "none yet; place a limit buy below the best ask" : `${formatMtok(bidDepth)} MTok`}
                   </p>
                 </>
               ) : (
@@ -521,25 +668,33 @@ export function Trade({ initialModel }: { initialModel: string }) {
             <div className="flex flex-col gap-[17px]">
               <div className="border border-[#CECECE] bg-white">
                 <div className="flex border-b border-[#D9D9D9]">
-                  <button
-                    type="button"
-                    onClick={() => setPane("book")}
-                    className="w-1/2 bg-black py-2 text-[14px] font-semibold text-white"
-                  >
-                    Buy
-                  </button>
-                  <Link
-                    href="/sell"
-                    className="flex w-1/2 items-center justify-center border-l border-[#CECECE] py-2 text-[14px] font-semibold text-[#757575] hover:text-[#1E1E1E]"
-                  >
-                    Sell →
-                  </Link>
+                  {(["buy", "sell"] as const).map((item) => (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => setSide(item)}
+                      aria-pressed={side === item}
+                      className={`w-1/2 py-2 text-[14px] font-semibold ${item === "sell" ? "border-l border-[#CECECE]" : ""} ${
+                        side === item ? "bg-black text-white" : "text-[#757575] hover:text-[#1E1E1E]"
+                      }`}
+                    >
+                      {item === "buy" ? "Buy" : "Sell"}
+                    </button>
+                  ))}
                 </div>
 
                 <div className="space-y-4 p-4">
                   <div className="flex justify-between text-[14px]">
-                    <span className={MUTED}>Available to trade</span>
-                    <span className="tabular-nums text-[#1E1E1E]">{balance !== null ? formatUsd(balance) : "—"}</span>
+                    <span className={MUTED}>{side === "buy" ? "Available to trade" : "Available to sell"}</span>
+                    <span className="tabular-nums text-[#1E1E1E]">
+                      {side === "buy"
+                        ? balance !== null
+                          ? formatUsd(balance)
+                          : "—"
+                        : holding !== null
+                          ? `${formatMtok(holding)} MTok`
+                          : "—"}
+                    </span>
                   </div>
 
                   <label className="block">
@@ -561,14 +716,14 @@ export function Trade({ initialModel }: { initialModel: string }) {
                       type="range"
                       min={0}
                       max={100}
-                      value={affordPct}
-                      disabled={affordable === 0n}
-                      onChange={(event) => setSize(formatMtok((affordable * BigInt(event.target.value)) / 100n))}
-                      aria-label="share of what the balance affords"
+                      value={sizePct}
+                      disabled={sizeCap === 0n}
+                      onChange={(event) => setSize(formatMtok((sizeCap * BigInt(event.target.value)) / 100n))}
+                      aria-label={side === "buy" ? "share of what the balance affords" : "share of what you hold"}
                       className="h-1 w-full accent-[#1743FF] disabled:opacity-40"
                     />
-                    <span className={`w-12 text-right text-[12px] leading-4 tabular-nums ${MUTED}`}>
-                      {affordPct}% of balance
+                    <span className={`shrink-0 whitespace-nowrap text-right text-[12px] leading-4 tabular-nums ${MUTED}`}>
+                      {sizePct}% of {side === "buy" ? "balance" : "holding"}
                     </span>
                   </div>
 
@@ -589,30 +744,97 @@ export function Trade({ initialModel }: { initialModel: string }) {
                     ))}
                   </div>
 
-                  <dl className="border-t border-[#D9D9D9]">
-                    <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
-                      <dt className={MUTED}>Average ask</dt>
-                      <dd className="tabular-nums text-[#1E1E1E]">{preview.fillable > 0n ? formatMicroPerMtok(preview.avg) : "—"}</dd>
-                    </div>
-                    <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
-                      <dt className={MUTED}>Venue fee, 10 percent</dt>
-                      <dd className="tabular-nums text-[#1E1E1E]">{preview.fee > 0n ? formatUsd(preview.fee) : "—"}</dd>
-                    </div>
-                    <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
-                      <dt className={MUTED}>Seller receives</dt>
-                      <dd className="tabular-nums text-[#1E1E1E]">{preview.net > 0n ? formatUsd(preview.net) : "—"}</dd>
-                    </div>
-                    <div className="flex justify-between py-3">
-                      <dt className="text-[15px] font-semibold text-[#1E1E1E]">You pay</dt>
-                      <dd className="text-[16px] font-semibold tabular-nums text-[#1E1E1E]">
-                        {preview.cost > 0n ? formatUsd(preview.cost) : "—"}
-                      </dd>
-                    </div>
-                  </dl>
+                  <label className="block">
+                    <span className={`mb-1 block text-[13px] ${MUTED}`}>Limit price, USD per MTok (blank: market)</span>
+                    <input
+                      value={limitPrice}
+                      onChange={(event) => setLimitPrice(event.target.value)}
+                      inputMode="decimal"
+                      placeholder="market"
+                      className={`h-[34px] w-full border bg-white px-2.5 text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF] ${limitBad || limitHigh ? "border-[#F6465D]" : "border-[#CECECE]"}`}
+                    />
+                    {limitNote ? (
+                      <span className={`mt-1 block text-[12px] leading-4 ${limitNote.bad ? "text-[#F6465D]" : MUTED}`}>{limitNote.text}</span>
+                    ) : null}
+                  </label>
 
-                  {preview.partial && wanted > 0n && !overCap ? (
+                  {side === "buy" ? (
+                    <dl className="border-t border-[#D9D9D9]">
+                      <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
+                        <dt className={MUTED}>Average ask</dt>
+                        <dd className="tabular-nums text-[#1E1E1E]">{preview.fillable > 0n ? formatMicroPerMtok(preview.avg) : "—"}</dd>
+                      </div>
+                      <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
+                        <dt className={MUTED}>Venue fee, 10 percent</dt>
+                        <dd className="tabular-nums text-[#1E1E1E]">{preview.fee > 0n ? formatUsd(preview.fee) : "—"}</dd>
+                      </div>
+                      <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
+                        <dt className={MUTED}>Seller receives</dt>
+                        <dd className="tabular-nums text-[#1E1E1E]">{preview.net > 0n ? formatUsd(preview.net) : "—"}</dd>
+                      </div>
+                      {hold > 0n ? (
+                        <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
+                          <dt className={MUTED}>Held for the bid</dt>
+                          <dd className="tabular-nums text-[#1E1E1E]">{formatUsd(hold)}</dd>
+                        </div>
+                      ) : null}
+                      <div className="flex justify-between py-3">
+                        <dt className="text-[15px] font-semibold text-[#1E1E1E]">You pay</dt>
+                        <dd className="text-[16px] font-semibold tabular-nums text-[#1E1E1E]">
+                          {needed > 0n ? formatUsd(needed) : "—"}
+                        </dd>
+                      </div>
+                    </dl>
+                  ) : (
+                    <dl className="border-t border-[#D9D9D9]">
+                      <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
+                        <dt className={MUTED}>Best bid</dt>
+                        <dd className="tabular-nums text-[#1E1E1E]">{bestBid !== null ? formatMicroPerMtok(bestBid) : "none"}</dd>
+                      </div>
+                      <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
+                        <dt className={MUTED}>Average bid</dt>
+                        <dd className="tabular-nums text-[#1E1E1E]">
+                          {sellPreview.fillable > 0n ? formatMicroPerMtok(sellPreview.avg) : "—"}
+                        </dd>
+                      </div>
+                      <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
+                        <dt className={MUTED}>Venue fee, 10 percent</dt>
+                        <dd className="tabular-nums text-[#1E1E1E]">{sellPreview.fee > 0n ? formatUsd(sellPreview.fee) : "—"}</dd>
+                      </div>
+                      {limit !== null && listing > 0n ? (
+                        <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
+                          <dt className={MUTED}>Rests as an ask</dt>
+                          <dd className="tabular-nums text-[#1E1E1E]">
+                            {formatMtok(listing)} MTok at {formatMicroPerMtok(limit)}
+                          </dd>
+                        </div>
+                      ) : null}
+                      <div className="flex justify-between py-3">
+                        <dt className="text-[15px] font-semibold text-[#1E1E1E]">You receive now</dt>
+                        <dd className="text-[16px] font-semibold tabular-nums text-[#1E1E1E]">
+                          {sellPreview.net > 0n ? formatUsd(sellPreview.net) : "—"}
+                        </dd>
+                      </div>
+                    </dl>
+                  )}
+
+                  {side === "buy" && limit !== null && resting > 0n && !overCap ? (
+                    <p className={`text-[13px] leading-5 ${MUTED}`}>
+                      {formatMtok(preview.fillable)} MTok fill now; {formatMtok(resting)} MTok wait on the book as a bid at{" "}
+                      {formatMicroPerMtok(limit)} until an ask meets it. Cancel returns what the bid still holds.
+                    </p>
+                  ) : side === "buy" && preview.partial && wanted > 0n && !overCap ? (
                     <p className="text-[13px] leading-5 text-[#F6465D]">
                       The book covers {formatMtok(preview.fillable)} of {formatMtok(wanted)} MTok. The rest stays unfilled.
+                    </p>
+                  ) : side === "sell" && limit !== null && listing > 0n && !overCap ? (
+                    <p className={`text-[13px] leading-5 ${MUTED}`}>
+                      {formatMtok(sellPreview.fillable)} MTok sell now; {formatMtok(listing)} MTok wait on the book as an ask at{" "}
+                      {formatMicroPerMtok(limit)} until a buy meets it. Cancel returns them to your holdings.
+                    </p>
+                  ) : side === "sell" && limit === null && sellPreview.partial && sellPreview.fillable > 0n && !overCap ? (
+                    <p className="text-[13px] leading-5 text-[#F6465D]">
+                      The bids cover {formatMtok(sellPreview.fillable)} of {formatMtok(wanted)} MTok. The rest stays with you.
                     </p>
                   ) : null}
 
@@ -624,9 +846,10 @@ export function Trade({ initialModel }: { initialModel: string }) {
 
                   {key === null ? (
                     <div className="border border-[#CECECE] bg-white px-3 py-3">
-                      <p className="text-[14px] text-[#1E1E1E]">Buying needs a router key.</p>
+                      <p className="text-[14px] text-[#1E1E1E]">{side === "buy" ? "Buying" : "Selling"} needs a router key.</p>
                       <p className="mt-1 text-[13px] leading-5 text-[#757575]">
-                        Paste your agent&apos;s key once. It stays in this browser, never in a URL.
+                        Create one with your wallet on Keys, or paste an agent&apos;s key there. It stays in this
+                        browser, never in a URL.
                       </p>
                     </div>
                   ) : null}
@@ -636,22 +859,80 @@ export function Trade({ initialModel }: { initialModel: string }) {
                       href="/keys"
                       className="flex h-[34px] items-center justify-center rounded-[6px] bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E]"
                     >
-                      Connect your agent
+                      Create a key on Keys
                     </Link>
+                  ) : side === "sell" ? (
+                    <button
+                      type="button"
+                      onClick={() => void sellNow()}
+                      disabled={
+                        pending ||
+                        wanted === 0n ||
+                        overCap ||
+                        limitBad ||
+                        limitHigh ||
+                        holding === null ||
+                        shortHolding ||
+                        (limit === null && sellPreview.fillable === 0n)
+                      }
+                      className="h-[34px] w-full rounded-[6px] bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4] disabled:text-white"
+                    >
+                      {pending
+                        ? "Placing the order…"
+                        : wanted === 0n
+                          ? "Enter a size"
+                          : shortHolding && holding !== null
+                            ? `You hold ${formatMtok(holding)} MTok`
+                            : limitBad
+                              ? "Enter a limit price in USD"
+                              : limitHigh
+                                ? "Lower the limit to the list price or below"
+                                : limit === null && sellPreview.fillable === 0n
+                                  ? "No bids; set a limit price to list them"
+                                  : `${sellAction.charAt(0).toUpperCase()}${sellAction.slice(1)}`}
+                    </button>
+                  ) : payFromWallet && !address ? (
+                    <button
+                      type="button"
+                      disabled={!ready}
+                      onClick={() => login()}
+                      className="h-[34px] w-full rounded-[6px] bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4]"
+                    >
+                      Connect wallet to pay
+                    </button>
                   ) : (
                     <button
                       type="button"
                       onClick={() => void buy()}
-                      disabled={pending || wanted === 0n || preview.cost === 0n || overCap}
+                      disabled={pending || wanted === 0n || needed === 0n || overCap || limitBad || limitHigh || payBlocked !== null}
                       className="h-[34px] w-full rounded-[6px] bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4] disabled:text-white"
                     >
-                      {pending ? "Buying…" : wanted > 0n ? `Buy ${formatMtok(wanted)} MTok` : "Enter a size"}
+                      {paying
+                        ? "Paying from your wallet…"
+                        : pending
+                          ? "Placing the order…"
+                          : wanted === 0n
+                            ? "Enter a size"
+                            : limitBad
+                              ? "Enter a limit price in USD"
+                              : limitHigh
+                                ? "Lower the limit to the list price or below"
+                                : payFromWallet
+                                  ? `Pay ${formatUsd(shortfall)} and ${action}`
+                                  : `${action.charAt(0).toUpperCase()}${action.slice(1)}`}
                     </button>
                   )}
 
-                  {balance !== null && balance < preview.cost ? (
-                    <p className="text-center text-[13px] text-[#F6465D]">
-                      Short by {formatUsd(preview.cost - balance)} — top up the agent.
+                  {side === "buy" && shortfall > 0n ? (
+                    <p
+                      className={`text-center text-[13px] leading-5 ${payFromWallet && payBlocked === null ? "text-[#757575]" : "text-[#F6465D]"}`}
+                    >
+                      {!payFromWallet
+                        ? `Short by ${formatUsd(shortfall)} — top up the agent.`
+                        : payBlocked ??
+                          (address
+                            ? `The key is short ${formatUsd(shortfall)}; Buy sends it from your wallet in Hedera testnet USDC first.`
+                            : `The key is short ${formatUsd(shortfall)}; connect the wallet that created it to pay in Hedera testnet USDC.`)}
                     </p>
                   ) : null}
 
@@ -671,25 +952,23 @@ export function Trade({ initialModel }: { initialModel: string }) {
                     </div>
                   ) : null}
 
-                  {account ? (
-                    <div className="border-t border-[#D9D9D9] pt-4">
-                      <p className="text-[13px] text-[#1E1E1E]">[ account summary ]</p>
-                      <dl className="mt-2">
-                        {[
-                          ["Balance", formatUsd(BigInt(account.balance_usd_micro))],
-                          ["Reserved", formatUsd(BigInt(account.reserved_usd_micro))],
-                          ["Topped up today", formatUsd(BigInt(account.topped_up_today_usd_micro))],
-                          ["Daily cap", formatUsd(BigInt(account.daily_topup_cap_usd_micro))],
-                          ["Auto top-up", formatUsd(BigInt(account.auto_topup_usd_micro))],
-                        ].map(([label, value]) => (
-                          <div key={label} className="flex justify-between py-1 text-[13px]">
-                            <dt className={MUTED}>{label}</dt>
-                            <dd className="tabular-nums text-[#1E1E1E]">{value}</dd>
-                          </div>
-                        ))}
-                      </dl>
-                    </div>
-                    ) : null}
+                  {side === "buy" && rested ? (
+                    <p className="text-[13px] leading-5 text-[#2EBD85]">
+                      {formatMtok(BigInt(rested.tokens))} MTok rest as a bid at{" "}
+                      {formatMicroPerMtok(BigInt(rested.price_micro_per_mtok))}, holding {formatUsd(BigInt(rested.hold_usd_micro))}.
+                    </p>
+                  ) : null}
+
+                  {side === "sell" && sold ? (
+                    <p className="text-[13px] leading-5 text-[#2EBD85]">
+                      {soldTokens > 0n ? `Sold ${formatMtok(soldTokens)} MTok for ${formatUsd(soldNet)}` : ""}
+                      {soldTokens > 0n && listedTokens > 0n ? "; " : ""}
+                      {listedTokens > 0n && listedAt !== null
+                        ? `${formatMtok(listedTokens)} MTok listed at ${formatMicroPerMtok(BigInt(listedAt))}`
+                        : ""}
+                      .
+                    </p>
+                  ) : null}
                 </div>
               </div>
 
@@ -707,13 +986,6 @@ export function Trade({ initialModel }: { initialModel: string }) {
                     </button>
                   </div>
                   <ul className="mt-3 space-y-3 text-[13px] leading-5">
-                    <li>
-                      <p className="text-[#1E1E1E]">Asks-only venue</p>
-                      <p className={MUTED}>
-                        Sellers list MTokens; there is no bid side yet. Each ask shows the price and size
-                        it unlocks.
-                      </p>
-                    </li>
                     <li>
                       <p className="text-[#1E1E1E]">Every fill rolls up</p>
                       <p className={MUTED}>
@@ -742,80 +1014,18 @@ export function Trade({ initialModel }: { initialModel: string }) {
         )}
       </div>
 
-      <div className="mt-5 border border-[#CECECE] bg-white">
-        <div className="flex flex-wrap items-center gap-5 border-b border-[#D9D9D9] px-4 py-2.5 text-[14px]">
-          {(["mine", "venue"] as const).map((item) => (
-            <button
-              key={item}
-              type="button"
-              onClick={() => setDock(item)}
-              aria-pressed={dock === item}
-              className={`${
-                dock === item
-                  ? "font-semibold text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
-                  : "text-[#757575] hover:text-[#1E1E1E]"
-              }`}
-            >
-              {item === "mine" ? "your fills" : "venue fills"}
-            </button>
-          ))}
-          <span className={`ml-auto text-[13px] ${MUTED}`}>
-            {dock === "mine" ? `${fills.length} this session` : `${venueFills.length} printed on ${model}`}
-          </span>
-        </div>
-
-        <div className="grid grid-cols-[100px_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_90px] gap-x-4 px-4 py-1.5 text-[11px] text-[#757575]">
-          <span>Time</span>
-          <span className="text-right">Price</span>
-          <span className="text-right">Size</span>
-          <span className="text-right">Charge</span>
-          <span className="text-right">Record</span>
-        </div>
-
-        {dock === "mine" ? (
-          fills.length === 0 ? (
-            <p className="border-t border-[#D9D9D9] px-4 py-5 text-[14px] text-[#757575]">
-              Nothing bought from this browser yet.
-            </p>
-          ) : (
-            fills.map((fill) => (
-              <div
-                key={fill.listing_id}
-                className="grid grid-cols-[100px_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_90px] gap-x-4 border-t border-[#D9D9D9] px-4 py-2.5 text-[13px] tabular-nums"
-              >
-                <span className={MUTED}>{timeShort(fill.at)}</span>
-                <span className="text-right text-[#1E1E1E]">{formatMicroPerMtok(BigInt(fill.price_micro_per_mtok))}</span>
-                <span className={`text-right ${MUTED}`}>{formatMtok(BigInt(fill.tokens))} MTok</span>
-                <span className="text-right font-semibold text-[#1E1E1E]">{formatUsd(BigInt(fill.charge_usd_micro))}</span>
-                <span className="text-right">
-                  <Link href="/receipts" className="text-[#1743FF] hover:underline">
-                    rollup →
-                  </Link>
-                </span>
-              </div>
-            ))
-          )
-        ) : venueFills.length === 0 ? (
-          <p className="border-t border-[#D9D9D9] px-4 py-5 text-[14px] text-[#757575]">
-            The venue has not printed a fill for {model} yet.
-          </p>
-        ) : (
-          venueFills.map((fill) => (
-            <div
-              key={`${fill.listing_id}-${fill.created_at}`}
-              className="grid grid-cols-[100px_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_90px] gap-x-4 border-t border-[#D9D9D9] px-4 py-2.5 text-[13px] tabular-nums"
-            >
-              <span className={MUTED}>{timeShort(fill.created_at)}</span>
-              <span className="text-right text-[#1E1E1E]">{formatMicroPerMtok(BigInt(fill.price_micro_per_mtok))}</span>
-              <span className={`text-right ${MUTED}`}>{formatMtok(BigInt(fill.tokens))} MTok</span>
-              <span className="text-right font-semibold text-[#1E1E1E]">
-                {formatUsd(charge(BigInt(fill.tokens), BigInt(fill.price_micro_per_mtok)))}
-              </span>
-              <span />
-            </div>
-          ))
-        )}
-      </div>
+      <OrdersPanel
+        routerKey={key}
+        model={model}
+        venueFills={venueFills}
+        account={account}
+        version={ordersVersion}
+        onChange={() => {
+          void refreshBook();
+          void refreshBalance();
+          void refreshHolding();
+        }}
+      />
     </section>
   );
 }

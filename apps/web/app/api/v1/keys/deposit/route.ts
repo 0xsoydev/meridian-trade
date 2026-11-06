@@ -1,9 +1,10 @@
 import { z } from "zod";
+import { walletOf } from "../../../../../lib/accounts.ts";
 import { routerKey } from "../../../../../lib/auth.ts";
 import { fail } from "../../../../../lib/errors.ts";
-import { balanceOf, credit } from "../../../../../lib/ledger.ts";
-import { verifyDeposit } from "../../../../../lib/mirror.ts";
-import { TOPUP_MAX_MICRO } from "../../../../../lib/x402.ts";
+import { credit } from "../../../../../lib/ledger.ts";
+import { verifyDeposit, verifyWalletDeposit, type DepositCheck } from "../../../../../lib/mirror.ts";
+import { TOPUP_MAX_MICRO } from "../../../../../lib/price.ts";
 import type { DepositResult } from "../../../../../lib/types";
 
 const schema = z.object({ tx_id: z.string().min(1).max(80) });
@@ -15,7 +16,16 @@ export async function POST(request: Request): Promise<Response> {
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return fail(400, "invalid_request", "expected { tx_id }");
 
-  const deposit = await verifyDeposit(parsed.data.tx_id, key.id);
+  const txId = parsed.data.tx_id.trim();
+  let deposit: DepositCheck;
+  if (/^0x[0-9a-fA-F]{64}$/.test(txId)) {
+    const wallet = await walletOf(key.accountId);
+    deposit = wallet
+      ? await verifyWalletDeposit(txId, wallet)
+      : { error: "this key has no wallet; deposit with the key id as the memo" };
+  } else {
+    deposit = await verifyDeposit(txId, key.id);
+  }
   if ("error" in deposit) return fail(400, "invalid_request", deposit.error);
   if (deposit.amountMicro > TOPUP_MAX_MICRO) {
     return fail(400, "invalid_request", `a single deposit carries at most ${TOPUP_MAX_MICRO} micro USD`);

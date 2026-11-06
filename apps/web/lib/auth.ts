@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { verifyMessage, type Address, type Hex } from "viem";
+import { isAddress, verifyMessage, type Address, type Hex } from "viem";
 import { z } from "zod";
 import { db } from "./db.ts";
 import { keys, type KeyRow } from "./schema.ts";
@@ -31,9 +31,9 @@ export function expectedHost(request: Request): string {
 }
 
 const envelopeSchema = z.object({
-  address: z.string().regex(/^0x[0-9a-fA-F]{40}$/),
+  address: z.custom<Address>((value) => typeof value === "string" && isAddress(value, { strict: false })),
   message: z.string().min(1).max(2000),
-  signature: z.string().regex(/^0x[0-9a-fA-F]{130}$/),
+  signature: z.custom<Hex>((value) => typeof value === "string" && /^0x[0-9a-fA-F]{130}$/.test(value)),
 });
 
 const intentSchema = z.object({ domain: z.string(), action: z.string(), issued_at: z.string() }).passthrough();
@@ -58,9 +58,9 @@ export async function verifySigned(
   if (!Number.isFinite(age) || age < -60_000 || age > 300_000) return null;
   try {
     const valid = await verifyMessage({
-      address: parsed.data.address as Address,
+      address: parsed.data.address,
       message: parsed.data.message,
-      signature: parsed.data.signature as Hex,
+      signature: parsed.data.signature,
     });
     if (!valid) return null;
   } catch {

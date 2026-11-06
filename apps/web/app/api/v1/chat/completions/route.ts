@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { and, eq, gt, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { routerKey } from "../../../../../lib/auth.ts";
@@ -177,7 +178,7 @@ async function candidatesFor(keyId: string, model: string): Promise<Candidate[]>
         eq(prepaid.model, model),
         gt(prepaid.tokensRemaining, 0n),
         or(isNull(prepaid.expiresAt), gt(prepaid.expiresAt, now)),
-        inArray(listings.status, ["active", "exhausted"]),
+        inArray(listings.status, ["active", "exhausted", "cancelled"]),
         or(isNull(listings.throttledUntil), lt(listings.throttledUntil, now)),
       ),
     )
@@ -344,6 +345,7 @@ function fetchUpstream(candidate: Candidate, payload: Record<string, unknown>, s
     headers["X-0G-Provider-Max-Price-Usd-Prompt"] = formatMicroPerMtok(candidate.pricing.prompt);
     headers["X-0G-Provider-Max-Price-Usd-Completion"] = formatMicroPerMtok(candidate.pricing.completion);
   }
+  if (candidate.rail.id === "opencode-go") headers["x-opencode-session"] = randomUUID();
   return fetch(`${candidate.rail.baseUrl}/chat/completions`, {
     method: "POST",
     headers,

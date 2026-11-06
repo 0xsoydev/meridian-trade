@@ -31,13 +31,10 @@ export type PublishedRollup = { seq: number; rollup: Rollup };
 export const MAX_MOVE_BPS = 1000n;
 export const POST_MOVE_BPS = 10n;
 export const HEARTBEAT_S = 300n;
+export const INDEX_FLOOR_DIVISOR = 10n;
 
 export function minuteOf(ms: number): number {
   return Math.floor(ms / 60_000);
-}
-
-export function vwap(chargeMicro: bigint, mixedTokens: bigint): bigint {
-  return (chargeMicro * 1_000_000n) / mixedTokens;
 }
 
 export function twap(rollups: ReadonlyArray<Rollup>): bigint | null {
@@ -47,7 +44,7 @@ export function twap(rollups: ReadonlyArray<Rollup>): bigint | null {
 }
 
 export function clampIndex(price: bigint, referenceBlended: bigint): bigint {
-  const floor = referenceBlended / 2n;
+  const floor = referenceBlended / INDEX_FLOOR_DIVISOR;
   return price < floor ? floor : price > referenceBlended ? referenceBlended : price;
 }
 
@@ -74,7 +71,7 @@ export function recomputeIndex(input: {
   reference: bigint;
   latest: bigint;
 }): IndexRecompute {
-  const band: [bigint, bigint] = [input.reference / 2n, input.reference];
+  const band: [bigint, bigint] = [input.reference / INDEX_FLOOR_DIVISOR, input.reference];
   const average = twap(input.rollups);
   if (input.latest === 0n) return { state: "no-post", twap: average, band };
   if (average === null) return { state: "no-input", latest: input.latest };

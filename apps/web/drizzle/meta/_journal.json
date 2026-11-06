@@ -22,6 +22,41 @@
       "when": 1793171870678,
       "tag": "0002_accounts",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793478428577,
+      "tag": "0003_bids",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793805062323,
+      "tag": "0004_listing_reset",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793807207550,
+      "tag": "0005_payout_execute_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793812551436,
+      "tag": "0006_perp_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793814660510,
+      "tag": "0007_resale",
+      "breakpoints": true
     }
   ]
 }

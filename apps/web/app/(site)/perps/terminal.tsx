@@ -1,24 +1,29 @@
 "use client";
 
-import Link from "next/link";
+import { usePrivy } from "@privy-io/react-auth";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { liquidationPrice, notional } from "../../../lib/perp";
-import { formatMicroPerMtok, formatMtok, formatUsd, parseMtok } from "../../../lib/price";
-import type { Book, ModelRow } from "../../../lib/types";
-import { FillsChart, fillsToPoints, type ScaleMode } from "../trade/chart";
+import { BaseError, type Hash } from "viem";
+import { useConnection, useSwitchChain, useWalletClient } from "wagmi";
+import { mockUsdcAbi } from "../../../lib/abi";
+import { addresses, galileo, publicClient } from "../../../lib/chain";
+import { MARKETS, liquidationPrice, modify, notional, orderPlan, positionAfter, readMarket, readPosition } from "../../../lib/perp";
+import { clockFormat, fillsToPoints, formatMicroPerMtok, formatMtok, formatUsd, parseMtok, parseUsd, stampFormat } from "../../../lib/price";
+import type { Book, PerpFill } from "../../../lib/types";
+import { useModels } from "../models";
+import { FillsChart, INTERVALS, type ScaleMode } from "../trade/chart";
 
-const KEY_STORAGE = "router_key";
 const POLL_MS = 15_000;
 const MAX_LEVERAGE = 5n;
+const STALE_S = 600n;
+const FAUCET_USDC = 100_000_000n;
 
-const WINDOWS = [
-  { id: "1h", label: "1h", ms: 3_600_000 },
-  { id: "6h", label: "6h", ms: 6 * 3_600_000 },
-  { id: "24h", label: "24h", ms: 86_400_000 },
-  { id: "all", label: "All", ms: null },
-] as const;
-type WindowId = (typeof WINDOWS)[number]["id"];
+type Market = Awaited<ReturnType<typeof readMarket>>;
+type Held = Awaited<ReturnType<typeof readPosition>> & { model: string; price: bigint };
+
+function signedUsd(value: bigint): string {
+  return `${value < 0n ? "−" : ""}${formatUsd(value < 0n ? -value : value)}`;
+}
 
 const PRESETS = [
   { label: "1", value: "1" },
@@ -50,33 +55,37 @@ const PARAMS = "MAX_LEVERAGE 5 · MM_BPS 500 · FEE_BPS 10 · LIQ_BPS 50 · fund
 
 const MUTED = "text-[#757575]";
 
-const clockFormat = new Intl.DateTimeFormat("en-GB", {
-  timeZone: "UTC",
-  hour12: false,
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-});
-
 const BOOK_TABS = ["Order Book", "Trades"] as const;
-const STRIP_TABS = ["Positions", "Fills", "Funding History"] as const;
+const STRIP_TABS = ["Positions", "Trade History"] as const;
 
 export function Perps({ initialModel }: { initialModel: string }) {
   const router = useRouter();
   const [model, setModel] = useState(initialModel);
-  const [models, setModels] = useState<ModelRow[]>([]);
+  const models = useModels();
   const [book, setBook] = useState<Book | null>(null);
   const [bookFailed, setBookFailed] = useState<"unknown" | "down" | null>(null);
   const [chartTab, setChartTab] = useState<"Chart" | "Funding">("Chart");
-  const [windowId, setWindowId] = useState<WindowId>("all");
+  const [bucket, setBucket] = useState(60);
   const [scale, setScale] = useState<ScaleMode>("linear");
   const [bookTab, setBookTab] = useState<(typeof BOOK_TABS)[number]>("Order Book");
   const [stripTab, setStripTab] = useState<(typeof STRIP_TABS)[number]>("Positions");
   const [side, setSide] = useState<"long" | "short">("long");
   const [size, setSize] = useState("10");
-  const [key, setKey] = useState<string | null>(null);
-  const [balance, setBalance] = useState<bigint | null>(null);
+  const { ready, authenticated, login } = usePrivy();
+  const { address, chainId } = useConnection();
+  const { data: wallet } = useWalletClient();
+  const { mutateAsync: switchChain } = useSwitchChain();
+  const [market, setMarket] = useState<Market | null>(null);
+  const [held, setHeld] = useState<Held[]>([]);
+  const [usdc, setUsdc] = useState<bigint | null>(null);
+  const [gas, setGas] = useState<bigint | null>(null);
+  const [pending, setPending] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [version, setVersion] = useState(0);
   const [clock, setClock] = useState<string | null>(null);
+  const [history, setHistory] = useState<PerpFill[]>([]);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [marginInput, setMarginInput] = useState("");
   const picker = useRef<HTMLDetailsElement | null>(null);
   const nowRef = useRef(Date.now());
 
@@ -87,23 +96,6 @@ export function Perps({ initialModel }: { initialModel: string }) {
     }, 1000);
     setClock(clockFormat.format(new Date()));
     return () => window.clearInterval(id);
-  }, []);
-
-  useEffect(() => {
-    let alive = true;
-    fetch("/api/v1/models")
-      .then((res) => (res.ok ? (res.json() as Promise<{ data: ModelRow[] }>) : null))
-      .then((body) => {
-        if (alive && body) setModels(body.data);
-      })
-      .catch(() => undefined);
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    setKey(window.localStorage.getItem(KEY_STORAGE));
   }, []);
 
   const refreshBook = useCallback(async (signal?: AbortSignal) => {
@@ -133,21 +125,73 @@ export function Perps({ initialModel }: { initialModel: string }) {
   }, [refreshBook]);
 
   useEffect(() => {
-    const token = window.localStorage.getItem(KEY_STORAGE);
-    if (!token) {
-      setBalance(null);
+    let alive = true;
+    const load = async () => {
+      try {
+        const next = await readMarket(model);
+        if (alive) setMarket(next);
+        if (!address) return;
+        const client = publicClient();
+        const [positions, balance, native] = await Promise.all([
+          Promise.all(MARKETS.map(async (id) => ({ model: id, price: (await readMarket(id)).price, ...(await readPosition(id, address)) }))),
+          client.readContract({ address: addresses().mockUsdc, abi: mockUsdcAbi, functionName: "balanceOf", args: [address] }),
+          client.getBalance({ address }),
+        ]);
+        if (!alive) return;
+        setHeld(positions.filter((row) => row.size !== 0n));
+        setUsdc(balance);
+        setGas(native);
+      } catch {
+        if (alive) setNotice("the Galileo RPC did not answer; retrying");
+      }
+    };
+    void load();
+    const id = window.setInterval(() => void load(), POLL_MS);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, [model, address, version]);
+
+  useEffect(() => {
+    if (!address) {
+      setHistory([]);
       return;
     }
-    fetch("/api/v1/balance", {
-      cache: "no-store",
-      headers: { authorization: `Bearer ${token}` },
-    })
-      .then((res) => (res.ok ? (res.json() as Promise<{ balance_usd_micro: string }>) : null))
-      .then((body) => setBalance(body ? BigInt(body.balance_usd_micro) : null))
-      .catch(() => setBalance(null));
-  }, []);
+    let alive = true;
+    const load = () =>
+      fetch(`/api/v1/perps/history?account=${address}`, { cache: "no-store" })
+        .then((res) => (res.ok ? (res.json() as Promise<{ data: PerpFill[] }>) : null))
+        .then((body) => {
+          if (alive && body) setHistory(body.data);
+        })
+        .catch(() => undefined);
+    void load();
+    const id = window.setInterval(() => void load(), POLL_MS);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, [address, version]);
+
+  const send = async (run: () => Promise<Hash>) => {
+    setPending(true);
+    setNotice(null);
+    try {
+      if (chainId !== galileo.id) await switchChain({ chainId: galileo.id });
+      const hash = await run();
+      const receipt = await publicClient().waitForTransactionReceipt({ hash });
+      setNotice(`${receipt.status === "success" ? "confirmed" : "reverted"} ${hash.slice(0, 10)}…`);
+      setVersion((value) => value + 1);
+    } catch (cause) {
+      setNotice(cause instanceof BaseError ? cause.shortMessage : cause instanceof Error ? cause.message : "the transaction failed");
+    } finally {
+      setPending(false);
+    }
+  };
 
   const selected = models.find((row) => row.id === model);
+  const marketRows = models.filter((row) => MARKETS.some((id) => id === row.id));
   const asks = book?.asks ?? [];
   const wanted = parseMtok(size);
   const depth = asks.reduce((total, ask) => total + BigInt(ask.tokens_left), 0n);
@@ -162,40 +206,38 @@ export function Perps({ initialModel }: { initialModel: string }) {
     return rows;
   }, [asks]);
 
-  const points = useMemo(
-    () =>
-      fillsToPoints(
-        book?.fills ?? [],
-        WINDOWS.find((w) => w.id === windowId)?.ms ?? null,
-        nowRef.current,
-      ),
-    [book, windowId],
-  );
-  const points24 = useMemo(
-    () => fillsToPoints(book?.fills ?? [], 86_400_000, nowRef.current),
-    [book],
-  );
+  const points = useMemo(() => fillsToPoints(book?.fills ?? []), [book]);
+  const points24 = useMemo(() => fillsToPoints(book?.fills ?? [], nowRef.current - 86_400_000), [book]);
 
   const bestAsk = asks[0] ? BigInt(asks[0].price_micro_per_mtok) : null;
-  const lastFill = book?.fills.at(-1);
+  const lastFill = book?.fills[0];
   const lastPrice = lastFill ? BigInt(lastFill.price_micro_per_mtok) : null;
   const first24 = points24[0]?.value ?? null;
   const last24 = points24.at(-1)?.value ?? null;
   const delta = last24 !== null && first24 !== null ? (last24 - first24) / first24 : null;
   const volume24 = points24.reduce((total, point) => total + point.volume, 0);
-  const index = selected?.index_micro_per_mtok ? BigInt(selected.index_micro_per_mtok) : null;
+  const index = market && market.updatedAt > 0n ? market.price : null;
+  const stale =
+    !market || market.updatedAt === 0n || BigInt(Math.floor(nowRef.current / 1000)) - market.updatedAt > STALE_S;
   const mark = index ?? lastPrice ?? bestAsk;
   const orderValue = wanted > 0n && mark !== null ? notional(wanted, mark) : 0n;
-  const margin = orderValue / MAX_LEVERAGE;
-  const liqPreview =
-    wanted > 0n && mark !== null
-      ? liquidationPrice({
-          size: (side === "long" ? 1n : -1n) * wanted,
-          margin,
-          entryPrice: mark,
-          fundingOwed: 0n,
-        })
-      : 0n;
+  const current = held.find((row) => row.model === model) ?? null;
+  const plan = mark !== null ? orderPlan(current?.size ?? 0n, side === "long" ? wanted : -wanted, mark, MAX_LEVERAGE) : [];
+  const margin = plan.reduce((sum, leg) => sum + leg.margin, 0n);
+  const resulting = mark !== null ? positionAfter(current, plan, mark) : null;
+  const liqPreview = resulting ? liquidationPrice(resulting) : 0n;
+  const heldSize = current ? (current.size < 0n ? -current.size : current.size) : 0n;
+  const heldSide = current && current.size > 0n ? "long" : "short";
+  const action =
+    plan.length === 2
+      ? `Close ${formatMtok(heldSize)} ${heldSide}, ${side} ${formatMtok(wanted - heldSize)} MTok`
+      : plan[0]?.margin === 0n
+        ? wanted === heldSize
+          ? `Close ${formatMtok(heldSize)} MTok ${heldSide}`
+          : `Reduce ${heldSide} by ${formatMtok(wanted)} MTok`
+        : `${side === "long" ? "Long" : "Short"} ${wanted > 0n ? `${formatMtok(wanted)} MTok` : ""}`;
+  const equityTotal = held.reduce((sum, row) => sum + row.equity, 0n);
+  const pnlTotal = held.reduce((sum, row) => sum + (row.size * (row.price - row.entryPrice)) / 1_000_000n, 0n);
   const usableDepth = depth > 0n ? depth : 1n;
   const sliderPct = wanted >= usableDepth ? 100 : Number((wanted * 100n) / usableDepth);
   const first = points[0]?.value ?? null;
@@ -219,8 +261,8 @@ export function Perps({ initialModel }: { initialModel: string }) {
       tone: delta === null ? undefined : delta >= 0 ? "up" : "down",
     },
     { label: "volume, 24h", value: volume24 > 0 ? `${volume24.toFixed(2)} MTok` : "—" },
-    { label: "open interest", value: "—" },
-    { label: "funding / countdown", value: "—" },
+    { label: "open interest", value: market ? `${formatMtok(market.longOi)} / ${formatMtok(market.shortOi)} MTok` : "—" },
+    { label: "funding / hour", value: market ? `${(Number(market.fundingRatePerHour) / 1e16).toFixed(4)}%` : "—" },
   ];
 
   return (
@@ -249,7 +291,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
             <span aria-hidden className="text-[#757575]">⌄</span>
           </summary>
           <ul className="absolute left-0 top-full z-20 mt-1 max-h-80 w-72 overflow-auto border border-[#CECECE] bg-white py-1">
-            {models.map((row) => (
+            {marketRows.map((row) => (
               <li key={row.id}>
                 <button
                   type="button"
@@ -265,21 +307,23 @@ export function Perps({ initialModel }: { initialModel: string }) {
                 </button>
               </li>
             ))}
-            {models.length === 0 ? (
-              <li className="px-3 py-2 text-[13px] text-[#757575]">loading models…</li>
+            {marketRows.length === 0 ? (
+              <li className="px-3 py-2 text-[13px] text-[#757575]">loading markets…</li>
             ) : null}
           </ul>
         </details>
 
         <div className="flex items-center gap-5 text-[14px]">
-          {key && balance !== null ? (
+          {address ? (
             <span className="tabular-nums text-[#1E1E1E]">
-              balance <span className="font-semibold">{formatUsd(balance)}</span>
+              {address.slice(0, 6)}…{address.slice(-4)} ·{" "}
+              <span className="font-semibold">{usdc !== null ? formatUsd(usdc) : "—"}</span> USDC
             </span>
-          ) : null}
-          <Link href="/keys" className="text-[#1743FF] hover:underline">
-            {key ? "manage keys" : "connect your agent"}
-          </Link>
+          ) : (
+            <button type="button" disabled={!ready} onClick={() => login()} className="text-[#1743FF] hover:underline">
+              connect a wallet
+            </button>
+          )}
         </div>
       </div>
 
@@ -329,15 +373,15 @@ export function Perps({ initialModel }: { initialModel: string }) {
               ))}
             </div>
             {chartTab === "Chart" ? (
-              <div className="flex gap-5">
-                {WINDOWS.map((item) => (
+              <div role="group" aria-label="candle interval" className="flex gap-5">
+                {INTERVALS.map((item) => (
                   <button
-                    key={item.id}
+                    key={item.label}
                     type="button"
-                    onClick={() => setWindowId(item.id)}
-                    aria-pressed={windowId === item.id}
+                    onClick={() => setBucket(item.seconds)}
+                    aria-pressed={bucket === item.seconds}
                     className={`text-[14px] ${
-                      windowId === item.id
+                      bucket === item.seconds
                         ? "text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
                         : "text-[#757575] hover:text-[#1E1E1E]"
                     }`}
@@ -379,6 +423,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
 
               <FillsChart
                 points={points}
+                bucket={bucket}
                 scale={scale}
                 emptyNote="waiting for the first index post — the venue's fills seed the curve"
               />
@@ -545,11 +590,15 @@ export function Perps({ initialModel }: { initialModel: string }) {
           <div className="mt-4 space-y-4">
             <div className="flex justify-between text-[14px]">
               <span className={MUTED}>Available to trade</span>
-              <span className="tabular-nums text-[#1E1E1E]">{balance !== null ? formatUsd(balance) : "—"}</span>
+              <span className="tabular-nums text-[#1E1E1E]">{usdc !== null ? formatUsd(usdc) : "—"}</span>
             </div>
             <div className="flex justify-between text-[14px]">
               <span className={MUTED}>Current position</span>
-              <span className="tabular-nums text-[#1E1E1E]">0.00 MTok</span>
+              <span className="tabular-nums text-[#1E1E1E]">
+                {current
+                  ? `${current.size > 0n ? "long" : "short"} ${formatMtok(current.size < 0n ? -current.size : current.size)} MTok`
+                  : "none"}
+              </span>
             </div>
 
             <label className="block">
@@ -577,7 +626,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
                 aria-label="size as a percent of displayed depth"
                 className="h-1 w-full accent-[#1743FF]"
               />
-              <span className={`w-14 text-right text-[12px] leading-4 tabular-nums ${MUTED}`}>
+              <span className={`shrink-0 whitespace-nowrap text-right text-[12px] leading-4 tabular-nums ${MUTED}`}>
                 {sliderPct}% of depth
               </span>
             </div>
@@ -610,7 +659,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
               </div>
               <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
                 <dt className={MUTED}>Margin required · {MAX_LEVERAGE.toString()}x</dt>
-                <dd className="tabular-nums text-[#1E1E1E]">{margin > 0n ? formatUsd(margin) : "—"}</dd>
+                <dd className="tabular-nums text-[#1E1E1E]">{margin > 0n ? formatUsd(margin) : plan.length > 0 ? "none" : "—"}</dd>
               </div>
               <div className="flex justify-between py-3">
                 <dt className="text-[15px] font-semibold text-[#1E1E1E]">Venue fee</dt>
@@ -618,51 +667,89 @@ export function Perps({ initialModel }: { initialModel: string }) {
               </div>
             </dl>
 
-            {key === null ? (
-              <div className="border border-[#CECECE] bg-white px-3 py-3">
-                <p className="text-[14px] text-[#1E1E1E]">Trading needs a router key.</p>
-                <p className="mt-1 text-[13px] leading-5 text-[#757575]">
-                  Paste your agent&apos;s key once. It stays in this browser, never in a URL.
-                </p>
-              </div>
-            ) : null}
-
-            {key === null ? (
-              <Link
-                href="/keys"
-                className="flex h-[34px] items-center justify-center rounded-[6px] bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E]"
+            {!authenticated || !address ? (
+              <button
+                type="button"
+                disabled={!ready}
+                onClick={() => login()}
+                className="h-[34px] w-full rounded-[6px] bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4]"
               >
-                Connect your agent
-              </Link>
+                Connect wallet
+              </button>
+            ) : chainId !== galileo.id ? (
+              <button
+                type="button"
+                onClick={() => void switchChain({ chainId: galileo.id })}
+                className="h-[34px] w-full rounded-[6px] bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E]"
+              >
+                Switch to 0G Galileo
+              </button>
             ) : (
-              <>
-                <button
-                  type="button"
-                  disabled
-                  title="waits on the wallet provider — providers.tsx (Privy + wagmi) lands next"
-                  className="h-[34px] w-full rounded-[6px] bg-black text-[14px] font-semibold text-white disabled:bg-[#D4D4D4] disabled:text-white"
-                >
-                  {side === "long" ? "Long" : "Short"} {wanted > 0n ? `${formatMtok(wanted)} MTok` : ""}
-                </button>
-                <p className={`text-center text-[13px] ${MUTED}`}>
-                  orders settle after the keeper posts the index
-                </p>
-              </>
+              <button
+                type="button"
+                disabled={!wallet || pending || stale || plan.length === 0 || (usdc ?? 0n) < margin || gas === 0n}
+                onClick={() => {
+                  if (!wallet) return;
+                  void send(async () => {
+                    let hash: Hash | null = null;
+                    for (const leg of plan) {
+                      if (hash && (await publicClient().waitForTransactionReceipt({ hash })).status !== "success") {
+                        throw new Error("closing the position reverted; nothing was opened");
+                      }
+                      hash = await modify(wallet, model, leg.sizeDelta, leg.margin);
+                    }
+                    if (!hash) throw new Error("enter a size");
+                    return hash;
+                  });
+                }}
+                className="h-[34px] w-full rounded-[6px] bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4] disabled:text-white"
+              >
+                {pending ? "Confirming…" : action}
+              </button>
             )}
-
-            <Link
-              href="/keys"
-              className="flex h-[34px] items-center justify-center border border-[#CECECE] bg-white text-[13px] text-[#1E1E1E] hover:border-[#1743FF]"
-            >
-              Deposit
-            </Link>
+            <p className={`text-center text-[13px] ${MUTED}`}>
+              {notice ??
+                (!address
+                  ? "trades sign with your own wallet on 0G Galileo"
+                  : stale
+                    ? asks.length === 0
+                      ? `no spot price for ${model} yet; trading opens once a seller lists it`
+                      : "the index is stale; trading reopens after the keeper's next post"
+                    : gas === 0n
+                      ? "this wallet needs 0G gas: faucet.0g.ai"
+                      : (usdc ?? 0n) < margin
+                        ? "not enough test USDC; mint some below"
+                        : "margin and fee settle in MockUSDC")}
+            </p>
+            {address ? (
+              <button
+                type="button"
+                disabled={!wallet || pending}
+                onClick={() => {
+                  if (wallet) {
+                    void send(() =>
+                      wallet.writeContract({
+                        chain: galileo,
+                        address: addresses().mockUsdc,
+                        abi: mockUsdcAbi,
+                        functionName: "mint",
+                        args: [wallet.account.address, FAUCET_USDC],
+                      }),
+                    );
+                  }
+                }}
+                className="flex h-[34px] w-full items-center justify-center border border-[#CECECE] bg-white text-[13px] text-[#1E1E1E] hover:border-[#1743FF] disabled:text-[#C9C9C9]"
+              >
+                Get 100 test USDC
+              </button>
+            ) : null}
 
             <div className="border-t border-[#D9D9D9] pt-4">
               <p className="text-[13px] text-[#1E1E1E]">[ account summary ]</p>
               <dl className="mt-2">
                 {[
-                  ["Portfolio value", balance !== null ? formatUsd(balance) : "$0.00"],
-                  ["Unrealized PNL", "—"],
+                  ["Portfolio value", usdc !== null ? formatUsd(usdc + equityTotal) : "$0.00"],
+                  ["Unrealized PNL", held.length > 0 ? signedUsd(pnlTotal) : "—"],
                   ["Account ratio", "—"],
                 ].map(([label, value]) => (
                   <div key={label} className="flex justify-between py-1 text-[13px]">
@@ -683,7 +770,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
       <div className="mt-10 border-t border-[#CECECE] pt-8">
         <p className="text-[13px] text-[#1E1E1E]">[ positions ]</p>
         <h2 className="mt-3 font-serif text-[32px] leading-[1.1] text-[#1E1E1E]">
-          Positions, fills, funding.
+          Positions and trade history.
         </h2>
 
         <div className="mt-4 flex items-center gap-5">
@@ -703,11 +790,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
             </button>
           ))}
           <span className={`text-[13px] ${MUTED}`}>
-            {stripTab === "Positions"
-              ? "nothing open"
-              : stripTab === "Fills"
-                ? `${book?.fills.length ?? 0} on ${model}`
-                : "nothing accrued"}
+            {stripTab === "Positions" ? `${held.length} open` : `${history.length} trades`}
           </span>
         </div>
 
@@ -723,38 +806,169 @@ export function Perps({ initialModel }: { initialModel: string }) {
                   ),
                 )}
               </div>
-              <p className="border-t border-[#CECECE] py-5 text-[14px] text-[#757575] md:border-t-0">
-                No open positions yet.
-              </p>
+              {held.length === 0 ? (
+                <p className="border-t border-[#CECECE] py-5 text-[14px] text-[#757575] md:border-t-0">
+                  No open positions yet.
+                </p>
+              ) : (
+                held.map((row) => {
+                  const size = row.size < 0n ? -row.size : row.size;
+                  const pnl = (row.size * (row.price - row.entryPrice)) / 1_000_000n;
+                  const value = notional(row.size, row.price);
+                  const leverage = row.equity > 0n ? Number((value * 100n) / row.equity) / 100 : null;
+                  const headroom = row.equity - (value + MAX_LEVERAGE - 1n) / MAX_LEVERAGE - 1n;
+                  const settled = row.margin - row.fundingOwed;
+                  const removable = headroom < settled ? headroom : settled;
+                  const amount = parseUsd(marginInput);
+                  return (
+                    <div
+                      key={row.model}
+                      className="grid grid-cols-3 gap-y-1 border-t border-[#CECECE] py-3 text-[13px] tabular-nums text-[#1E1E1E] md:grid-cols-9"
+                    >
+                      <span className="pr-2">
+                        {row.model}
+                        {leverage !== null ? (
+                          <span className="ml-1.5 border border-[#CECECE] bg-white px-1 text-[11px] text-[#1743FF]">
+                            {leverage.toFixed(1)}x
+                          </span>
+                        ) : null}
+                      </span>
+                      <span className={`text-right ${row.size > 0n ? "text-[#2EBD85]" : "text-[#F6465D]"}`}>
+                        {row.size > 0n ? "+" : "−"}
+                        {formatMtok(size)}
+                      </span>
+                      <span className="text-right">{formatUsd(notional(row.size, row.price))}</span>
+                      <span className="text-right">{formatMicroPerMtok(row.entryPrice)}</span>
+                      <span className="text-right">{formatMicroPerMtok(row.price)}</span>
+                      <span className="text-right">
+                        {signedUsd(pnl)} /{" "}
+                        {row.margin > 0n ? `${(Number((pnl * 10_000n) / row.margin) / 100).toFixed(2)}%` : "—"}
+                      </span>
+                      <span className="text-right">
+                        {row.liquidationPrice > 0n ? formatMicroPerMtok(row.liquidationPrice) : "—"}
+                      </span>
+                      <span className="text-right">{formatUsd(row.margin)}</span>
+                      <span className="text-right">
+                        {signedUsd(-row.fundingOwed)}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditing(editing === row.model ? null : row.model);
+                            setMarginInput("");
+                          }}
+                          aria-expanded={editing === row.model}
+                          className="ml-2 underline"
+                        >
+                          margin
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!wallet || pending}
+                          onClick={() => {
+                            if (wallet) void send(() => modify(wallet, row.model, -row.size, 0n));
+                          }}
+                          className="ml-2 underline disabled:text-[#C9C9C9]"
+                        >
+                          close
+                        </button>
+                      </span>
+                      {editing === row.model ? (
+                        <div className="col-span-3 flex flex-wrap items-center justify-end gap-3 pt-2 md:col-span-9">
+                          <span className={MUTED}>
+                            margin {formatUsd(row.margin)} · remove up to {formatUsd(removable > 0n ? removable : 0n)}
+                          </span>
+                          <input
+                            value={marginInput}
+                            onChange={(event) => setMarginInput(event.target.value)}
+                            inputMode="decimal"
+                            placeholder="USD"
+                            aria-label={`USD of margin to add to or remove from ${row.model}`}
+                            className="h-[28px] w-24 border border-[#CECECE] bg-white px-2 text-right outline-none focus:border-[#1743FF]"
+                          />
+                          <button
+                            type="button"
+                            disabled={!wallet || pending || !amount || (usdc ?? 0n) < amount}
+                            onClick={() => {
+                              if (wallet && amount) void send(() => modify(wallet, row.model, 0n, amount));
+                            }}
+                            className="underline disabled:text-[#C9C9C9]"
+                          >
+                            add
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!wallet || pending || !amount || amount > removable}
+                            onClick={() => {
+                              if (wallet && amount) void send(() => modify(wallet, row.model, 0n, -amount));
+                            }}
+                            className="underline disabled:text-[#C9C9C9]"
+                          >
+                            remove
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })
+              )}
             </>
           ) : null}
 
-          {stripTab === "Fills" ? (
-            (book?.fills.length ?? 0) === 0 ? (
-              <p className="border-t border-[#CECECE] py-5 text-[14px] text-[#757575]">
-                The venue has not printed a fill for {model} yet.
-              </p>
-            ) : (
-              book?.fills.map((fill) => (
-                <div
-                  key={`${fill.listing_id}-${fill.created_at}`}
-                  className="flex flex-wrap items-baseline justify-between gap-4 border-t border-[#CECECE] py-4"
-                >
-                  <span className={`text-[13px] tabular-nums ${MUTED}`}>{clockFormat.format(new Date(fill.created_at))} UTC</span>
-                  <span className="text-[14px] tabular-nums text-[#1E1E1E]">
-                    {formatMicroPerMtok(BigInt(fill.price_micro_per_mtok))}
-                    <span className={`ml-1.5 text-[12px] ${MUTED}`}>USD / MTok</span>
+          {stripTab === "Trade History" ? (
+            <>
+              <div className={`hidden border-y border-[#CECECE] py-2 text-[12px] md:grid md:grid-cols-6 ${MUTED}`}>
+                {["Time, UTC", "Market", "Size", "Price", "Realized PNL", "Fee"].map((head, i) => (
+                  <span key={head} className={i < 2 ? "pr-2" : "text-right"}>
+                    {head}
                   </span>
-                  <span className={`text-[13px] tabular-nums ${MUTED}`}>{formatMtok(BigInt(fill.tokens))} MTok</span>
-                </div>
-              ))
-            )
-          ) : null}
-
-          {stripTab === "Funding History" ? (
-            <p className="border-t border-[#CECECE] py-5 text-[14px] text-[#757575]">
-              No funding payments yet — accrual starts with the first PerpMarket modify.
-            </p>
+                ))}
+              </div>
+              {history.length === 0 ? (
+                <p className="border-t border-[#CECECE] py-5 text-[14px] text-[#757575] md:border-t-0">
+                  {address
+                    ? "No perp trades from this wallet yet. The keeper records each trade within a minute."
+                    : "Connect a wallet to see its trades."}
+                </p>
+              ) : (
+                history.map((fill) => {
+                  const change = BigInt(fill.size_change);
+                  const pnl = BigInt(fill.realized_pnl_usd_micro);
+                  const price = BigInt(fill.price_micro_per_mtok);
+                  return (
+                    <div
+                      key={`${fill.tx_hash}:${fill.kind}`}
+                      className="grid grid-cols-3 gap-y-1 border-t border-[#CECECE] py-3 text-[13px] tabular-nums text-[#1E1E1E] md:grid-cols-6"
+                    >
+                      <a
+                        href={`${galileo.blockExplorers.default.url}/tx/${fill.tx_hash}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className={`pr-2 hover:underline ${MUTED}`}
+                      >
+                        {stampFormat.format(new Date(fill.at))}
+                      </a>
+                      <span className="pr-2">
+                        {fill.model}
+                        {fill.kind === "liquidate" ? <span className="ml-1.5 text-[#F6465D]">liquidated</span> : null}
+                      </span>
+                      <span className={`text-right ${change > 0n ? "text-[#2EBD85]" : change < 0n ? "text-[#F6465D]" : ""}`}>
+                        {change > 0n ? "+" : change < 0n ? "−" : ""}
+                        {formatMtok(change < 0n ? -change : change)} MTok
+                      </span>
+                      <span className="text-right">{price > 0n ? formatMicroPerMtok(price) : "—"}</span>
+                      <span className={`text-right ${pnl > 0n ? "text-[#2EBD85]" : pnl < 0n ? "text-[#F6465D]" : ""}`}>
+                        {pnl === 0n ? "—" : signedUsd(pnl)}
+                      </span>
+                      <span className="text-right">
+                        {fill.kind === "liquidate"
+                          ? `reward ${formatUsd(BigInt(fill.reward_usd_micro))}`
+                          : formatUsd(BigInt(fill.fee_usd_micro))}
+                      </span>
+                    </div>
+                  );
+                })
+              )}
+            </>
           ) : null}
         </div>
       </div>
