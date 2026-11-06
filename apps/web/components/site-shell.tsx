@@ -6,7 +6,7 @@ import { Navbar } from "./site-nav";
 import { TradeNav } from "./trade-nav";
 
 export function SiteShell({ children }: { children: React.ReactNode }) {
-  const onTrade = usePathname().startsWith("/trade");
+  const onTrade = /^\/(trade|perps)/.test(usePathname());
   return (
     <>
       {onTrade ? <TradeNav /> : <Navbar variant="page" />}

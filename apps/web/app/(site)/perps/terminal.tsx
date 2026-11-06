@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BaseError, type Hash } from "viem";
 import { useConnection, useSwitchChain, useWalletClient } from "wagmi";
+import ProfileDropdown from "../../../components/kokonutui/profile-dropdown";
 import { mockUsdcAbi } from "../../../lib/abi";
 import { addresses, galileo, publicClient } from "../../../lib/chain";
 import { MARKETS, liquidationPrice, modify, notional, orderPlan, positionAfter, readMarket, readPosition } from "../../../lib/perp";
@@ -12,6 +13,7 @@ import { clockFormat, fillsToPoints, formatMicroPerMtok, formatMtok, formatUsd, 
 import type { Book, PerpFill } from "../../../lib/types";
 import { useModels } from "../models";
 import { FillsChart, INTERVALS, type ScaleMode } from "../trade/chart";
+import { OrderBook } from "../trade/order-book";
 
 const POLL_MS = 15_000;
 const MAX_LEVERAGE = 5n;
@@ -55,7 +57,6 @@ const PARAMS = "MAX_LEVERAGE 5 · MM_BPS 500 · FEE_BPS 10 · LIQ_BPS 50 · fund
 
 const MUTED = "text-[#757575]";
 
-const BOOK_TABS = ["Order Book", "Trades"] as const;
 const STRIP_TABS = ["Positions", "Trade History"] as const;
 
 export function Perps({ initialModel }: { initialModel: string }) {
@@ -67,7 +68,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
   const [chartTab, setChartTab] = useState<"Chart" | "Funding">("Chart");
   const [bucket, setBucket] = useState(60);
   const [scale, setScale] = useState<ScaleMode>("linear");
-  const [bookTab, setBookTab] = useState<(typeof BOOK_TABS)[number]>("Order Book");
+  const [expanded, setExpanded] = useState(false);
   const [stripTab, setStripTab] = useState<(typeof STRIP_TABS)[number]>("Positions");
   const [side, setSide] = useState<"long" | "short">("long");
   const [size, setSize] = useState("10");
@@ -86,7 +87,6 @@ export function Perps({ initialModel }: { initialModel: string }) {
   const [history, setHistory] = useState<PerpFill[]>([]);
   const [editing, setEditing] = useState<string | null>(null);
   const [marginInput, setMarginInput] = useState("");
-  const picker = useRef<HTMLDetailsElement | null>(null);
   const nowRef = useRef(Date.now());
 
   useEffect(() => {
@@ -195,16 +195,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
   const asks = book?.asks ?? [];
   const wanted = parseMtok(size);
   const depth = asks.reduce((total, ask) => total + BigInt(ask.tokens_left), 0n);
-
-  const ladderRows = useMemo(() => {
-    let acc = 0n;
-    const rows = asks.map((ask) => {
-      acc += BigInt(ask.tokens_left);
-      return { ask, total: acc };
-    });
-    rows.reverse();
-    return rows;
-  }, [asks]);
+  const listPrice = selected ? BigInt(selected.reference_blended_micro_per_mtok) : null;
 
   const points = useMemo(() => fillsToPoints(book?.fills ?? []), [book]);
   const points24 = useMemo(() => fillsToPoints(book?.fills ?? [], nowRef.current - 86_400_000), [book]);
@@ -244,76 +235,61 @@ export function Perps({ initialModel }: { initialModel: string }) {
   const last = points.at(-1)?.value ?? null;
   const high = points.length > 0 ? Math.max(...points.map((point) => point.value)) : null;
   const low = points.length > 0 ? Math.min(...points.map((point) => point.value)) : null;
+  const rangeDelta = first !== null && last !== null ? (last - first) / first : null;
 
   const pick = (id: string) => {
     setModel(id);
-    if (picker.current) picker.current.open = false;
     router.replace(`/perps?model=${encodeURIComponent(id)}`, { scroll: false });
   };
 
   const stats: Stat[] = [
-    { label: "mark", value: mark !== null ? formatMicroPerMtok(mark) : "—" },
-    { label: "index", value: index !== null ? formatMicroPerMtok(index) : "—" },
-    { label: "best ask", value: bestAsk !== null ? formatMicroPerMtok(bestAsk) : "—" },
+    { label: "Mark", value: mark !== null ? formatMicroPerMtok(mark) : "—" },
+    { label: "Index", value: index !== null ? formatMicroPerMtok(index) : "—" },
+    { label: "Best ask", value: bestAsk !== null ? formatMicroPerMtok(bestAsk) : "—" },
     {
-      label: "change, 24h",
+      label: "24h change",
       value: delta !== null ? `${delta >= 0 ? "+" : ""}${(delta * 100).toFixed(2)}%` : "—",
       tone: delta === null ? undefined : delta >= 0 ? "up" : "down",
     },
-    { label: "volume, 24h", value: volume24 > 0 ? `${volume24.toFixed(2)} MTok` : "—" },
-    { label: "open interest", value: market ? `${formatMtok(market.longOi)} / ${formatMtok(market.shortOi)} MTok` : "—" },
-    { label: "funding / hour", value: market ? `${(Number(market.fundingRatePerHour) / 1e16).toFixed(4)}%` : "—" },
+    { label: "24h volume", value: volume24 > 0 ? `${volume24.toFixed(2)} MTok` : "—" },
+    { label: "Open interest", value: market ? `${formatMtok(market.longOi)} / ${formatMtok(market.shortOi)} MTok` : "—" },
+    { label: "Funding / hour", value: market ? `${(Number(market.fundingRatePerHour) / 1e16).toFixed(4)}%` : "—" },
   ];
 
   return (
     <section>
-      <h1 className="font-serif text-[50px] leading-[1.05] text-[#1E1E1E]">
-        Pressure what <span className="text-[#A3A3A3]">expires</span>
-      </h1>
-      <p className="mt-4 max-w-[425px] text-[14px] leading-[18px] text-black">
-        Long the compute you will need, or short the credits you will not. Positions settle against
-        the house vault at five times, funded off the same venue fills the spot book prints.
-      </p>
+      <div className="flex flex-wrap items-center gap-x-8 gap-y-3 border border-[#CECECE] bg-white px-4 py-3">
+        <ProfileDropdown
+          accounts={marketRows.map((row) => ({
+            id: row.id,
+            name: row.id,
+            email: row.best_ask_micro_per_mtok
+              ? `${formatMicroPerMtok(BigInt(row.best_ask_micro_per_mtok))} USD / MTok`
+              : "no asks yet",
+            plan: `Perp · ${MAX_LEVERAGE.toString()}x`,
+          }))}
+          defaultAccountId={model}
+          onAccountChange={(entry) => pick(entry.id)}
+          info={{ label: "Available to trade", value: usdc !== null ? formatUsd(usdc) : "—" }}
+          badge={`${MAX_LEVERAGE.toString()}x`}
+        />
 
-      <div className="mt-7 flex flex-wrap items-center justify-between gap-4">
-        <details ref={picker} className="relative">
-          <summary className="flex cursor-pointer list-none items-baseline gap-3 [&::-webkit-details-marker]:hidden">
-            <span>
-              <span className="block text-[15px] font-semibold text-[#1E1E1E]">{model} / USDC</span>
-              <span className={`block text-[11px] ${MUTED}`}>
-                perp · index · {selected?.verifiability ? "TEE · " : ""}
-                {selected ? `${selected.rails.length} rail${selected.rails.length === 1 ? "" : "s"}` : "loading"}
-              </span>
-            </span>
-            <span className="border border-[#CECECE] bg-white px-1.5 py-0.5 text-[11px] tabular-nums text-[#1743FF]">
-              {MAX_LEVERAGE.toString()}x
-            </span>
-            <span aria-hidden className="text-[#757575]">⌄</span>
-          </summary>
-          <ul className="absolute left-0 top-full z-20 mt-1 max-h-80 w-72 overflow-auto border border-[#CECECE] bg-white py-1">
-            {marketRows.map((row) => (
-              <li key={row.id}>
-                <button
-                  type="button"
-                  onClick={() => pick(row.id)}
-                  className={`flex w-full items-center justify-between gap-4 px-3 py-2 text-left text-[14px] hover:bg-[#F5F5F5] ${
-                    row.id === model ? "text-[#1E1E1E]" : "text-[#757575]"
-                  }`}
-                >
-                  <span>{row.id}</span>
-                  <span className="tabular-nums text-[13px] text-[#757575]">
-                    {row.best_ask_micro_per_mtok ? `ask ${formatMicroPerMtok(BigInt(row.best_ask_micro_per_mtok))}` : "no asks"}
-                  </span>
-                </button>
-              </li>
-            ))}
-            {marketRows.length === 0 ? (
-              <li className="px-3 py-2 text-[13px] text-[#757575]">loading markets…</li>
-            ) : null}
-          </ul>
-        </details>
+        <div className="flex flex-wrap items-center gap-x-7 gap-y-2">
+          {stats.map((stat) => (
+            <div key={stat.label}>
+              <p className="text-[11px] leading-4 text-[#757575]">{stat.label}</p>
+              <p
+                className={`text-[14px] font-semibold tabular-nums ${
+                  stat.tone === "up" ? "text-[#2EBD85]" : stat.tone === "down" ? "text-[#F6465D]" : "text-[#1E1E1E]"
+                }`}
+              >
+                {stat.value}
+              </p>
+            </div>
+          ))}
+        </div>
 
-        <div className="flex items-center gap-5 text-[14px]">
+        <div className="ml-auto flex items-center gap-5 text-[14px]">
           {address ? (
             <span className="tabular-nums text-[#1E1E1E]">
               {address.slice(0, 6)}…{address.slice(-4)} ·{" "}
@@ -327,115 +303,71 @@ export function Perps({ initialModel }: { initialModel: string }) {
         </div>
       </div>
 
-      <div className="mt-6 border-t border-[#CECECE] pt-5">
-        <p className="text-[13px] text-[#1E1E1E]">[ live perp book ]</p>
-        <dl className="mt-3 flex flex-wrap gap-x-[26px] gap-y-3">
-          {stats.map((stat) => (
-            <div key={stat.label}>
-              <dt className={`text-[13px] ${MUTED}`}>{stat.label}</dt>
-              <dd
-                className={`text-[13px] tabular-nums ${
-                  stat.tone === "up" ? "text-[#2EBD85]" : stat.tone === "down" ? "text-[#F6465D]" : "text-[#1E1E1E]"
+      {bookFailed ? (
+        <p className="mt-2 text-[13px] text-[#F6465D]">
+          {bookFailed === "unknown"
+            ? `the venue does not know ${model} — pick another model above`
+            : "the book feed is unreachable; retrying every 15 seconds"}
+        </p>
+      ) : null}
+
+      <div className={`mt-5 grid gap-[17px] ${expanded ? "" : "lg:grid-cols-[minmax(0,1fr)_250px_290px]"}`}>
+        <div className="flex flex-col self-start border border-[#CECECE] bg-white lg:h-[calc(100svh-277px)] lg:min-h-[423px]">
+          <div className="flex items-center gap-5 border-b border-[#D9D9D9] px-4 py-2.5 text-[14px]">
+            {(["Chart", "Funding"] as const).map((item) => (
+              <button
+                key={item}
+                type="button"
+                onClick={() => setChartTab(item)}
+                aria-pressed={chartTab === item}
+                className={`${
+                  chartTab === item
+                    ? "font-semibold text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
+                    : "text-[#757575] hover:text-[#1E1E1E]"
                 }`}
               >
-                {stat.value}
-              </dd>
-            </div>
-          ))}
-        </dl>
-        {bookFailed ? (
-          <p className="mt-2 text-[13px] text-[#F6465D]">
-            {bookFailed === "unknown"
-              ? `the venue does not know ${model} — pick another model above`
-              : "the book feed is unreachable; retrying every 15 seconds"}
-          </p>
-        ) : null}
-      </div>
-
-      <div className="mt-5 grid gap-[17px] lg:grid-cols-[1fr_300px]">
-        <div className="border border-[#CECECE] bg-[#EBEBEB] p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex gap-5">
-              {(["Chart", "Funding"] as const).map((item) => (
-                <button
-                  key={item}
-                  type="button"
-                  onClick={() => setChartTab(item)}
-                  aria-pressed={chartTab === item}
-                  className={`text-[14px] ${
-                    chartTab === item
-                      ? "text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
-                      : "text-[#757575] hover:text-[#1E1E1E]"
-                  }`}
-                >
-                  {item}
-                </button>
-              ))}
-            </div>
-            {chartTab === "Chart" ? (
-              <div role="group" aria-label="candle interval" className="flex gap-5">
-                {INTERVALS.map((item) => (
-                  <button
-                    key={item.label}
-                    type="button"
-                    onClick={() => setBucket(item.seconds)}
-                    aria-pressed={bucket === item.seconds}
-                    className={`text-[14px] ${
-                      bucket === item.seconds
-                        ? "text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
-                        : "text-[#757575] hover:text-[#1E1E1E]"
-                    }`}
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-            ) : null}
+                {item}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => setExpanded(!expanded)}
+              aria-pressed={expanded}
+              className="ml-auto text-[13px] text-[#1743FF] hover:underline"
+              aria-label={expanded ? "show the ticket" : "expand the chart"}
+            >
+              {expanded ? "show the ticket" : "expand"}
+            </button>
           </div>
 
           {chartTab === "Chart" ? (
             <>
-              <div className={`flex flex-wrap gap-x-4 gap-y-0.5 pt-3 text-[13px] ${MUTED}`}>
-                <span className="text-[#1E1E1E]">
-                  {model} · spot fills
-                  <span
-                    aria-hidden
-                    className={`ml-2 inline-block h-[7px] w-[7px] rounded-full ${bookFailed === null ? "bg-[#2EBD85]" : "bg-[#C9C9C9]"}`}
-                  />
-                </span>
-                {points.length > 0 ? (
-                  <>
-                    <span>
-                      first <span className="tabular-nums text-[#1E1E1E]">{first?.toFixed(4)}</span>
-                    </span>
-                    <span>
-                      high <span className="tabular-nums text-[#1E1E1E]">{high?.toFixed(4)}</span>
-                    </span>
-                    <span>
-                      low <span className="tabular-nums text-[#1E1E1E]">{low?.toFixed(4)}</span>
-                    </span>
-                    <span>
-                      last <span className="tabular-nums text-[#1E1E1E]">{last?.toFixed(4)}</span>
-                    </span>
-                  </>
-                ) : null}
-              </div>
-
-              <FillsChart
-                points={points}
-                bucket={bucket}
-                scale={scale}
-                emptyNote="waiting for the first index post — the venue's fills seed the curve"
-              />
-
-              <div className="flex flex-wrap items-center gap-5 pt-1">
+              <div className="flex flex-wrap items-center gap-5 px-4 py-2 text-[14px]">
+                <div role="group" aria-label="candle interval" className="flex gap-5">
+                  {INTERVALS.map((item) => (
+                    <button
+                      key={item.label}
+                      type="button"
+                      onClick={() => setBucket(item.seconds)}
+                      aria-pressed={bucket === item.seconds}
+                      className={`${
+                        bucket === item.seconds
+                          ? "text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
+                          : "text-[#757575] hover:text-[#1E1E1E]"
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+                <span aria-hidden className="h-4 w-px bg-[#D9D9D9]" />
                 {(["percent", "log"] as const).map((mode) => (
                   <button
                     key={mode}
                     type="button"
                     onClick={() => setScale(scale === mode ? "linear" : mode)}
                     aria-pressed={scale === mode}
-                    className={`text-[14px] ${
+                    className={`${
                       scale === mode
                         ? "text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
                         : "text-[#757575] hover:text-[#1E1E1E]"
@@ -446,9 +378,49 @@ export function Perps({ initialModel }: { initialModel: string }) {
                 ))}
                 <span className={`ml-auto text-[13px] tabular-nums ${MUTED}`}>{clock ?? "--:--:--"} UTC</span>
               </div>
+
+              <div className={`flex flex-wrap gap-x-4 gap-y-0.5 px-4 pb-1 text-[13px] ${MUTED}`}>
+                <span className="text-[#1E1E1E]">
+                  {model} · spot fills
+                  <span
+                    aria-hidden
+                    className={`ml-2 inline-block h-[7px] w-[7px] rounded-full ${bookFailed === null ? "bg-[#2EBD85]" : "bg-[#C9C9C9]"}`}
+                  />
+                </span>
+                {points.length > 0 ? (
+                  <>
+                    <span>
+                      O <span className="tabular-nums text-[#1E1E1E]">{first?.toFixed(4)}</span>
+                    </span>
+                    <span>
+                      H <span className="tabular-nums text-[#1E1E1E]">{high?.toFixed(4)}</span>
+                    </span>
+                    <span>
+                      L <span className="tabular-nums text-[#1E1E1E]">{low?.toFixed(4)}</span>
+                    </span>
+                    <span>
+                      C <span className="tabular-nums text-[#1E1E1E]">{last?.toFixed(4)}</span>
+                    </span>
+                    {rangeDelta !== null ? (
+                      <span className={`tabular-nums ${rangeDelta >= 0 ? "text-[#2EBD85]" : "text-[#F6465D]"}`}>
+                        ({rangeDelta >= 0 ? "+" : ""}
+                        {(rangeDelta * 100).toFixed(2)}%)
+                      </span>
+                    ) : null}
+                  </>
+                ) : null}
+              </div>
+
+              <FillsChart
+                points={points}
+                bucket={bucket}
+                scale={scale}
+                emptyNote="waiting for the first index post — the venue's fills seed the curve"
+                className="h-[calc(100svh-380px)] min-h-[320px]"
+              />
             </>
           ) : (
-            <div className="pt-4">
+            <div className="min-h-0 flex-1 overflow-auto p-4">
               <p className="text-[13px] text-[#1E1E1E]">[ funding on skew ]</p>
               <p className="mt-3 max-w-xl text-[14px] leading-5 text-[#1E1E1E]">
                 Longs pay shorts when the book leans long, the other way when it leans short. The
@@ -466,305 +438,209 @@ export function Perps({ initialModel }: { initialModel: string }) {
               <p className={`mt-4 text-[13px] leading-5 ${MUTED}`}>{PARAMS}</p>
             </div>
           )}
+        </div>
 
-          <div className="mt-5 border-t border-[#D9D9D9] pt-4">
-            <div className="flex items-center justify-between">
-              <h2 className="font-serif text-[22px] leading-tight text-[#1E1E1E]">
-                {bookTab === "Order Book" ? "Ask book" : "Fill tape"}
-              </h2>
-              <div className="flex gap-4">
-                {BOOK_TABS.map((item) => (
+        {!expanded && (
+          <>
+            <OrderBook book={book} model={model} listPrice={listPrice} />
+
+            <div className="flex flex-col self-start border border-[#CECECE] bg-white lg:h-[calc(100svh-277px)] lg:min-h-[423px]">
+              <div className="flex shrink-0 border-b border-[#D9D9D9]">
+                {(["long", "short"] as const).map((item) => (
                   <button
                     key={item}
                     type="button"
-                    onClick={() => setBookTab(item)}
-                    aria-pressed={bookTab === item}
-                    className={`text-[14px] ${
-                      bookTab === item
-                        ? "text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
-                        : "text-[#757575] hover:text-[#1E1E1E]"
+                    onClick={() => setSide(item)}
+                    aria-pressed={side === item}
+                    className={`w-1/2 py-2 text-[14px] font-semibold ${item === "short" ? "border-l border-[#CECECE]" : ""} ${
+                      side === item ? "bg-black text-white" : "text-[#757575] hover:text-[#1E1E1E]"
                     }`}
                   >
-                    {item === "Order Book" ? "Order book" : "Trades"}
+                    {item === "long" ? "Long" : "Short"}
                   </button>
                 ))}
               </div>
-            </div>
 
-            {bookTab === "Order Book" ? (
-              <>
-                <div className="mt-3">
-                  {asks.length === 0 ? (
-                    <p className="border-t border-[#D9D9D9] py-6 text-center text-[14px] text-[#757575]">
-                      no asks yet for {model}
-                    </p>
-                  ) : (
-                    <>
-                      <div className={`grid grid-cols-[1.1fr_1fr_1fr_2.5rem] border-t border-[#D9D9D9] py-2 text-[12px] ${MUTED}`}>
-                        <span>Price</span>
-                        <span className="text-right">Size</span>
-                        <span className="text-right">Total</span>
-                        <span className="text-right">Rail</span>
-                      </div>
-                      {ladderRows.map(({ ask, total }) => (
-                        <div
-                          key={ask.listing_id}
-                          className="relative grid grid-cols-[1.1fr_1fr_1fr_2.5rem] border-t border-[#D9D9D9] py-3 text-[13px]"
-                          style={{
-                            background: `linear-gradient(90deg, rgba(23, 67, 255, ${(Number(total) / Number(depth === 0n ? 1n : depth)) * 0.08}), rgba(23, 67, 255, 0) 100%)`,
-                          }}
-                        >
-                          <span className="tabular-nums text-[#1E1E1E]">
-                            {formatMicroPerMtok(BigInt(ask.price_micro_per_mtok))}
-                            <span className={`ml-1.5 text-[12px] ${MUTED}`}>USD / MTok</span>
-                          </span>
-                          <span className="text-right tabular-nums text-[#757575]">{formatMtok(BigInt(ask.tokens_left))}</span>
-                          <span className="text-right tabular-nums text-[#757575]">{formatMtok(total)}</span>
-                          <span className={`truncate text-right text-[13px] ${ask.verifiable ? "text-[#1743FF]" : MUTED}`}>
-                            {ask.rail}
-                          </span>
-                        </div>
-                      ))}
-                    </>
-                  )}
+              <div className="min-h-0 flex-1 space-y-4 overflow-auto p-4">
+                <div className="flex justify-between text-[14px]">
+                  <span className={MUTED}>Available to trade</span>
+                  <span className="tabular-nums text-[#1E1E1E]">{usdc !== null ? formatUsd(usdc) : "—"}</span>
                 </div>
-                <p className={`border-t border-[#D9D9D9] pt-3 text-[13px] ${MUTED}`}>
-                  asks only — buy side clears the ladder. best ask {bestAsk !== null ? formatMicroPerMtok(bestAsk) : "—"} ·
-                  depth {formatMtok(depth)} MTok
-                </p>
-              </>
-            ) : (
-              <div className="mt-3">
-                {(book?.fills.length ?? 0) === 0 ? (
-                  <p className="border-t border-[#D9D9D9] py-6 text-center text-[14px] text-[#757575]">
-                    the venue has not printed a fill for {model} yet
-                  </p>
-                ) : (
-                  book?.fills.map((fill) => (
-                    <div
-                      key={`${fill.listing_id}-${fill.created_at}`}
-                      className="flex items-baseline justify-between gap-4 border-t border-[#D9D9D9] py-3"
+                <div className="flex justify-between text-[14px]">
+                  <span className={MUTED}>Current position</span>
+                  <span className="tabular-nums text-[#1E1E1E]">
+                    {current
+                      ? `${current.size > 0n ? "long" : "short"} ${formatMtok(current.size < 0n ? -current.size : current.size)} MTok`
+                      : "none"}
+                  </span>
+                </div>
+
+                <label className="block">
+                  <span className={`mb-1 block text-[13px] ${MUTED}`}>Size, in MTokens</span>
+                  <span className="flex items-center gap-2 border border-[#CECECE] bg-white px-2.5 focus-within:border-[#1743FF]">
+                    <input
+                      value={size}
+                      onChange={(event) => setSize(event.target.value)}
+                      inputMode="numeric"
+                      placeholder="10"
+                      className="h-[34px] w-full bg-transparent text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9]"
+                    />
+                    <span className={`text-[12px] ${MUTED}`}>MTok</span>
+                  </span>
+                </label>
+
+                <div className="flex items-center gap-3">
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={sliderPct}
+                    onChange={(event) => setSize(formatMtok((BigInt(event.target.value) * usableDepth) / 100n))}
+                    aria-label="size as a percent of displayed depth"
+                    className="h-1 w-full accent-[#1743FF]"
+                  />
+                  <span className={`shrink-0 whitespace-nowrap text-right text-[12px] leading-4 tabular-nums ${MUTED}`}>
+                    {sliderPct}% of depth
+                  </span>
+                </div>
+
+                <div className="flex gap-5">
+                  {PRESETS.map((preset) => (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      onClick={() => setSize(preset.value)}
+                      className={`text-[14px] ${
+                        size === preset.value
+                          ? "text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
+                          : "text-[#757575] hover:text-[#1E1E1E]"
+                      }`}
                     >
-                      <span className={`text-[13px] tabular-nums ${MUTED}`}>{clockFormat.format(new Date(fill.created_at))}</span>
-                      <span className="text-[14px] tabular-nums text-[#1E1E1E]">
-                        {formatMicroPerMtok(BigInt(fill.price_micro_per_mtok))}
-                        <span className={`ml-1.5 text-[12px] ${MUTED}`}>USD / MTok</span>
-                      </span>
-                      <span className={`text-[13px] tabular-nums ${MUTED}`}>{formatMtok(BigInt(fill.tokens))} MTok</span>
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
 
-            <p className={`mt-3 border-t border-[#D9D9D9] pt-3 text-[13px] ${MUTED}`}>
-              spot book · seeds the index the perp clears against
-            </p>
-          </div>
-        </div>
-
-        <div className="border border-[#CECECE] bg-[#EBEBEB] p-4">
-          <div className="flex border border-[#CECECE] bg-white">
-            <button
-              type="button"
-              onClick={() => setSide("long")}
-              aria-pressed={side === "long"}
-              className={`w-1/2 py-2 text-[14px] font-semibold ${
-                side === "long" ? "bg-black text-white" : "text-[#757575] hover:text-[#1E1E1E]"
-              }`}
-            >
-              Long
-            </button>
-            <button
-              type="button"
-              onClick={() => setSide("short")}
-              aria-pressed={side === "short"}
-              className={`w-1/2 border-l border-[#CECECE] py-2 text-[14px] font-semibold ${
-                side === "short" ? "bg-black text-white" : "text-[#757575] hover:text-[#1E1E1E]"
-              }`}
-            >
-              Short
-            </button>
-          </div>
-
-          <div className="mt-4 space-y-4">
-            <div className="flex justify-between text-[14px]">
-              <span className={MUTED}>Available to trade</span>
-              <span className="tabular-nums text-[#1E1E1E]">{usdc !== null ? formatUsd(usdc) : "—"}</span>
-            </div>
-            <div className="flex justify-between text-[14px]">
-              <span className={MUTED}>Current position</span>
-              <span className="tabular-nums text-[#1E1E1E]">
-                {current
-                  ? `${current.size > 0n ? "long" : "short"} ${formatMtok(current.size < 0n ? -current.size : current.size)} MTok`
-                  : "none"}
-              </span>
-            </div>
-
-            <label className="block">
-              <span className={`mb-1 block text-[13px] ${MUTED}`}>Size, in MTokens</span>
-              <span className="flex items-center gap-2 border border-[#CECECE] bg-white px-2.5 focus-within:border-[#1743FF]">
-                <input
-                  value={size}
-                  onChange={(event) => setSize(event.target.value)}
-                  inputMode="numeric"
-                  placeholder="10"
-                  className="h-[34px] w-full bg-transparent text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9]"
-                />
-                <span className={`text-[12px] ${MUTED}`}>MTok</span>
-              </span>
-            </label>
-
-            <div className="flex items-center gap-3">
-              <input
-                type="range"
-                min={0}
-                max={100}
-                step={1}
-                value={sliderPct}
-                onChange={(event) => setSize(formatMtok((BigInt(event.target.value) * usableDepth) / 100n))}
-                aria-label="size as a percent of displayed depth"
-                className="h-1 w-full accent-[#1743FF]"
-              />
-              <span className={`shrink-0 whitespace-nowrap text-right text-[12px] leading-4 tabular-nums ${MUTED}`}>
-                {sliderPct}% of depth
-              </span>
-            </div>
-
-            <div className="flex gap-5">
-              {PRESETS.map((preset) => (
-                <button
-                  key={preset.label}
-                  type="button"
-                  onClick={() => setSize(preset.value)}
-                  className={`text-[14px] ${
-                    size === preset.value
-                      ? "text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
-                      : "text-[#757575] hover:text-[#1E1E1E]"
-                  }`}
-                >
-                  {preset.label}
-                </button>
-              ))}
-            </div>
-
-            <dl className="border-t border-[#D9D9D9]">
-              <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
-                <dt className={MUTED}>Liquidation price, est</dt>
-                <dd className="tabular-nums text-[#1E1E1E]">{liqPreview > 0n ? formatMicroPerMtok(liqPreview) : "—"}</dd>
-              </div>
-              <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
-                <dt className={MUTED}>Order value</dt>
-                <dd className="tabular-nums text-[#1E1E1E]">{orderValue > 0n ? formatUsd(orderValue) : "—"}</dd>
-              </div>
-              <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
-                <dt className={MUTED}>Margin required · {MAX_LEVERAGE.toString()}x</dt>
-                <dd className="tabular-nums text-[#1E1E1E]">{margin > 0n ? formatUsd(margin) : plan.length > 0 ? "none" : "—"}</dd>
-              </div>
-              <div className="flex justify-between py-3">
-                <dt className="text-[15px] font-semibold text-[#1E1E1E]">Venue fee</dt>
-                <dd className="text-[15px] font-semibold tabular-nums text-[#1E1E1E]">10 bps of notional</dd>
-              </div>
-            </dl>
-
-            {!authenticated || !address ? (
-              <button
-                type="button"
-                disabled={!ready}
-                onClick={() => login()}
-                className="h-[34px] w-full rounded-[6px] bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4]"
-              >
-                Connect wallet
-              </button>
-            ) : chainId !== galileo.id ? (
-              <button
-                type="button"
-                onClick={() => void switchChain({ chainId: galileo.id })}
-                className="h-[34px] w-full rounded-[6px] bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E]"
-              >
-                Switch to 0G Galileo
-              </button>
-            ) : (
-              <button
-                type="button"
-                disabled={!wallet || pending || stale || plan.length === 0 || (usdc ?? 0n) < margin || gas === 0n}
-                onClick={() => {
-                  if (!wallet) return;
-                  void send(async () => {
-                    let hash: Hash | null = null;
-                    for (const leg of plan) {
-                      if (hash && (await publicClient().waitForTransactionReceipt({ hash })).status !== "success") {
-                        throw new Error("closing the position reverted; nothing was opened");
-                      }
-                      hash = await modify(wallet, model, leg.sizeDelta, leg.margin);
-                    }
-                    if (!hash) throw new Error("enter a size");
-                    return hash;
-                  });
-                }}
-                className="h-[34px] w-full rounded-[6px] bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4] disabled:text-white"
-              >
-                {pending ? "Confirming…" : action}
-              </button>
-            )}
-            <p className={`text-center text-[13px] ${MUTED}`}>
-              {notice ??
-                (!address
-                  ? "trades sign with your own wallet on 0G Galileo"
-                  : stale
-                    ? asks.length === 0
-                      ? `no spot price for ${model} yet; trading opens once a seller lists it`
-                      : "the index is stale; trading reopens after the keeper's next post"
-                    : gas === 0n
-                      ? "this wallet needs 0G gas: faucet.0g.ai"
-                      : (usdc ?? 0n) < margin
-                        ? "not enough test USDC; mint some below"
-                        : "margin and fee settle in MockUSDC")}
-            </p>
-            {address ? (
-              <button
-                type="button"
-                disabled={!wallet || pending}
-                onClick={() => {
-                  if (wallet) {
-                    void send(() =>
-                      wallet.writeContract({
-                        chain: galileo,
-                        address: addresses().mockUsdc,
-                        abi: mockUsdcAbi,
-                        functionName: "mint",
-                        args: [wallet.account.address, FAUCET_USDC],
-                      }),
-                    );
-                  }
-                }}
-                className="flex h-[34px] w-full items-center justify-center border border-[#CECECE] bg-white text-[13px] text-[#1E1E1E] hover:border-[#1743FF] disabled:text-[#C9C9C9]"
-              >
-                Get 100 test USDC
-              </button>
-            ) : null}
-
-            <div className="border-t border-[#D9D9D9] pt-4">
-              <p className="text-[13px] text-[#1E1E1E]">[ account summary ]</p>
-              <dl className="mt-2">
-                {[
-                  ["Portfolio value", usdc !== null ? formatUsd(usdc + equityTotal) : "$0.00"],
-                  ["Unrealized PNL", held.length > 0 ? signedUsd(pnlTotal) : "—"],
-                  ["Account ratio", "—"],
-                ].map(([label, value]) => (
-                  <div key={label} className="flex justify-between py-1 text-[13px]">
-                    <dt className={MUTED}>{label}</dt>
-                    <dd className="tabular-nums text-[#1E1E1E]">{value}</dd>
+                <dl className="border-t border-[#D9D9D9]">
+                  <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
+                    <dt className={MUTED}>Liquidation price, est</dt>
+                    <dd className="tabular-nums text-[#1E1E1E]">{liqPreview > 0n ? formatMicroPerMtok(liqPreview) : "—"}</dd>
                   </div>
-                ))}
-              </dl>
-              <p className={`mt-2 text-[13px] leading-5 ${MUTED}`}>
-                longs cap tomorrow&apos;s compute cost · shorts lock revenue on expiring credits — settled
-                against the house vault at {MAX_LEVERAGE.toString()}x
-              </p>
+                  <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
+                    <dt className={MUTED}>Order value</dt>
+                    <dd className="tabular-nums text-[#1E1E1E]">{orderValue > 0n ? formatUsd(orderValue) : "—"}</dd>
+                  </div>
+                  <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
+                    <dt className={MUTED}>Margin required · {MAX_LEVERAGE.toString()}x</dt>
+                    <dd className="tabular-nums text-[#1E1E1E]">{margin > 0n ? formatUsd(margin) : plan.length > 0 ? "none" : "—"}</dd>
+                  </div>
+                  <div className="flex justify-between py-3">
+                    <dt className="text-[15px] font-semibold text-[#1E1E1E]">Venue fee</dt>
+                    <dd className="text-[15px] font-semibold tabular-nums text-[#1E1E1E]">10 bps of notional</dd>
+                  </div>
+                </dl>
+
+                {!authenticated || !address ? (
+                  <button
+                    type="button"
+                    disabled={!ready}
+                    onClick={() => login()}
+                    className="h-[34px] w-full rounded-[6px] bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4]"
+                  >
+                    Connect wallet
+                  </button>
+                ) : chainId !== galileo.id ? (
+                  <button
+                    type="button"
+                    onClick={() => void switchChain({ chainId: galileo.id })}
+                    className="h-[34px] w-full rounded-[6px] bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E]"
+                  >
+                    Switch to 0G Galileo
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={!wallet || pending || stale || plan.length === 0 || (usdc ?? 0n) < margin || gas === 0n}
+                    onClick={() => {
+                      if (!wallet) return;
+                      void send(async () => {
+                        let hash: Hash | null = null;
+                        for (const leg of plan) {
+                          if (hash && (await publicClient().waitForTransactionReceipt({ hash })).status !== "success") {
+                            throw new Error("closing the position reverted; nothing was opened");
+                          }
+                          hash = await modify(wallet, model, leg.sizeDelta, leg.margin);
+                        }
+                        if (!hash) throw new Error("enter a size");
+                        return hash;
+                      });
+                    }}
+                    className="h-[34px] w-full rounded-[6px] bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4] disabled:text-white"
+                  >
+                    {pending ? "Confirming…" : action}
+                  </button>
+                )}
+                <p className={`text-center text-[13px] ${MUTED}`}>
+                  {notice ??
+                    (!address
+                      ? "trades sign with your own wallet on 0G Galileo"
+                      : stale
+                        ? asks.length === 0
+                          ? `no spot price for ${model} yet; trading opens once a seller lists it`
+                          : "the index is stale; trading reopens after the keeper's next post"
+                        : gas === 0n
+                          ? "this wallet needs 0G gas: faucet.0g.ai"
+                          : (usdc ?? 0n) < margin
+                            ? "not enough test USDC; mint some below"
+                            : "margin and fee settle in MockUSDC")}
+                </p>
+                {address ? (
+                  <button
+                    type="button"
+                    disabled={!wallet || pending}
+                    onClick={() => {
+                      if (wallet) {
+                        void send(() =>
+                          wallet.writeContract({
+                            chain: galileo,
+                            address: addresses().mockUsdc,
+                            abi: mockUsdcAbi,
+                            functionName: "mint",
+                            args: [wallet.account.address, FAUCET_USDC],
+                          }),
+                        );
+                      }
+                    }}
+                    className="flex h-[34px] w-full items-center justify-center border border-[#CECECE] bg-white text-[13px] text-[#1E1E1E] hover:border-[#1743FF] disabled:text-[#C9C9C9]"
+                  >
+                    Get 100 test USDC
+                  </button>
+                ) : null}
+
+                <div className="border-t border-[#D9D9D9] pt-4">
+                  <p className="text-[13px] text-[#1E1E1E]">[ account summary ]</p>
+                  <dl className="mt-2">
+                    {[
+                      ["Portfolio value", usdc !== null ? formatUsd(usdc + equityTotal) : "$0.00"],
+                      ["Unrealized PNL", held.length > 0 ? signedUsd(pnlTotal) : "—"],
+                      ["Account ratio", "—"],
+                    ].map(([label, value]) => (
+                      <div key={label} className="flex justify-between py-1 text-[13px]">
+                        <dt className={MUTED}>{label}</dt>
+                        <dd className="tabular-nums text-[#1E1E1E]">{value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                  <p className={`mt-2 text-[13px] leading-5 ${MUTED}`}>
+                    longs cap tomorrow&apos;s compute cost · shorts lock revenue on expiring credits — settled
+                    against the house vault at {MAX_LEVERAGE.toString()}x
+                  </p>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
+          </>
+        )}
       </div>
 
       <div className="mt-10 border-t border-[#CECECE] pt-8">
@@ -930,43 +806,45 @@ export function Perps({ initialModel }: { initialModel: string }) {
                     : "Connect a wallet to see its trades."}
                 </p>
               ) : (
-                history.map((fill) => {
-                  const change = BigInt(fill.size_change);
-                  const pnl = BigInt(fill.realized_pnl_usd_micro);
-                  const price = BigInt(fill.price_micro_per_mtok);
-                  return (
-                    <div
-                      key={`${fill.tx_hash}:${fill.kind}`}
-                      className="grid grid-cols-3 gap-y-1 border-t border-[#CECECE] py-3 text-[13px] tabular-nums text-[#1E1E1E] md:grid-cols-6"
-                    >
-                      <a
-                        href={`${galileo.blockExplorers.default.url}/tx/${fill.tx_hash}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className={`pr-2 hover:underline ${MUTED}`}
+                <div className="max-h-[225px] overflow-y-auto">
+                  {history.map((fill) => {
+                    const change = BigInt(fill.size_change);
+                    const pnl = BigInt(fill.realized_pnl_usd_micro);
+                    const price = BigInt(fill.price_micro_per_mtok);
+                    return (
+                      <div
+                        key={`${fill.tx_hash}:${fill.kind}`}
+                        className="grid grid-cols-3 gap-y-1 border-t border-[#CECECE] py-3 text-[13px] tabular-nums text-[#1E1E1E] md:grid-cols-6"
                       >
-                        {stampFormat.format(new Date(fill.at))}
-                      </a>
-                      <span className="pr-2">
-                        {fill.model}
-                        {fill.kind === "liquidate" ? <span className="ml-1.5 text-[#F6465D]">liquidated</span> : null}
-                      </span>
-                      <span className={`text-right ${change > 0n ? "text-[#2EBD85]" : change < 0n ? "text-[#F6465D]" : ""}`}>
-                        {change > 0n ? "+" : change < 0n ? "−" : ""}
-                        {formatMtok(change < 0n ? -change : change)} MTok
-                      </span>
-                      <span className="text-right">{price > 0n ? formatMicroPerMtok(price) : "—"}</span>
-                      <span className={`text-right ${pnl > 0n ? "text-[#2EBD85]" : pnl < 0n ? "text-[#F6465D]" : ""}`}>
-                        {pnl === 0n ? "—" : signedUsd(pnl)}
-                      </span>
-                      <span className="text-right">
-                        {fill.kind === "liquidate"
-                          ? `reward ${formatUsd(BigInt(fill.reward_usd_micro))}`
-                          : formatUsd(BigInt(fill.fee_usd_micro))}
-                      </span>
-                    </div>
-                  );
-                })
+                        <a
+                          href={`${galileo.blockExplorers.default.url}/tx/${fill.tx_hash}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className={`pr-2 hover:underline ${MUTED}`}
+                        >
+                          {stampFormat.format(new Date(fill.at))}
+                        </a>
+                        <span className="pr-2">
+                          {fill.model}
+                          {fill.kind === "liquidate" ? <span className="ml-1.5 text-[#F6465D]">liquidated</span> : null}
+                        </span>
+                        <span className={`text-right ${change > 0n ? "text-[#2EBD85]" : change < 0n ? "text-[#F6465D]" : ""}`}>
+                          {change > 0n ? "+" : change < 0n ? "−" : ""}
+                          {formatMtok(change < 0n ? -change : change)} MTok
+                        </span>
+                        <span className="text-right">{price > 0n ? formatMicroPerMtok(price) : "—"}</span>
+                        <span className={`text-right ${pnl > 0n ? "text-[#2EBD85]" : pnl < 0n ? "text-[#F6465D]" : ""}`}>
+                          {pnl === 0n ? "—" : signedUsd(pnl)}
+                        </span>
+                        <span className="text-right">
+                          {fill.kind === "liquidate"
+                            ? `reward ${formatUsd(BigInt(fill.reward_usd_micro))}`
+                            : formatUsd(BigInt(fill.fee_usd_micro))}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </>
           ) : null}
