@@ -33,6 +33,15 @@ export function scheduleExpiry(day: string, nowMs: number): Date {
   return new Date(Math.max(payAt(day).getTime(), nowMs + LATE_PAYOUT_MS));
 }
 
+export async function scheduleSlot(payoutId: string, day: string, nowMs: number): Promise<Date | null> {
+  const [row] = await db()
+    .update(payouts)
+    .set({ executeAt: sql`coalesce(${payouts.executeAt}, ${scheduleExpiry(day, nowMs).toISOString()}::timestamptz)` })
+    .where(and(eq(payouts.id, payoutId), eq(payouts.status, "pending")))
+    .returning({ executeAt: payouts.executeAt });
+  return row?.executeAt ?? null;
+}
+
 function mirrorUrl(path: string): URL {
   return new URL(path, process.env.MIRROR_NODE_URL ?? "https://testnet.mirrornode.hedera.com");
 }
@@ -160,7 +169,12 @@ export async function payPending(): Promise<string[]> {
   for (const row of rows) {
     try {
       const account = row.hederaAccount ?? (await ensureAccount(row.sellerId, row.address));
-      const expiresAt = scheduleExpiry(row.day, Date.now());
+      const expiresAt = await scheduleSlot(row.id, row.day, Date.now());
+      if (!expiresAt) continue;
+      if (expiresAt.getTime() <= Date.now()) {
+        lines.push(`[payout] ${row.id}: still pending after its ${expiresAt.toISOString()} slot, needs an operator`);
+        continue;
+      }
       const scheduleId = await schedulePayout(row.id, expiresAt, row.amount, account);
       await db()
         .update(payouts)

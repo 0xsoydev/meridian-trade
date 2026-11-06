@@ -106,6 +106,7 @@ export const payouts = pgTable(
     day: date("day", { mode: "string" }).notNull(),
     amountUsdMicro: bigint("amount_usd_micro", { mode: "bigint" }).notNull(),
     scheduleId: text("schedule_id"),
+    executeAt: timestamp("execute_at", { withTimezone: true }),
     status: text("status").notNull(),
     createdAt: createdAt(),
   },
