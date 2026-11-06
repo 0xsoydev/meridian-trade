@@ -256,6 +256,7 @@ Missing usage (client abort, upstream break, deadline abort): `mixedTokens(estim
 | `prepaid` | `id uuid pk`, `key_id fk`, `listing_id fk`, `model text`, `tokens_remaining bigint`, `expires_at timestamptz null`, `created_at` | `tokens_remaining >= 0`; index `(key_id, model, expires_at)` |
 | `bids` | `id uuid pk`, `key_id fk`, `model text`, `price_micro_per_mtok bigint`, `tokens bigint` (unfilled), `hold_usd_micro bigint`, `status text`, `created_at` | `status in ('open','filled','cancelled')`; `price > 0`; `tokens, hold >= 0`; index `(model, status, price)`, `(key_id, status)` |
 | `payouts` | `id uuid pk`, `seller_id fk`, `day date`, `amount_usd_micro bigint`, `schedule_id text null`, `execute_at timestamptz null`, `status text`, `created_at` | unique `(seller_id, day)`; `status in ('pending','scheduled','executed','cancelled')` |
+| `perp_events` | `tx_hash text`, `log_index integer`, `account text` (lowercase), `model text`, `kind text`, `size bigint` (after the event), `margin bigint`, `price bigint`, `realized_pnl bigint`, `fee bigint`, `reward bigint`, `block bigint`, `at timestamptz` | pk `(tx_hash, log_index)`; `kind in ('modify','liquidate')`; index `(account, block)` |
 | `approvals` | `id uuid pk`, `key_id fk`, `kind text`, `cap_usd_micro bigint null`, `device_code_ciphertext text`, `user_code text`, `verification_uri_complete text`, `interval_s int`, `expires_at`, `status text`, `created_at` | `kind in ('link_human','raise_cap')`; `status in ('pending','approved','denied','expired')` |
 
 Each request attempt writes one `usage` row: `open` at reservation, then closed exactly once as `settled` or `released` (§9, 11a). A `trades` row is a spot fill: capacity taken, money moved, a price observed. A request covered from prepaid writes a `usage` row with `charge_usd_micro = 0` and leaves listing capacity alone, because the fill already took it.
@@ -340,6 +341,7 @@ export type ApprovalStatus = { status: "pending" | "approved" | "denied" | "expi
 | GET | `/api/v1/bids?model=` | `Bearer rk_` | — | `{ data: Bid[] }`, the key's open bids | 401 |
 | DELETE | `/api/v1/bids/:id` | `Bearer rk_` | — | `{ bid_id, status, balance_usd_micro }` | 404 |
 | GET | `/api/v1/book?model=` | none | — | `{ asks, fills }` | 404 |
+| GET | `/api/v1/perps/history?account=0x…` | none | — | `{ data: PerpFill[] }`, the account's last 100 perp trades and liquidations, newest first | 400 |
 | GET | `/api/v1/models` | none | — | `{ object: "list", data: ModelRow[] }`, the OpenAI list shape | — |
 | GET | `/api/v1/balance` | `Bearer rk_` | — | `Balance` | 401 |
 | PATCH | `/api/v1/keys/settings` | `Bearer rk_` | `KeySettings` | `Balance` | 403 `approval_required` when raising the cap |
@@ -489,7 +491,7 @@ export function routerKey(request: Request): Promise<KeyRow | null>;
    - No fills → effective best ask → else `marketPrice(null, reference, rail)`; `null` means the market has no bid.
    - `index = clamp(twap, blended(reference(model)!.pricing)/10, blended(reference(model)!.pricing))`. The floor sits at a tenth of list, so a deep spot discount moves the index instead of pinning it at half of list.
    - Post when `|Δ| ≥ 10 bps` or 5 min since last post (inside the 600 s staleness window): `IndexOracle.post(market, index, seqFrom, seqTo)`. Each post moves at most `MAX_MOVE_BPS` from the last posted price, so a large move converges over successive posts instead of reverting.
-3. Every 30 s: accounts from `PositionModified` logs; `canLiquidate` → `liquidate`.
+3. Every 30 s, scan at most 30 chunks of 2,000 blocks of `PositionModified` and `Liquidated` logs into `perp_events` (`on conflict do nothing`). A liquidation's price is the last `IndexPosted` for its market in the 2,000 blocks before it. A restart resumes after the last recorded block, with the recorded accounts already tracked. Then `canLiquidate` → `liquidate` for every tracked account.
 
 ```ts
 export type Rollup = {
@@ -509,6 +511,12 @@ export type Rollup = {
 ### 10.8 Perps (frontend)
 
 Approve MockUSDC → `modify(market, sizeDelta, marginDelta)`. Position panel reads `positions` and `equity`; liquidation price shown client-side from the same formulas. Testnet faucet: `MockUSDC.mint` (cap 1,000 USDC per call).
+
+- `orderPlan(current, delta)` in `lib/perp.ts` splits an order. An open or an add is one leg with `openMargin`, and a reduce or a close is one leg with no margin. An order that crosses zero, which the contract refuses with `FlipNotAllowed`, becomes a close and then an open of the rest, sent only after the close confirms. The button names the result: "Close 4 long, short 6 MTok".
+- `positionAfter` previews the position an order leaves: funding settled, the fee, realized PnL on a reduce, the size-weighted entry on an add. The ticket shows that position's liquidation price.
+- Positions rows carry leverage (`notional / equity`) and an inline margin editor: `modify(market, 0, ±amount)`, removal capped at `equity − notional / maxLeverage` and at the settled margin.
+- Trade History reads `/api/v1/perps/history`: time, market, size change, price, realized PnL, fee, and liquidations with the margin lost and the liquidator's reward.
+- A stale index on a market with no ask reads "no spot price for this model yet", because the keeper has nothing to post.
 
 ### 10.9 Subscription OAuth rails (`lib/oauth.ts`)
 
@@ -690,7 +698,7 @@ type AgentEnv = {
 |---|---|---|---|
 | `/` | everyone | Markets overview and the way in: model, rails, verifiability, best ask, index, discount, 24 h volume, links to `/trade?model=` and `/perps?model=` | DB + `IndexOracle.latest` |
 | `/trade` | spot buyers and sellers | Model picker (`?model=`). **Buy**: the order book, asks with price, MTokens left, rail and verifiability and bids in green under them; size input; an optional limit price, where blank buys at market and a price fills what it can and rests the rest as a bid, with a note saying which will happen and a limit above the list price refused; fee, the amount held for the bid and the total; your open bids with cancel; recent fills, charted as 1m, 5m, 15m or 1h candles from the last 50 fills; a short balance on a wallet key is paid from that wallet in Hedera USDC, up to 20 USD, before the buy. **Sell**: from the connected seller wallet, your own asks with amend price, capacity and cancel, and a limit sell (price, size) placed with a key already stored on one of your listings on a rail that serves the model; a link to `/sell` only when the wallet is not a verified seller or has no such key | `GET /api/v1/book`, `POST /api/v1/trades`, `PATCH`/`DELETE /api/listings/:id` |
-| `/perps` | traders | Model picker (`?model=`). Index chart and mark price, current funding rate, long/short with size, leverage and margin, previewed liquidation price, Positions tab across all models, MockUSDC balance and faucet, connect-wallet state | `IndexPosted` logs (viem `getLogs`), `PerpMarket` reads, wagmi |
+| `/perps` | traders | Market picker (`?model=`, the listed perp markets only). Index chart and mark price, current funding rate, long/short with size, leverage and margin, flips as close then open, previewed liquidation price of the resulting position. Positions tab across all markets with leverage, margin add and remove, and close. Trade History tab. MockUSDC balance and faucet, connect-wallet state | `IndexPosted` logs (viem `getLogs`), `PerpMarket` reads, `/api/v1/perps/history`, wagmi |
 | `/sell` | sellers, once | Wallet → World verify → source picker (API key or Connect Claude Code / Codex) → new listing → earnings and payouts (HashScan). Setup and accounting, not trading | API, DB |
 | `/keys` | a human buyer | Connect a wallet → sign once to create a router key → list keys, deposit panel (deposit from the key's wallet, or treasury, memo = key id, amount, tx id), balance, auto top-up, daily cap, default model, link human (QR via `qrcode`). Pasting an agent's key still works | `/api/v1/keys`, `/api/v1/keys/deposit`, `/api/v1/*` |
 | `/receipts` | judges | HCS rollups, top-ups (HashScan), index posts (chainscan), "recompute index" from mirror in the browser | mirror node, Galileo |
