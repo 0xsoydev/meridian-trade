@@ -1,5 +1,4 @@
 import { Hero } from "../components/landing/hero";
-import { FlowDiagram } from "../components/landing/flow-diagram";
 import { HowItWorks } from "../components/landing/how-it-works";
 import { Panorama } from "../components/landing/panorama";
 import { Proof } from "../components/landing/proof";
@@ -17,7 +16,6 @@ export default function Home() {
           </nav>
           <Hero variant="page" />
         </div>
-        <FlowDiagram variant="page" />
         <WhatWeDo variant="page" />
         <Proof variant="page" />
         <Panorama variant="page" />
@@ -28,7 +26,6 @@ export default function Home() {
       <div className="desktop-wrap hidden lg:block">
         <div className="desktop-canvas relative h-[4388px] w-[1728px] overflow-hidden bg-white">
           <Hero variant="canvas" nav={<Navbar />} />
-          <FlowDiagram variant="canvas" />
           <div className="absolute inset-x-0 top-[307px]">
             <WhatWeDo variant="canvas" />
             <Proof variant="canvas" />
