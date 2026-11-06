@@ -345,6 +345,8 @@ export type ApprovalStatus = { status: "pending" | "approved" | "denied" | "expi
 | DELETE | `/api/v1/offers/:id` | `Bearer rk_` | — | `{ offer_id, status }` | 404 |
 | GET | `/api/v1/holdings?model=` | `Bearer rk_` | — | `{ data: Holding[] }`, the sellable prepaid rows | 401 |
 | GET | `/api/v1/fills` | `Bearer rk_` | — | `{ data: KeyFill[] }`, the key's last 100 buys and resales | 401 |
+| GET | `/api/v1/usage` | `Bearer rk_` | — | `{ data: KeyUsage[] }`, the key's last 100 calls: model, rail, tokens, prepaid or balance, charge | 401 |
+| GET | `/api/v1/status` | none | — | `VenueStatus`: each perp market's index and age, the keeper's latest post, payouts in flight, 24 h fills and open asks; CDN-cached 15 s | — |
 | GET | `/api/v1/payouts?seller=0x…` | none | — | `{ network, unpaid_usd_micro, data }`, a seller's payouts and unpaid earnings | 400 |
 | DELETE | `/api/v1/bids/:id` | `Bearer rk_` | — | `{ bid_id, status, balance_usd_micro }` | 404 |
 | GET | `/api/v1/book?model=` | none | — | `{ asks, fills }` | 404 |
@@ -450,22 +452,24 @@ export function settleTopup(header: string, bounds: { minMicro: bigint; maxMicro
 - `/api/v1/topup` without auth: after settlement insert a new key, return the plaintext key once.
 - Response header `PAYMENT-RESPONSE` via `encodePaymentResponseHeader`.
 
-### 10.4 Human link and cap raise (`lib/world.ts`, Agent Pass)
+### 10.4 Human link and cap raise (`lib/approvals.ts`, World ID)
 
 ```ts
-export function oidc(): Promise<Configuration>;
 export function startApproval(keyId: string, kind: "link_human" | "raise_cap", capMicro: bigint | null): Promise<ApprovalStart>;
-export function pollApproval(approvalId: string): Promise<ApprovalStatus>;
+export function pollApproval(keyId: string, approvalId: string): Promise<ApprovalStatus | null>;
+export function approveWithProof(approvalId: string, idkit: unknown): Promise<ApprovalOutcome>;
+export function denyApproval(approvalId: string): Promise<boolean>;
 ```
 
-- `oidc()`: `discovery(new URL(WORLD_ISSUER), WORLD_CLIENT_ID, WORLD_CLIENT_SECRET)`, cached.
-- `startApproval`: `initiateDeviceAuthorization(config, { scope: "openid" })`; store sealed `device_code`, `user_code`, `verification_uri_complete`, `interval`, `expires_at`.
-- `pollApproval` (one attempt per call, never blocks): `genericGrantRequest(config, "urn:ietf:params:oauth:grant-type:device_code", { device_code })`.
-  - `authorization_pending`/`slow_down` → pending.
-  - `access_denied` → denied. `expired_token` or past `expires_at` → expired. Protected action not applied.
-  - Success: claims validated by openid-client; require `auth_time >= approval.created_at − 5 s`.
-    - `link_human`: set `keys.world_sub = sub`.
-    - `raise_cap`: require `sub === keys.world_sub`, then set `daily_topup_cap_usd_micro = cap`.
+- **Start:** `startApproval` stores a `pending` approval for 10 minutes with a six-character user code. It returns `verification_uri_complete = PUBLIC_HOST/approve/<id>`. A second `raise_cap` for the same cap returns the open approval instead of opening another.
+- **The page:** `/approve/[id]` shows the kind, the cap and the code. It runs IDKit with `proofOfHuman`, the action `WORLD_APPROVAL_ACTION` and the approval id as the signal, using an RP signature from `/api/v1/approvals/:id/rp-signature`. The human approves with World App or denies.
+- **Approve:** `POST /api/v1/approvals/:id/verify { idkit }` verifies the proof with World (`verifyWorld`, action and signal pinned), then:
+  - `link_human` sets `keys.world_sub` to the proof's nullifier, and is refused when another human is already linked;
+  - `raise_cap` requires the nullifier to equal `keys.world_sub`, then sets `daily_topup_cap_usd_micro = cap`.
+
+  The row turns `approved` once.
+- **Deny, expire, poll:** `POST /api/v1/approvals/:id/deny` sets `denied`. Past `expires_at`, the next read marks the row `expired`, and its protected action is never applied. The agent polls `GET /api/v1/approvals/:id` with its key every 3 s.
+- **Bypass:** `NEXT_PUBLIC_WORLD_BYPASS=true` skips the proof outside production. The nullifier is then the key's linked one, or a per-key test value.
 - Raising the cap without a linked human → 403 telling the client to link first.
 
 ### 10.5 Daily close (keeper, 00:00 UTC)
@@ -715,7 +719,7 @@ type AgentEnv = {
 | `/trade` | spot buyers and sellers | Model picker (`?model=`). **Buy**: the order book, asks with price, MTokens left, rail and verifiability and bids in green under them; size input; an optional limit price, where blank buys at market and a price fills what it can and rests the rest as a bid, with a note saying which will happen and a limit above the list price refused; fee, the amount held for the bid and the total; recent fills, charted as 1m, 5m, 15m or 1h candles from the last 50 fills; a short balance on a wallet key is paid from that wallet in Hedera USDC, up to 20 USD, before the buy. **Sell** is the same form for MTokens the key holds: what is available, size, an optional limit where blank sells into the bids now, best and average bid, fee, what rests as an ask and what you receive. A bottom panel holds:<br>• **Balances:** USD and holdings per model, rail and expiry.<br>• **Open Orders:** bids and resale asks with cancel; the connected seller wallet's provider asks with inline amend of price and capacity, and cancel, each wallet-signed.<br>• **Trade History:** the key's buys and resales.<br>• **Venue Fills** | `GET /api/v1/book`, `POST /api/v1/trades`, `POST /api/v1/sells`, holdings, bids, offers, fills, `PATCH`/`DELETE /api/listings/:id` |
 | `/perps` | traders | Market picker (`?model=`, the listed perp markets only). Index chart and mark price, current funding rate, long/short with size, leverage and margin, flips as close then open, previewed liquidation price of the resulting position. Positions tab across all markets with leverage, margin add and remove, and close. Trade History tab. MockUSDC balance and faucet, connect-wallet state | `IndexPosted` logs (viem `getLogs`), `PerpMarket` reads, `/api/v1/perps/history`, wagmi |
 | `/sell` | sellers, once | Wallet → World verify → source picker (API key, or a key already stored on one of the wallet's listings on that rail) → new listing → the wallet's listings with what is left, unpaid earnings, and payouts linked to their HashScan schedules. Setup and accounting; asks are amended and cancelled in Open Orders on `/trade` | `/api/listings`, `/api/v1/payouts` |
-| `/keys` | a human buyer | Connect a wallet → sign once to create a router key → list keys, deposit panel (deposit from the key's wallet, or treasury, memo = key id, amount, tx id), balance, auto top-up, daily cap, default model, link human (QR via `qrcode`). Pasting an agent's key still works | `/api/v1/keys`, `/api/v1/keys/deposit`, `/api/v1/*` |
+| `/keys` | a human buyer | Connect a wallet → sign once to create a router key → list keys, deposit panel (deposit from the key's wallet, or treasury, memo = key id, amount, tx id), balance, auto top-up, daily cap, default model, link human (QR via `qrcode`), and the key's usage history. Pasting an agent's key still works | `/api/v1/keys`, `/api/v1/keys/deposit`, `/api/v1/usage`, `/api/v1/*` |
 | `/receipts` | judges | HCS rollups, top-ups (HashScan), index posts (chainscan), "recompute index" from mirror in the browser | mirror node, Galileo |
 
 Charts use Lightweight Charts **v5**: series come from `chart.addSeries(LineSeries, …)` with the series types imported from the package, times are `UTCTimestamp` in seconds, new points go through `series.update()` (never `setData` on a tick — it resets the visible range), teardown is `chart.remove()`, and the chart renders client-only under Next.js. The v4 names (`addLineSeries`, `series.setMarkers`, the chart-level watermark option) do not exist in v5, and most examples online are v4. `/perps` plots two series: the on-chain index from `IndexPosted`, and the venue's per-minute VWAP from Hedera, polled every 15 s.
