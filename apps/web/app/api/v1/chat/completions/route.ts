@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { and, eq, gt, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { routerKey } from "../../../../../lib/auth.ts";
-import { asks } from "../../../../../lib/book.ts";
+import { asks, cheapestOf } from "../../../../../lib/book.ts";
 import { db } from "../../../../../lib/db.ts";
 import { fail } from "../../../../../lib/errors.ts";
 import { release, reserve, reservePrepaid, settle, type SettleInput } from "../../../../../lib/ledger.ts";
@@ -100,13 +100,20 @@ export async function POST(request: Request): Promise<Response> {
   if (!parsed.success) return fail(400, "invalid_request", "invalid request body");
   const body = parsed.data;
 
-  const model = body.model ?? key.defaultModel;
-  if (!model) return fail(400, "invalid_request", "model is required");
+  const requested = body.model ?? key.defaultModel;
+  if (!requested) return fail(400, "invalid_request", "model is required");
+  const shortlist = requested.startsWith("cheapest:")
+    ? requested.slice("cheapest:".length).split(",").map((id) => id.trim()).filter(Boolean)
+    : null;
+  if (shortlist?.length === 0) return fail(400, "invalid_request", "cheapest: needs at least one model");
+  const model = shortlist ? cheapestOf(await asks(null), shortlist) : requested;
+  if (!model) return fail(404, "no_liquidity", `no asks for any of ${shortlist?.join(", ")}`);
   if (!(await reference(model))) return fail(404, "model_not_found", `unknown model: ${model}`);
 
   const payment = await applyPayment(request, key);
   if ("error" in payment) return payment.error;
   const headers: Record<string, string> = payment.header ? { "PAYMENT-RESPONSE": payment.header } : {};
+  if (shortlist) headers["X-Router-Model"] = model;
 
   const candidates = await candidatesFor(key.id, model);
   if (candidates.length === 0) return fail(404, "no_liquidity", `no asks for ${model}`);
