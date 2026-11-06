@@ -400,8 +400,11 @@ export function Trade({ initialModel }: { initialModel: string }) {
   };
 
   return (
-    <section>
-      <div className="flex flex-wrap items-center gap-x-8 gap-y-3 rounded-[6px] border border-[#CECECE] bg-white px-4 py-3">
+    <section className="-mx-4 -my-4 bg-[#F1F1F1] px-4 py-4 lg:-mx-6 lg:-my-6 lg:px-6 lg:py-6">
+      <div className="flex flex-wrap items-center gap-x-8 gap-y-3 border border-[#E4E4E4] bg-white px-4 py-3">
+        <p className="w-full text-[10px] font-medium tracking-[0.14em] text-[#757575] uppercase">
+          Live book · {model}
+        </p>
         <ProfileDropdown
           accounts={modelAccounts}
           defaultAccountId={model}
@@ -444,8 +447,8 @@ export function Trade({ initialModel }: { initialModel: string }) {
       ) : null}
 
       <div className={`mt-5 grid gap-[17px] ${expanded ? "" : "lg:grid-cols-[minmax(0,1fr)_250px_290px]"}`}>
-        <div className="flex flex-col self-start rounded-[6px] border border-[#CECECE] bg-white">
-          <div className="flex items-center gap-5 border-b border-[#D9D9D9] px-4 py-2.5 text-[14px]">
+        <div className="flex flex-col self-start border border-[#E4E4E4] bg-white">
+          <div className="flex items-center gap-5 border-b border-[#ECECEC] px-4 py-2.5 text-[14px]">
             <span className="font-semibold text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4">
               Chart
             </span>
@@ -538,15 +541,15 @@ export function Trade({ initialModel }: { initialModel: string }) {
             <OrderBook book={book} model={model} listPrice={listPrice} />
 
             <div className="flex flex-col gap-[17px] self-start lg:h-[calc(100svh-277px)] lg:min-h-[423px]">
-              <div className="flex min-h-0 flex-1 flex-col rounded-[6px] border border-[#CECECE] bg-white">
-                <div className="flex shrink-0 border-b border-[#D9D9D9]">
+              <div className="flex min-h-0 flex-1 flex-col border border-[#E4E4E4] bg-white">
+                <div className="flex shrink-0 border-b border-[#ECECEC]">
                   {(["buy", "sell"] as const).map((item) => (
                     <button
                       key={item}
                       type="button"
                       onClick={() => setSide(item)}
                       aria-pressed={side === item}
-                      className={`w-1/2 py-2 text-[14px] font-semibold ${item === "sell" ? "border-l border-[#CECECE]" : ""} ${
+                      className={`w-1/2 py-2 text-[14px] font-semibold ${item === "sell" ? "border-l border-[#E4E4E4]" : ""} ${
                         side === item ? "bg-black text-white" : "text-[#757575] hover:text-[#1E1E1E]"
                       }`}
                     >
@@ -571,7 +574,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
 
                   <label className="block">
                     <span className={`mb-1 block text-[13px] ${MUTED}`}>Size, in MTokens</span>
-                    <span className="flex items-center gap-2 rounded-[6px] border border-[#CECECE] bg-white px-2.5 focus-within:border-[#1743FF]">
+                    <span className="flex items-center gap-2 rounded-[6px] border border-[#E4E4E4] bg-white px-2.5 focus-within:border-[#1743FF]">
                       <input
                         value={size}
                         onChange={(event) => setSize(event.target.value)}
@@ -623,7 +626,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
                       onChange={(event) => setLimitPrice(event.target.value)}
                       inputMode="decimal"
                       placeholder="market"
-                      className={`h-[34px] w-full border bg-white px-2.5 text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF] ${limitBad || limitHigh ? "border-[#F6465D]" : "border-[#CECECE]"}`}
+                      className={`h-[34px] w-full border bg-white px-2.5 text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF] ${limitBad || limitHigh ? "border-[#F6465D]" : "border-[#E4E4E4]"}`}
                     />
                     {limitNote ? (
                       <span className={`mt-1 block text-[12px] leading-4 ${limitNote.bad ? "text-[#F6465D]" : MUTED}`}>{limitNote.text}</span>
@@ -631,21 +634,21 @@ export function Trade({ initialModel }: { initialModel: string }) {
                   </label>
 
                   {side === "buy" ? (
-                    <dl className="border-t border-[#D9D9D9]">
-                      <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
+                    <dl className="border-t border-[#ECECEC]">
+                      <div className="flex justify-between border-b border-[#ECECEC] py-2 text-[14px]">
                         <dt className={MUTED}>Average ask</dt>
                         <dd className="tabular-nums text-[#1E1E1E]">{preview.fillable > 0n ? formatMicroPerMtok(preview.avg) : "—"}</dd>
                       </div>
-                      <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
+                      <div className="flex justify-between border-b border-[#ECECEC] py-2 text-[14px]">
                         <dt className={MUTED}>Venue fee, 10 percent</dt>
                         <dd className="tabular-nums text-[#1E1E1E]">{preview.fee > 0n ? formatUsd(preview.fee) : "—"}</dd>
                       </div>
-                      <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
+                      <div className="flex justify-between border-b border-[#ECECEC] py-2 text-[14px]">
                         <dt className={MUTED}>Seller receives</dt>
                         <dd className="tabular-nums text-[#1E1E1E]">{preview.net > 0n ? formatUsd(preview.net) : "—"}</dd>
                       </div>
                       {hold > 0n ? (
-                        <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
+                        <div className="flex justify-between border-b border-[#ECECEC] py-2 text-[14px]">
                           <dt className={MUTED}>Held for the bid</dt>
                           <dd className="tabular-nums text-[#1E1E1E]">{formatUsd(hold)}</dd>
                         </div>
@@ -658,23 +661,23 @@ export function Trade({ initialModel }: { initialModel: string }) {
                       </div>
                     </dl>
                   ) : (
-                    <dl className="border-t border-[#D9D9D9]">
-                      <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
+                    <dl className="border-t border-[#ECECEC]">
+                      <div className="flex justify-between border-b border-[#ECECEC] py-2 text-[14px]">
                         <dt className={MUTED}>Best bid</dt>
                         <dd className="tabular-nums text-[#1E1E1E]">{bestBid !== null ? formatMicroPerMtok(bestBid) : "none"}</dd>
                       </div>
-                      <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
+                      <div className="flex justify-between border-b border-[#ECECEC] py-2 text-[14px]">
                         <dt className={MUTED}>Average bid</dt>
                         <dd className="tabular-nums text-[#1E1E1E]">
                           {sellPreview.fillable > 0n ? formatMicroPerMtok(sellPreview.avg) : "—"}
                         </dd>
                       </div>
-                      <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
+                      <div className="flex justify-between border-b border-[#ECECEC] py-2 text-[14px]">
                         <dt className={MUTED}>Venue fee, 10 percent</dt>
                         <dd className="tabular-nums text-[#1E1E1E]">{sellPreview.fee > 0n ? formatUsd(sellPreview.fee) : "—"}</dd>
                       </div>
                       {limit !== null && listing > 0n ? (
-                        <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
+                        <div className="flex justify-between border-b border-[#ECECEC] py-2 text-[14px]">
                           <dt className={MUTED}>Rests as an ask</dt>
                           <dd className="tabular-nums text-[#1E1E1E]">
                             {formatMtok(listing)} MTok at {formatMicroPerMtok(limit)}
@@ -717,7 +720,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
                   ) : null}
 
                   {key === null ? (
-                    <div className="rounded-[6px] border border-[#CECECE] bg-white px-3 py-3">
+                    <div className="border-t border-[#ECECEC] pt-3">
                       <p className="text-[14px] text-[#1E1E1E]">{side === "buy" ? "Buying" : "Selling"} needs a router key.</p>
                       <p className="mt-1 text-[13px] leading-5 text-[#757575]">
                         Create one with your wallet on Keys, or paste an agent&apos;s key there. It stays in this
@@ -815,7 +818,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
                         <button
                           type="button"
                           onClick={() => void copyTopup()}
-                          className="mt-2 w-full rounded-[6px] border border-[#CECECE] bg-white px-2 py-1.5 text-left text-[13px] tabular-nums text-[#1E1E1E] hover:border-[#1743FF]"
+                          className="mt-2 w-full rounded-[6px] border border-[#E4E4E4] bg-white px-2 py-1.5 text-left text-[13px] tabular-nums text-[#1E1E1E] hover:border-[#1743FF]"
                         >
                           {copied ? "Copied — run it from your agent. " : "Copy top-up, "}
                           {`POST /api/v1/topup?usd=${formatMicroPerMtok(problem.shortfall)}`}
@@ -865,7 +868,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
         ? createPortal(
             <div
               role="status"
-              className="absolute bottom-full right-4 mb-4 w-[min(290px,calc(100vw-2rem))] rounded-[6px] border border-[#CECECE] bg-white p-4 shadow-[0_8px_24px_rgba(30,30,30,0.08)] transition-[opacity,translate] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] starting:translate-y-2 starting:opacity-0 motion-reduce:transition-none lg:right-6"
+              className="absolute bottom-full right-4 mb-4 w-[min(290px,calc(100vw-2rem))] border border-[#E4E4E4] bg-white p-4 shadow-[0_8px_24px_rgba(30,30,30,0.08)] transition-[opacity,translate] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] starting:translate-y-2 starting:opacity-0 motion-reduce:transition-none lg:right-6"
             >
               <div className="flex items-center justify-between">
                 <p className="text-[14px] font-semibold text-[#1E1E1E]">Announcements</p>
