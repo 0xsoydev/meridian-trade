@@ -1,0 +1,22 @@
+{
+  "name": "demo-agent",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node --experimental-strip-types --env-file=../../apps/web/.env main.ts",
+    "market": "node --experimental-strip-types --env-file=../../apps/web/.env market.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hiero-ledger/sdk": "2.85.0",
+    "@x402/core": "2.28.0",
+    "@x402/fetch": "2.28.0",
+    "@x402/hedera": "2.28.0",
+    "openai": "7.45.0",
+    "viem": "2.57.5"
+  },
+  "devDependencies": {
+    "@types/node": "22.7.5",
+    "typescript": "7.0.2"
+  }
+}

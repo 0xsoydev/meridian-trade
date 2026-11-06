@@ -1,1 +1,24 @@
 @import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-instrument-sans);
+  --font-serif: var(--font-instrument-serif);
+}
+
+@property --vw {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@media (min-width: 1024px) {
+  .desktop-wrap {
+    height: calc(4388 / 1728 * 100vw);
+    overflow: hidden;
+  }
+  .desktop-canvas {
+    --vw: 100vw;
+    transform: scale(tan(atan2(var(--vw), 1728px)));
+    transform-origin: top left;
+  }
+}

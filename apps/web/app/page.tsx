@@ -1,19 +1,40 @@
+import { Hero } from "../components/landing/hero";
+import { HowItWorks } from "../components/landing/how-it-works";
+import { Panorama } from "../components/landing/panorama";
+import { Proof } from "../components/landing/proof";
+import { SiteFooter } from "../components/landing/site-footer";
+import { WhatWeDo } from "../components/landing/what-we-do";
+import { Navbar, NavLinks } from "../components/site-nav";
+
 export default function Home() {
   return (
-    <section className="space-y-6">
-      <h1 className="text-2xl font-semibold">LLM Token Exchange</h1>
-      <p className="max-w-2xl text-zinc-400">
-        Sellers list expiring provider credits as MTokens. Buyers and their agents buy through our router and pay over
-        x402 on Hedera. Perps price the venue on 0G Galileo.
-      </p>
-      <div className="flex gap-3 text-sm">
-        <a className="rounded border border-zinc-700 px-3 py-2 hover:border-zinc-500" href="/trade">
-          Trade
-        </a>
-        <a className="rounded border border-zinc-700 px-3 py-2 hover:border-zinc-500" href="/perps">
-          Perps
-        </a>
+    <main className="bg-white">
+      <div className="lg:hidden">
+        <div className="min-h-svh">
+          <nav className="flex flex-wrap items-center justify-center gap-x-7 gap-y-2 border-b border-[#CECECE] px-6 py-4 text-[15px] leading-[20px] text-[#1E1E1E]">
+            <NavLinks />
+          </nav>
+          <Hero variant="page" />
+        </div>
+        <WhatWeDo variant="page" />
+        <Proof variant="page" />
+        <Panorama variant="page" />
+        <HowItWorks variant="page" />
+        <SiteFooter variant="page" />
       </div>
-    </section>
+
+      <div className="desktop-wrap hidden lg:block">
+        <div className="desktop-canvas relative h-[4388px] w-[1728px] overflow-hidden bg-white">
+          <Hero variant="canvas" nav={<Navbar variant="canvas" />} />
+          <div className="absolute inset-x-0 top-[307px]">
+            <WhatWeDo variant="canvas" />
+            <Proof variant="canvas" />
+            <Panorama variant="canvas" />
+            <HowItWorks variant="canvas" />
+            <SiteFooter variant="canvas" />
+          </div>
+        </div>
+      </div>
+    </main>
   );
 }

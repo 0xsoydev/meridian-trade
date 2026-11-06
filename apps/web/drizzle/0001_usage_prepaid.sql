@@ -1,0 +1,2 @@
+ALTER TABLE "usage" ADD COLUMN "prepaid_id" uuid;--> statement-breakpoint
+ALTER TABLE "usage" ADD CONSTRAINT "usage_prepaid_id_prepaid_id_fk" FOREIGN KEY ("prepaid_id") REFERENCES "public"."prepaid"("id") ON DELETE no action ON UPDATE no action;

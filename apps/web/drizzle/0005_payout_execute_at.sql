@@ -1,0 +1,1 @@
+ALTER TABLE "payouts" ADD COLUMN "execute_at" timestamp with time zone;

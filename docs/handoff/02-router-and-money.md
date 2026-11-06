@@ -91,7 +91,7 @@ Missing usage — client abort, upstream break, deadline abort — falls back to
 | `listings` | `id`, `seller_id`, `rail`, `model`, `auth_kind` (`key`/`oauth`), `credential_ciphertext`, `account_ref`, `price_micro_per_mtok` null, `capacity_tokens`, `used_tokens`, `reserved_tokens`, `throttled_until`, `status`, `client_nonce` unique |
 | `keys` | `id`, `hash` unique (SHA-256 of the key), `balance_usd_micro`, `reserved_usd_micro`, `auto_topup_usd_micro`, `daily_topup_cap_usd_micro`, `default_model`, `world_sub` |
 | `topups` | `tx_id` primary key, `key_id`, `amount_usd_micro`, `payer` |
-| `usage` | `id`, `status` (`open`/`settled`/`released`), `rail`, `upstream_request_id` unique when not null, `key_id`, `listing_id`, `price_micro_per_mtok`, `reserved_tokens`, `reserved_usd_micro`, token counts, `list_cost_usd_micro`, `mixed_tokens`, `charge_usd_micro`, `seller_earning_usd_micro`, `payout_id`, `hcs_minute`, `created_at`, `settled_at` |
+| `usage` | `id`, `status` (`open`/`settled`/`released`), `rail`, `upstream_request_id` unique when not null, `key_id`, `listing_id`, `prepaid_id` null, `price_micro_per_mtok`, `reserved_tokens`, `reserved_usd_micro`, token counts, `list_cost_usd_micro`, `mixed_tokens`, `charge_usd_micro`, `seller_earning_usd_micro`, `payout_id`, `hcs_minute`, `created_at`, `settled_at` |
 | `trades` | `id`, `key_id`, `listing_id`, `model`, `tokens`, `price_micro_per_mtok`, `charge_usd_micro`, `seller_earning_usd_micro`, `payout_id`, `created_at` |
 | `prepaid` | `id`, `key_id`, `listing_id`, `model`, `tokens_remaining`, `expires_at` |
 | `payouts` | `id`, `seller_id`, `day`, `amount_usd_micro`, `schedule_id`, `status`, unique `(seller_id, day)` |
@@ -113,9 +113,12 @@ Constraints that do real work: `used_tokens + reserved_tokens <= capacity_tokens
 | POST | `/api/v1/topup?usd=` | none creates a key, bearer credits one | x402; bounds 0.10–20.00 |
 | POST | `/api/v1/trades` | bearer | spot fill, §10.10 |
 | GET | `/api/v1/book?model=` | none | asks + last 50 fills |
-| GET | `/api/v1/models` | none | `ModelRow[]` with `rails`, `verifiability`, reference, best ask, index |
+| GET | `/api/v1/models` | none | `{ object: "list", data: ModelRow[] }` with `rails`, `verifiability`, reference, best ask, index |
 | GET | `/api/v1/balance` | bearer | balance, reserved, topped up today, cap, auto top-up, default model, `human_linked` |
 | PATCH | `/api/v1/keys/settings` | bearer | auto top-up, daily cap (403 when raising it needs approval), default model |
+| POST | `/api/v1/keys` | wallet signature | creates a key bound to the account, optionally with a World proof |
+| GET | `/api/v1/keys` | wallet signature (query) | that account's keys and balances |
+| POST | `/api/v1/keys/deposit` | bearer | verifies a USDC transfer on the mirror and credits the key once |
 
 Error shape, always:
 

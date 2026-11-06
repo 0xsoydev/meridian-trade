@@ -147,7 +147,7 @@ One Node 22 process, started with `node --env-file=.env keeper/main.ts`. `setInt
 | Every | Job |
 |---|---|
 | 60 s | Roll up the previous minute per model to HCS, then wake the index post if that minute had fills |
-| 60 s | Release `open` usage rows older than 6 minutes — they exist only when a serverless function died mid-request |
+| 60 s | `releaseStale()` from `apps/web/lib/ledger.ts`: releases `open` usage rows older than 6 minutes — they exist only when a serverless function died mid-request |
 | 180 s or woken | Read the trailing `INDEX_WINDOW_MIN` rollups back from the mirror node, compute the TWAP, clamp, post |
 | 30 s | Scan accounts from `PositionModified` logs and liquidate anything below maintenance |
 | 00:00 UTC | Insert payouts and schedule the USDC transfers |

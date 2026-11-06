@@ -1,0 +1,41 @@
+# Celestial Trade
+
+> An exchange for LLM inference. Sellers list unused provider capacity as MTokens (one MToken = 1,000,000 mixed tokens, three input to one output). Agents and people spend MTokens through an OpenAI-compatible router that picks the cheapest ask, pay in Hedera USDC over x402, resell what they hold, and hedge the price with oracle perps on 0G Galileo.
+
+All endpoints are under `/api/v1`. Authenticate with `Authorization: Bearer rk_…`, a router key. Amounts are integer strings: USD in micro-dollars (1 USD = 1000000), prices in micro-USD per MTok, sizes in tokens. Errors use the OpenAI shape `{ "error": { "message", "type", "code" } }`.
+
+## Get a key and pay
+
+- [Top up over x402](/api/v1/topup?usd=0.50): `POST` without auth answers 402 with an x402 offer in `PAYMENT-REQUIRED`; pay it in Hedera USDC with an x402 client (for example `@x402/fetch` with `@x402/hedera`) and the retry returns `{ key, key_id, balance_usd_micro, tx_id }`. With a key it credits that key. Between 0.10 and 20 USD.
+- [Create a key with a wallet](/api/v1/keys): `POST { address, message, signature }`, where `message` is `JSON.stringify({ domain, action: "create_key", issued_at })` signed by the wallet.
+- [Credit a deposit](/api/v1/keys/deposit): `POST { tx_id }` for a Hedera USDC transfer to the treasury, with the key id as the memo, or an ERC-20 transfer on Hedera EVM (chain 296) from the key's own wallet.
+- [Balance](/api/v1/balance): balance, reserved, topped up today, daily cap, auto top-up.
+- [Settings](/api/v1/keys/settings): `PATCH { auto_topup_usd_micro?, daily_topup_cap_usd_micro?, default_model? }`. With auto top-up set, a request the balance cannot cover answers 402 with an x402 offer for the shortfall; pay and retry. Raising the cap needs a human (see Approvals).
+
+## Inference
+
+- [Chat completions](/api/v1/chat/completions): OpenAI-compatible, `stream: true` supported. A request spends MTokens the key already holds first, at no charge; otherwise it pays the cheapest ask, settled on the usage the provider reports.
+- [Models](/api/v1/models): every listed model with its rails, list price (`reference_blended_micro_per_mtok`), list ceiling and best ask.
+- [Usage](/api/v1/usage): the key's last 100 calls with tokens, rail, and whether prepaid MTokens or the balance paid.
+
+## Trade MTokens
+
+- [Book](/api/v1/book?model=deepseek-v4.1-flash): asks (provider listings and resale offers, `kind`), bids by price level, the last 50 fills.
+- [Buy](/api/v1/trades): `POST { model, tokens, limit_price_micro_per_mtok? }` walks the asks cheapest first. A limit stops at the first ask above it and rests the rest as a bid, holding its exact cost. A limit above the model's list ceiling is refused.
+- [Sell](/api/v1/sells): `POST { model, tokens, limit_price_micro_per_mtok? }` sells MTokens the key holds. With no limit it sells into the bids now; with a limit it sells into bids at or above it and rests the rest as an ask. Proceeds, less the 10% venue fee, go to the key's balance.
+- [Holdings](/api/v1/holdings), [open bids](/api/v1/bids), [open resale asks](/api/v1/offers), [fills](/api/v1/fills): the key's MTokens, orders and trades. `DELETE /api/v1/bids/:id` and `DELETE /api/v1/offers/:id` cancel and return the hold or the MTokens.
+
+## Approvals
+
+- A cap raise or a human link answers 403 `approval_required` with `{ approval_id, user_code, verification_uri_complete, expires_at }`. A person opens the link and approves or denies with World ID; poll [the approval](/api/v1/approvals/00000000-0000-0000-0000-000000000000) until `approved`, `denied` or `expired`.
+
+## Perps
+
+- Oracle perps settle in MockUSDC on 0G Galileo (chain 16602): PerpMarket `0xdAa33F31C682BC2bb26F15656b8987c5d948eb54`, IndexOracle `0x5aA8cdD443974Be978FDeC4d83528f0183886785`. Markets: `glm-5.3`, `0gm-1.0-35b-a3b`, `deepseek-v4.1-flash`, up to 5x. The index is the venue's per-minute VWAP from the public HCS log, clamped to a tenth of list up to list.
+- [Perp history](/api/v1/perps/history?account=0x0000000000000000000000000000000000000000): an account's fills and liquidations, newest first.
+- [Venue status](/api/v1/status): each market's index and age, the keeper's latest post, payouts in flight, 24 h fills.
+
+## Optional
+
+- [Receipts](/receipts): recompute the index from the public HCS log in the browser.
+- [Spec](https://github.com/0xsoydev/celestial-trade/blob/develop/docs/plan.md): units, schema, formulas, endpoints and contracts.
