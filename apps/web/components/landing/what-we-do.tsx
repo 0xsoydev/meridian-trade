@@ -1,5 +1,5 @@
 import { Fragment } from "react";
-import { CARDS, LINE } from "./copy";
+import { CARDS } from "./copy";
 
 export function WhatWeDo({ variant }: { variant: "page" | "canvas" }) {
   if (variant === "page") {
@@ -29,14 +29,12 @@ export function WhatWeDo({ variant }: { variant: "page" | "canvas" }) {
   }
 
   return (
-    <>
-      <div className="absolute left-[575px] top-[726px] h-[821px] w-[1080px] bg-white" />
+    <div className="absolute inset-0 -translate-x-[125px]">
+      <div className="absolute left-[575px] top-[726px] h-[821px] w-[1080px] border border-[#CECECE] bg-white" />
 
       <p className="absolute left-[610px] top-[717px] whitespace-pre text-[20px] leading-[100px] text-black">
         [ what we do ]
       </p>
-      <div className={`absolute left-[1632px] top-[946px] h-[1044px] w-px ${LINE}`} />
-      <div className={`absolute left-[990px] top-[726px] h-[477px] w-px ${LINE}`} />
       <h2 className="absolute left-[610px] top-[808px] whitespace-pre font-serif text-[60px] font-normal leading-[60px] text-[#1E1E1E]">
         {"Sell what expires.\nTrade the rest."}
       </h2>
@@ -63,12 +61,12 @@ export function WhatWeDo({ variant }: { variant: "page" | "canvas" }) {
           />
           <p
             className="absolute w-[244px] whitespace-pre-wrap text-[20px] leading-[24px] text-black"
-            style={{ left: c.body, top: 1375 }}
+            style={{ left: c.body, top: 1330 }}
           >
             {c.bodyText}
           </p>
         </Fragment>
       ))}
-    </>
+    </div>
   );
 }
