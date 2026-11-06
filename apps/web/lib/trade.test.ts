@@ -147,6 +147,17 @@ test("a failed prepaid attempt hands the MTokens back and fails over", { skip },
   assert.equal((await keyRow(buyer.id)).balanceUsdMicro, 805_000n);
 });
 
+test("a cancelled listing still serves the prepaid MTokens it already sold", { skip }, async () => {
+  await db().update(listings).set({ status: "cancelled" }).where(eq(listings.id, cheap));
+  const response = await ask({ model: MODEL, messages: ping, max_tokens: 16 });
+  assert.equal(response.status, 200);
+
+  const [cheapHold] = await holdings();
+  assert.equal(cheapHold?.tokensRemaining, 100_000n - 18n);
+  const last = (await db().select().from(usage).where(eq(usage.keyId, buyer.id)).orderBy(asc(usage.createdAt))).at(-1);
+  assert.deepEqual([last?.prepaidId, last?.status, last?.chargeUsdMicro], [cheapHold?.id, "settled", 0n]);
+});
+
 test("the sweep releases holds a dead function left open", { skip }, async () => {
   const listingId = await makeListing({ sellerId, model: SWEEP_MODEL, credential: "sk-ok", price: 1_500_000n, capacity: 1_000_000n });
   const key = await makeKey(1_000_000n);

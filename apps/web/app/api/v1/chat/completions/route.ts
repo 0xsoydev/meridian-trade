@@ -178,7 +178,7 @@ async function candidatesFor(keyId: string, model: string): Promise<Candidate[]>
         eq(prepaid.model, model),
         gt(prepaid.tokensRemaining, 0n),
         or(isNull(prepaid.expiresAt), gt(prepaid.expiresAt, now)),
-        inArray(listings.status, ["active", "exhausted"]),
+        inArray(listings.status, ["active", "exhausted", "cancelled"]),
         or(isNull(listings.throttledUntil), lt(listings.throttledUntil, now)),
       ),
     )
