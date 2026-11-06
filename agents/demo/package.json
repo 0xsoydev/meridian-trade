@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "start": "node --experimental-strip-types --env-file=../../apps/web/.env main.ts",
+    "market": "node --experimental-strip-types --env-file=../../apps/web/.env market.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

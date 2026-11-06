@@ -79,6 +79,14 @@ Creates the Hedera agent account (2 HBAR, USDC associated) and a Galileo key, wr
 
 Wait about a minute for the agent account to appear on the mirror before it pays.
 
+### Market agent
+
+```powershell
+pnpm --filter demo-agent market
+```
+
+Runs one agent through a market end to end. Under 1 HBAR it asks the Hedera Portal faucet API for 10 HBAR (`HEDERA_PAT`, a personal access token from portal.hedera.com); under 1 USDC it takes 2 USDC from the treasury, or prints the Circle faucet link and waits when the treasury is short. It then quotes a market buy of `BUY_TOKENS` (default 1 MTok) on `MODEL`, tops its router key up over x402 for the shortfall, buys, answers one prompt from the MTokens it bought, sells what is left into the bids, and lists any remainder at the best ask.
+
 ## 3. Database and seed
 
 ```powershell

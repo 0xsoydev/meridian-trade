@@ -12,5 +12,5 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["main.ts"]
+  "include": ["main.ts", "market.ts"]
 }
