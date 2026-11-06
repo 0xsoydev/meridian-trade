@@ -325,7 +325,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
         setProblem({
           message:
             code === "invalid_api_key"
-              ? "router key rejected — paste it again on Keys"
+              ? "router key rejected; create a new one on Keys"
               : code === "no_liquidity"
                 ? "the asks moved before the fill; retry"
                 : body?.error?.message ?? `request failed (${res.status})`,
@@ -725,8 +725,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
                     <div className="border-t border-[#ECECEC] pt-3">
                       <p className="text-[14px] text-[#1E1E1E]">{side === "buy" ? "Buying" : "Selling"} needs a router key.</p>
                       <p className="mt-1 text-[13px] leading-5 text-[#757575]">
-                        Create one with your wallet on Keys, or paste an agent&apos;s key there. It stays in this
-                        browser, never in a URL.
+                        Create one with your wallet on Keys. It stays in this browser, never in a URL.
                       </p>
                     </div>
                   ) : null}
@@ -895,9 +894,9 @@ export function Trade({ initialModel }: { initialModel: string }) {
                   </p>
                 </li>
                 <li>
-                  <p className="text-[#1E1E1E]">Buying needs an agent key</p>
+                  <p className="text-[#1E1E1E]">Buying needs an API key</p>
                   <p className={MUTED}>
-                    Paste it once on{" "}
+                    Create one on{" "}
                     <Link href="/keys" className="text-[#1743FF] hover:underline">
                       keys
                     </Link>

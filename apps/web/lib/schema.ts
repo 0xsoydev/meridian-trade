@@ -324,6 +324,14 @@ export const perpEvents = pgTable(
   ],
 );
 
+export const comfyAgents = pgTable("comfy_agents", {
+  keyId: uuid("key_id")
+    .primaryKey()
+    .references(() => keys.id, { onDelete: "cascade" }),
+  agent: text("agent").notNull(),
+  createdAt: createdAt(),
+});
+
 export type SellerRow = typeof sellers.$inferSelect;
 export type ListingRow = typeof listings.$inferSelect;
 export type KeyRow = typeof keys.$inferSelect;

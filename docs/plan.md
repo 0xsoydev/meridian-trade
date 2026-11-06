@@ -259,6 +259,7 @@ Missing usage (client abort, upstream break, deadline abort): `mixedTokens(estim
 | `payouts` | `id uuid pk`, `seller_id fk`, `day date`, `amount_usd_micro bigint`, `schedule_id text null`, `execute_at timestamptz null`, `status text`, `created_at` | unique `(seller_id, day)`; `status in ('pending','scheduled','executed','cancelled')` |
 | `perp_events` | `tx_hash text`, `log_index integer`, `account text` (lowercase), `model text`, `kind text`, `size bigint` (after the event), `margin bigint`, `price bigint`, `realized_pnl bigint`, `fee bigint`, `reward bigint`, `block bigint`, `at timestamptz` | pk `(tx_hash, log_index)`; `kind in ('modify','liquidate')`; index `(account, block)` |
 | `approvals` | `id uuid pk`, `key_id fk`, `kind text`, `cap_usd_micro bigint null`, `device_code_ciphertext text`, `user_code text`, `verification_uri_complete text`, `interval_s int`, `expires_at`, `status text`, `created_at` | `kind in ('link_human','raise_cap')`; `status in ('pending','approved','denied','expired')` |
+| `comfy_agents` | `key_id uuid pk fk → keys on delete cascade`, `agent text`, `created_at` | one comfy agent name per router key; written only when the key has a verified human |
 
 Each request attempt writes one `usage` row: `open` at reservation, then closed exactly once as `settled` or `released` (§9, 11a). A `trades` row is a spot fill: capacity taken, money moved, a price observed. A request covered from prepaid writes a `usage` row with `charge_usd_micro = 0` and leaves listing capacity alone, because the fill already took it.
 
@@ -336,7 +337,7 @@ export type ApprovalStatus = { status: "pending" | "approved" | "denied" | "expi
 
 | Method | Path | Auth | Body | Success | Errors |
 |---|---|---|---|---|---|
-| POST | `/api/v1/chat/completions` | `Bearer rk_` (+ `PAYMENT-SIGNATURE` on retry) | OpenAI chat request; `model` optional (falls back to `default_model`) | 200 JSON or SSE passthrough | 401, 402, 403 `approval_required`, 404 `model_not_found`/`no_liquidity`, 502 |
+| POST | `/api/v1/chat/completions` | `Bearer rk_` (+ `PAYMENT-SIGNATURE` on retry) | OpenAI chat request; `model` optional (falls back to `default_model`); `model: "cheapest:a,b,c"` tries the listed models cheapest live ask first, moves to the next model when every seller of one fails, and names the model that answered in `X-Router-Model` | 200 JSON or SSE passthrough | 401, 402, 403 `approval_required`, 404 `model_not_found`/`no_liquidity`, 502 |
 | POST | `/api/v1/topup?usd=0.50` | none (creates key) or `Bearer rk_` | none | 200 `TopupResult` + `PAYMENT-RESPONSE` | 402 (x402), 400 |
 | POST | `/api/v1/trades` | `Bearer rk_` | `{ model, tokens, limit_price_micro_per_mtok? }` | `{ fills: Trade[], bid: Bid \| null, prepaid_tokens }` | 402, 404 `no_liquidity`, 400 |
 | GET | `/api/v1/bids?model=` | `Bearer rk_` | — | `{ data: Bid[] }`, the key's open bids | 401 |
@@ -355,6 +356,8 @@ export type ApprovalStatus = { status: "pending" | "approved" | "denied" | "expi
 | GET | `/api/v1/balance` | `Bearer rk_` | — | `Balance` | 401 |
 | PATCH | `/api/v1/keys/settings` | `Bearer rk_` | `KeySettings` | `Balance` | 403 `approval_required` when raising the cap |
 | POST | `/api/v1/approvals` | `Bearer rk_` | `{ kind: "link_human" }` | `ApprovalStart` | 401 |
+| PUT | `/api/v1/agents/comfy` | `Bearer rk_` | `{ agent }`, 1–64 of `[A-Za-z0-9 _.-]`, self-declared comfy.fun agent name | `{ agent, verified_human: true }` | 400, 401, 403 `approval_required` until the key has a linked human |
+| GET | `/api/v1/agents/comfy` | none | — | `{ data: [{ agent, since, requests, spent_usd_micro }] }`, newest 50 | — |
 | GET | `/api/v1/approvals/:id` | `Bearer rk_` | — | `ApprovalStatus` | 404 |
 | POST | `/api/oauth/:rail/start` | `Signed<ListingIntent>` | credential kind | `{ authorization_url }` | 400 rail disabled |
 | GET | `/api/oauth/:rail/callback` | `state` | `code` | 302 to `/sell` | 400 bad state |
@@ -720,6 +723,7 @@ type AgentEnv = {
 | `/perps` | traders | Market picker (`?model=`, the listed perp markets only). Index chart and mark price, current funding rate, long/short with size, leverage and margin, flips as close then open, previewed liquidation price of the resulting position. Positions tab across all markets with leverage, margin add and remove, and close. Trade History tab. MockUSDC balance and faucet, connect-wallet state | `IndexPosted` logs (viem `getLogs`), `PerpMarket` reads, `/api/v1/perps/history`, wagmi |
 | `/sell` | sellers, once | Wallet → World verify → source picker (API key, or a key already stored on one of the wallet's listings on that rail) → new listing → the wallet's listings with what is left, unpaid earnings, and payouts linked to their HashScan schedules. Setup and accounting; asks are amended and cancelled in Open Orders on `/trade` | `/api/listings`, `/api/v1/payouts` |
 | `/keys` | a human buyer | Connect a wallet → sign once to create a router key → list keys, deposit panel (deposit from the key's wallet, or treasury, memo = key id, amount, tx id), balance, auto top-up, daily cap, default model, link human (QR via `qrcode`), and the key's usage history. Pasting an agent's key still works | `/api/v1/keys`, `/api/v1/keys/deposit`, `/api/v1/usage`, `/api/v1/*` |
+| `/agents` | a comfy.fun agent's owner | four steps (Hedera wallet, copy the agent instructions for keyless x402 top-up, auto top-up, World ID link, comfy connect and `cheapest:` routing, approve with World ID, watch it work); the connected comfy agents with their verified human, requests and spend | `GET /api/v1/agents/comfy` data, read server-side |
 | `/receipts` | judges | HCS rollups, top-ups (HashScan), index posts (chainscan), "recompute index" from mirror in the browser | mirror node, Galileo |
 
 Charts use Lightweight Charts **v5**: series come from `chart.addSeries(LineSeries, …)` with the series types imported from the package, times are `UTCTimestamp` in seconds, new points go through `series.update()` (never `setData` on a tick — it resets the visible range), teardown is `chart.remove()`, and the chart renders client-only under Next.js. The v4 names (`addLineSeries`, `series.setMarkers`, the chart-level watermark option) do not exist in v5, and most examples online are v4. `/perps` plots two series: the on-chain index from `IndexPosted`, and the venue's per-minute VWAP from Hedera, polled every 15 s.
