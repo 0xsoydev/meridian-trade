@@ -190,7 +190,6 @@ export function Perps({ initialModel }: { initialModel: string }) {
     }
   };
 
-  const selected = models.find((row) => row.id === model);
   const marketRows = models.filter((row) => MARKETS.some((id) => id === row.id));
   const asks = book?.asks ?? [];
   const wanted = parseMtok(size);
@@ -252,45 +251,31 @@ export function Perps({ initialModel }: { initialModel: string }) {
   };
 
   const stats: Stat[] = [
-    { label: "mark", value: mark !== null ? formatMicroPerMtok(mark) : "—" },
-    { label: "index", value: index !== null ? formatMicroPerMtok(index) : "—" },
-    { label: "best ask", value: bestAsk !== null ? formatMicroPerMtok(bestAsk) : "—" },
+    { label: "Mark", value: mark !== null ? formatMicroPerMtok(mark) : "—" },
+    { label: "Index", value: index !== null ? formatMicroPerMtok(index) : "—" },
+    { label: "Best ask", value: bestAsk !== null ? formatMicroPerMtok(bestAsk) : "—" },
     {
-      label: "change, 24h",
+      label: "24h change",
       value: delta !== null ? `${delta >= 0 ? "+" : ""}${(delta * 100).toFixed(2)}%` : "—",
       tone: delta === null ? undefined : delta >= 0 ? "up" : "down",
     },
-    { label: "volume, 24h", value: volume24 > 0 ? `${volume24.toFixed(2)} MTok` : "—" },
-    { label: "open interest", value: market ? `${formatMtok(market.longOi)} / ${formatMtok(market.shortOi)} MTok` : "—" },
-    { label: "funding / hour", value: market ? `${(Number(market.fundingRatePerHour) / 1e16).toFixed(4)}%` : "—" },
+    { label: "24h volume", value: volume24 > 0 ? `${volume24.toFixed(2)} MTok` : "—" },
+    { label: "Open interest", value: market ? `${formatMtok(market.longOi)} / ${formatMtok(market.shortOi)} MTok` : "—" },
+    { label: "Funding / hour", value: market ? `${(Number(market.fundingRatePerHour) / 1e16).toFixed(4)}%` : "—" },
   ];
 
   return (
     <section>
-      <h1 className="font-serif text-[50px] leading-[1.05] text-[#1E1E1E]">
-        Pressure what <span className="text-[#A3A3A3]">expires</span>
-      </h1>
-      <p className="mt-4 max-w-[425px] text-[14px] leading-[18px] text-black">
-        Long the compute you will need, or short the credits you will not. Positions settle against
-        the house vault at five times, funded off the same venue fills the spot book prints.
-      </p>
-
-      <div className="mt-7 flex flex-wrap items-center justify-between gap-4">
+      <div className="flex flex-wrap items-center gap-x-8 gap-y-3 rounded-[6px] border border-[#CECECE] bg-white px-4 py-3">
         <details ref={picker} className="relative">
-          <summary className="flex cursor-pointer list-none items-baseline gap-3 [&::-webkit-details-marker]:hidden">
-            <span>
-              <span className="block text-[15px] font-semibold text-[#1E1E1E]">{model} / USDC</span>
-              <span className={`block text-[11px] ${MUTED}`}>
-                perp · index · {selected?.verifiability ? "TEE · " : ""}
-                {selected ? `${selected.rails.length} rail${selected.rails.length === 1 ? "" : "s"}` : "loading"}
-              </span>
-            </span>
-            <span className="border border-[#CECECE] bg-white px-1.5 py-0.5 text-[11px] tabular-nums text-[#1743FF]">
+          <summary className="flex cursor-pointer list-none items-center gap-2.5 [&::-webkit-details-marker]:hidden">
+            <span className="text-[18px] font-semibold text-[#1E1E1E]">{model} / USDC</span>
+            <span aria-hidden className="text-[#757575]">⌄</span>
+            <span className="rounded-[6px] border border-[#CECECE] px-1.5 py-0.5 text-[12px] leading-none tabular-nums text-[#1743FF]">
               {MAX_LEVERAGE.toString()}x
             </span>
-            <span aria-hidden className="text-[#757575]">⌄</span>
           </summary>
-          <ul className="absolute left-0 top-full z-20 mt-1 max-h-80 w-72 overflow-auto border border-[#CECECE] bg-white py-1">
+          <ul className="absolute left-0 top-full z-20 mt-1 max-h-80 w-72 overflow-auto rounded-[6px] border border-[#CECECE] bg-white py-1">
             {marketRows.map((row) => (
               <li key={row.id}>
                 <button
@@ -313,7 +298,13 @@ export function Perps({ initialModel }: { initialModel: string }) {
           </ul>
         </details>
 
-        <div className="flex items-center gap-5 text-[14px]">
+        <div className="flex flex-wrap items-center gap-x-7 gap-y-2">
+          {stats.map((stat) => (
+            <Stat key={stat.label} label={stat.label} value={stat.value} tone={stat.tone} />
+          ))}
+        </div>
+
+        <div className="ml-auto flex items-center gap-5 text-[14px]">
           {address ? (
             <span className="tabular-nums text-[#1E1E1E]">
               {address.slice(0, 6)}…{address.slice(-4)} ·{" "}
@@ -327,115 +318,62 @@ export function Perps({ initialModel }: { initialModel: string }) {
         </div>
       </div>
 
-      <div className="mt-6 border-t border-[#CECECE] pt-5">
-        <p className="text-[13px] text-[#1E1E1E]">[ live perp book ]</p>
-        <dl className="mt-3 flex flex-wrap gap-x-[26px] gap-y-3">
-          {stats.map((stat) => (
-            <div key={stat.label}>
-              <dt className={`text-[13px] ${MUTED}`}>{stat.label}</dt>
-              <dd
-                className={`text-[13px] tabular-nums ${
-                  stat.tone === "up" ? "text-[#2EBD85]" : stat.tone === "down" ? "text-[#F6465D]" : "text-[#1E1E1E]"
-                }`}
-              >
-                {stat.value}
-              </dd>
-            </div>
-          ))}
-        </dl>
-        {bookFailed ? (
-          <p className="mt-2 text-[13px] text-[#F6465D]">
-            {bookFailed === "unknown"
-              ? `the venue does not know ${model} — pick another model above`
-              : "the book feed is unreachable; retrying every 15 seconds"}
-          </p>
-        ) : null}
-      </div>
+      {bookFailed ? (
+        <p className="mt-2 text-[13px] text-[#F6465D]">
+          {bookFailed === "unknown"
+            ? `the venue does not know ${model} — pick another model above`
+            : "the book feed is unreachable; retrying every 15 seconds"}
+        </p>
+      ) : null}
 
       <div className="mt-5 grid gap-[17px] lg:grid-cols-[1fr_300px]">
-        <div className="border border-[#CECECE] bg-[#EBEBEB] p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex gap-5">
-              {(["Chart", "Funding"] as const).map((item) => (
-                <button
-                  key={item}
-                  type="button"
-                  onClick={() => setChartTab(item)}
-                  aria-pressed={chartTab === item}
-                  className={`text-[14px] ${
-                    chartTab === item
-                      ? "text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
-                      : "text-[#757575] hover:text-[#1E1E1E]"
-                  }`}
-                >
-                  {item}
-                </button>
-              ))}
-            </div>
-            {chartTab === "Chart" ? (
-              <div role="group" aria-label="candle interval" className="flex gap-5">
-                {INTERVALS.map((item) => (
-                  <button
-                    key={item.label}
-                    type="button"
-                    onClick={() => setBucket(item.seconds)}
-                    aria-pressed={bucket === item.seconds}
-                    className={`text-[14px] ${
-                      bucket === item.seconds
-                        ? "text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
-                        : "text-[#757575] hover:text-[#1E1E1E]"
-                    }`}
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-            ) : null}
+        <div className="flex flex-col rounded-[6px] border border-[#CECECE] bg-white">
+          <div className="flex items-center gap-5 border-b border-[#D9D9D9] px-4 py-2.5 text-[14px]">
+            {(["Chart", "Funding"] as const).map((item) => (
+              <button
+                key={item}
+                type="button"
+                onClick={() => setChartTab(item)}
+                aria-pressed={chartTab === item}
+                className={`${
+                  chartTab === item
+                    ? "font-semibold text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
+                    : "text-[#757575] hover:text-[#1E1E1E]"
+                }`}
+              >
+                {item}
+              </button>
+            ))}
           </div>
 
           {chartTab === "Chart" ? (
             <>
-              <div className={`flex flex-wrap gap-x-4 gap-y-0.5 pt-3 text-[13px] ${MUTED}`}>
-                <span className="text-[#1E1E1E]">
-                  {model} · spot fills
-                  <span
-                    aria-hidden
-                    className={`ml-2 inline-block h-[7px] w-[7px] rounded-full ${bookFailed === null ? "bg-[#2EBD85]" : "bg-[#C9C9C9]"}`}
-                  />
-                </span>
-                {points.length > 0 ? (
-                  <>
-                    <span>
-                      first <span className="tabular-nums text-[#1E1E1E]">{first?.toFixed(4)}</span>
-                    </span>
-                    <span>
-                      high <span className="tabular-nums text-[#1E1E1E]">{high?.toFixed(4)}</span>
-                    </span>
-                    <span>
-                      low <span className="tabular-nums text-[#1E1E1E]">{low?.toFixed(4)}</span>
-                    </span>
-                    <span>
-                      last <span className="tabular-nums text-[#1E1E1E]">{last?.toFixed(4)}</span>
-                    </span>
-                  </>
-                ) : null}
-              </div>
-
-              <FillsChart
-                points={points}
-                bucket={bucket}
-                scale={scale}
-                emptyNote="waiting for the first index post — the venue's fills seed the curve"
-              />
-
-              <div className="flex flex-wrap items-center gap-5 pt-1">
+              <div className="flex flex-wrap items-center gap-5 border-b border-[#D9D9D9] px-4 py-2 text-[14px]">
+                <div role="group" aria-label="candle interval" className="flex gap-5">
+                  {INTERVALS.map((item) => (
+                    <button
+                      key={item.label}
+                      type="button"
+                      onClick={() => setBucket(item.seconds)}
+                      aria-pressed={bucket === item.seconds}
+                      className={`${
+                        bucket === item.seconds
+                          ? "text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
+                          : "text-[#757575] hover:text-[#1E1E1E]"
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+                <span aria-hidden className="h-4 w-px bg-[#D9D9D9]" />
                 {(["percent", "log"] as const).map((mode) => (
                   <button
                     key={mode}
                     type="button"
                     onClick={() => setScale(scale === mode ? "linear" : mode)}
                     aria-pressed={scale === mode}
-                    className={`text-[14px] ${
+                    className={`${
                       scale === mode
                         ? "text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
                         : "text-[#757575] hover:text-[#1E1E1E]"
@@ -446,9 +384,43 @@ export function Perps({ initialModel }: { initialModel: string }) {
                 ))}
                 <span className={`ml-auto text-[13px] tabular-nums ${MUTED}`}>{clock ?? "--:--:--"} UTC</span>
               </div>
+
+              <div className={`flex flex-wrap gap-x-4 gap-y-0.5 px-4 pt-3 pb-1 text-[13px] ${MUTED}`}>
+                <span className="text-[#1E1E1E]">
+                  {model} · spot fills
+                  <span
+                    aria-hidden
+                    className={`ml-2 inline-block h-[7px] w-[7px] rounded-full ${bookFailed === null ? "bg-[#2EBD85]" : "bg-[#C9C9C9]"}`}
+                  />
+                </span>
+                {points.length > 0 ? (
+                  <>
+                    <span>
+                      O <span className="tabular-nums text-[#1E1E1E]">{first?.toFixed(4)}</span>
+                    </span>
+                    <span>
+                      H <span className="tabular-nums text-[#1E1E1E]">{high?.toFixed(4)}</span>
+                    </span>
+                    <span>
+                      L <span className="tabular-nums text-[#1E1E1E]">{low?.toFixed(4)}</span>
+                    </span>
+                    <span>
+                      C <span className="tabular-nums text-[#1E1E1E]">{last?.toFixed(4)}</span>
+                    </span>
+                  </>
+                ) : null}
+              </div>
+
+              <FillsChart
+                points={points}
+                bucket={bucket}
+                scale={scale}
+                emptyNote="waiting for the first index post — the venue's fills seed the curve"
+                className="h-[420px]"
+              />
             </>
           ) : (
-            <div className="pt-4">
+            <div className="px-4 pt-4 pb-4">
               <p className="text-[13px] text-[#1E1E1E]">[ funding on skew ]</p>
               <p className="mt-3 max-w-xl text-[14px] leading-5 text-[#1E1E1E]">
                 Longs pay shorts when the book leans long, the other way when it leans short. The
@@ -467,104 +439,92 @@ export function Perps({ initialModel }: { initialModel: string }) {
             </div>
           )}
 
-          <div className="mt-5 border-t border-[#D9D9D9] pt-4">
-            <div className="flex items-center justify-between">
-              <h2 className="font-serif text-[22px] leading-tight text-[#1E1E1E]">
-                {bookTab === "Order Book" ? "Ask book" : "Fill tape"}
-              </h2>
-              <div className="flex gap-4">
-                {BOOK_TABS.map((item) => (
-                  <button
-                    key={item}
-                    type="button"
-                    onClick={() => setBookTab(item)}
-                    aria-pressed={bookTab === item}
-                    className={`text-[14px] ${
-                      bookTab === item
-                        ? "text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
-                        : "text-[#757575] hover:text-[#1E1E1E]"
-                    }`}
-                  >
-                    {item === "Order Book" ? "Order book" : "Trades"}
-                  </button>
-                ))}
-              </div>
+          <div className="mt-5 border-t border-[#D9D9D9]">
+            <div className="flex items-center gap-5 border-b border-[#D9D9D9] px-4 py-2.5 text-[14px]">
+              {BOOK_TABS.map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => setBookTab(item)}
+                  aria-pressed={bookTab === item}
+                  className={`${
+                    bookTab === item
+                      ? "font-semibold text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
+                      : "text-[#757575] hover:text-[#1E1E1E]"
+                  }`}
+                >
+                  {item === "Order Book" ? "Order book" : "Trades"}
+                </button>
+              ))}
+              <span className={`ml-auto text-[12px] ${MUTED}`}>
+                {bookTab === "Order Book" ? `${asks.length} asks` : `${book?.fills.length ?? 0} prints`}
+              </span>
             </div>
 
             {bookTab === "Order Book" ? (
               <>
-                <div className="mt-3">
-                  {asks.length === 0 ? (
-                    <p className="border-t border-[#D9D9D9] py-6 text-center text-[14px] text-[#757575]">
-                      no asks yet for {model}
-                    </p>
-                  ) : (
-                    <>
-                      <div className={`grid grid-cols-[1.1fr_1fr_1fr_2.5rem] border-t border-[#D9D9D9] py-2 text-[12px] ${MUTED}`}>
-                        <span>Price</span>
-                        <span className="text-right">Size</span>
-                        <span className="text-right">Total</span>
-                        <span className="text-right">Rail</span>
-                      </div>
-                      {ladderRows.map(({ ask, total }) => (
-                        <div
-                          key={ask.listing_id}
-                          className="relative grid grid-cols-[1.1fr_1fr_1fr_2.5rem] border-t border-[#D9D9D9] py-3 text-[13px]"
-                          style={{
-                            background: `linear-gradient(90deg, rgba(23, 67, 255, ${(Number(total) / Number(depth === 0n ? 1n : depth)) * 0.08}), rgba(23, 67, 255, 0) 100%)`,
-                          }}
-                        >
-                          <span className="tabular-nums text-[#1E1E1E]">
-                            {formatMicroPerMtok(BigInt(ask.price_micro_per_mtok))}
-                            <span className={`ml-1.5 text-[12px] ${MUTED}`}>USD / MTok</span>
-                          </span>
-                          <span className="text-right tabular-nums text-[#757575]">{formatMtok(BigInt(ask.tokens_left))}</span>
-                          <span className="text-right tabular-nums text-[#757575]">{formatMtok(total)}</span>
-                          <span className={`truncate text-right text-[13px] ${ask.verifiable ? "text-[#1743FF]" : MUTED}`}>
-                            {ask.rail}
-                          </span>
-                        </div>
-                      ))}
-                    </>
-                  )}
+                <div className={`grid grid-cols-[1.1fr_1fr_1fr_2.5rem] gap-x-3 px-4 py-1.5 text-[11px] ${MUTED}`}>
+                  <span>Price</span>
+                  <span className="text-right">Size</span>
+                  <span className="text-right">Total</span>
+                  <span className="text-right">Rail</span>
                 </div>
-                <p className={`border-t border-[#D9D9D9] pt-3 text-[13px] ${MUTED}`}>
+                {asks.length === 0 ? (
+                  <p className="border-t border-[#D9D9D9] px-4 py-6 text-center text-[13px] text-[#757575]">
+                    no asks yet for {model}
+                  </p>
+                ) : (
+                  ladderRows.map(({ ask, total }) => (
+                    <div
+                      key={ask.listing_id}
+                      className="relative grid grid-cols-[1.1fr_1fr_1fr_2.5rem] gap-x-3 border-t border-[#D9D9D9] px-4 py-[5px] text-[13px] tabular-nums"
+                      style={{
+                        background: `linear-gradient(90deg, rgba(246, 70, 93, ${(Number(total) / Number(depth === 0n ? 1n : depth)) * 0.08}), rgba(246, 70, 93, 0) 100%)`,
+                      }}
+                    >
+                      <span className="text-[#F6465D]">{formatMicroPerMtok(BigInt(ask.price_micro_per_mtok))}</span>
+                      <span className="text-right text-[#1E1E1E]">{formatMtok(BigInt(ask.tokens_left))}</span>
+                      <span className={`text-right ${MUTED}`}>{formatMtok(total)}</span>
+                      <span className={`truncate text-right ${ask.verifiable ? "text-[#1743FF]" : MUTED}`}>
+                        {ask.rail}
+                      </span>
+                    </div>
+                  ))
+                )}
+                <p className={`px-4 py-2 text-[12px] ${MUTED}`}>
                   asks only — buy side clears the ladder. best ask {bestAsk !== null ? formatMicroPerMtok(bestAsk) : "—"} ·
                   depth {formatMtok(depth)} MTok
                 </p>
               </>
             ) : (
-              <div className="mt-3">
+              <div>
                 {(book?.fills.length ?? 0) === 0 ? (
-                  <p className="border-t border-[#D9D9D9] py-6 text-center text-[14px] text-[#757575]">
+                  <p className="border-t border-[#D9D9D9] px-4 py-6 text-center text-[13px] text-[#757575]">
                     the venue has not printed a fill for {model} yet
                   </p>
                 ) : (
                   book?.fills.map((fill) => (
                     <div
                       key={`${fill.listing_id}-${fill.created_at}`}
-                      className="flex items-baseline justify-between gap-4 border-t border-[#D9D9D9] py-3"
+                      className="flex items-center justify-between gap-3 border-t border-[#D9D9D9] px-4 py-[5px] text-[13px] tabular-nums"
                     >
-                      <span className={`text-[13px] tabular-nums ${MUTED}`}>{clockFormat.format(new Date(fill.created_at))}</span>
-                      <span className="text-[14px] tabular-nums text-[#1E1E1E]">
-                        {formatMicroPerMtok(BigInt(fill.price_micro_per_mtok))}
-                        <span className={`ml-1.5 text-[12px] ${MUTED}`}>USD / MTok</span>
-                      </span>
-                      <span className={`text-[13px] tabular-nums ${MUTED}`}>{formatMtok(BigInt(fill.tokens))} MTok</span>
+                      <span className={MUTED}>{clockFormat.format(new Date(fill.created_at))}</span>
+                      <span className="text-[#1E1E1E]">{formatMicroPerMtok(BigInt(fill.price_micro_per_mtok))}</span>
+                      <span className={MUTED}>{formatMtok(BigInt(fill.tokens))} MTok</span>
                     </div>
                   ))
                 )}
               </div>
             )}
 
-            <p className={`mt-3 border-t border-[#D9D9D9] pt-3 text-[13px] ${MUTED}`}>
+            <p className={`border-t border-[#D9D9D9] px-4 py-2 text-[12px] ${MUTED}`}>
               spot book · seeds the index the perp clears against
             </p>
           </div>
         </div>
 
-        <div className="border border-[#CECECE] bg-[#EBEBEB] p-4">
-          <div className="flex border border-[#CECECE] bg-white">
+        <div className="flex flex-col self-start overflow-hidden rounded-[6px] border border-[#CECECE] bg-white">
+          <div className="flex border-b border-[#CECECE]">
             <button
               type="button"
               onClick={() => setSide("long")}
@@ -587,7 +547,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
             </button>
           </div>
 
-          <div className="mt-4 space-y-4">
+          <div className="space-y-4 p-4">
             <div className="flex justify-between text-[14px]">
               <span className={MUTED}>Available to trade</span>
               <span className="tabular-nums text-[#1E1E1E]">{usdc !== null ? formatUsd(usdc) : "—"}</span>
@@ -603,7 +563,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
 
             <label className="block">
               <span className={`mb-1 block text-[13px] ${MUTED}`}>Size, in MTokens</span>
-              <span className="flex items-center gap-2 border border-[#CECECE] bg-white px-2.5 focus-within:border-[#1743FF]">
+              <span className="flex items-center gap-2 rounded-[6px] border border-[#CECECE] bg-white px-2.5 focus-within:border-[#1743FF]">
                 <input
                   value={size}
                   onChange={(event) => setSize(event.target.value)}
@@ -738,7 +698,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
                     );
                   }
                 }}
-                className="flex h-[34px] w-full items-center justify-center border border-[#CECECE] bg-white text-[13px] text-[#1E1E1E] hover:border-[#1743FF] disabled:text-[#C9C9C9]"
+                className="flex h-[34px] w-full items-center justify-center rounded-[6px] border border-[#CECECE] bg-white text-[13px] text-[#1E1E1E] hover:border-[#1743FF] disabled:text-[#C9C9C9]"
               >
                 Get 100 test USDC
               </button>
@@ -767,213 +727,229 @@ export function Perps({ initialModel }: { initialModel: string }) {
         </div>
       </div>
 
-      <div className="mt-10 border-t border-[#CECECE] pt-8">
-        <p className="text-[13px] text-[#1E1E1E]">[ positions ]</p>
-        <h2 className="mt-3 font-serif text-[32px] leading-[1.1] text-[#1E1E1E]">
-          Positions and trade history.
-        </h2>
-
-        <div className="mt-4 flex items-center gap-5">
+      <div className="mt-5 overflow-hidden rounded-[6px] border border-[#CECECE] bg-white">
+        <div className="flex flex-wrap items-center gap-5 border-b border-[#D9D9D9] px-4 py-2.5 text-[14px]">
           {STRIP_TABS.map((item) => (
             <button
               key={item}
               type="button"
               onClick={() => setStripTab(item)}
               aria-pressed={stripTab === item}
-              className={`text-[14px] ${
+              className={`${
                 stripTab === item
-                  ? "text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
+                  ? "font-semibold text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
                   : "text-[#757575] hover:text-[#1E1E1E]"
               }`}
             >
               {item}
             </button>
           ))}
-          <span className={`text-[13px] ${MUTED}`}>
+          <span className={`ml-auto text-[13px] ${MUTED}`}>
             {stripTab === "Positions" ? `${held.length} open` : `${history.length} trades`}
           </span>
         </div>
 
-        <div className="mt-4">
-          {stripTab === "Positions" ? (
-            <>
-              <div className={`hidden border-y border-[#CECECE] py-2 text-[12px] md:grid md:grid-cols-9 ${MUTED}`}>
-                {["Market", "Size", "Position value", "Entry price", "Mark price", "PNL / ROE %", "Liq. price", "Margin", "Funding"].map(
-                  (head, i) => (
-                    <span key={head} className={i === 0 ? "pr-2" : "text-right"}>
-                      {head}
-                    </span>
-                  ),
-                )}
-              </div>
-              {held.length === 0 ? (
-                <p className="border-t border-[#CECECE] py-5 text-[14px] text-[#757575] md:border-t-0">
-                  No open positions yet.
-                </p>
-              ) : (
-                held.map((row) => {
-                  const size = row.size < 0n ? -row.size : row.size;
-                  const pnl = (row.size * (row.price - row.entryPrice)) / 1_000_000n;
-                  const value = notional(row.size, row.price);
-                  const leverage = row.equity > 0n ? Number((value * 100n) / row.equity) / 100 : null;
-                  const headroom = row.equity - (value + MAX_LEVERAGE - 1n) / MAX_LEVERAGE - 1n;
-                  const settled = row.margin - row.fundingOwed;
-                  const removable = headroom < settled ? headroom : settled;
-                  const amount = parseUsd(marginInput);
-                  return (
-                    <div
-                      key={row.model}
-                      className="grid grid-cols-3 gap-y-1 border-t border-[#CECECE] py-3 text-[13px] tabular-nums text-[#1E1E1E] md:grid-cols-9"
-                    >
-                      <span className="pr-2">
-                        {row.model}
-                        {leverage !== null ? (
-                          <span className="ml-1.5 border border-[#CECECE] bg-white px-1 text-[11px] text-[#1743FF]">
-                            {leverage.toFixed(1)}x
-                          </span>
-                        ) : null}
-                      </span>
-                      <span className={`text-right ${row.size > 0n ? "text-[#2EBD85]" : "text-[#F6465D]"}`}>
-                        {row.size > 0n ? "+" : "−"}
-                        {formatMtok(size)}
-                      </span>
-                      <span className="text-right">{formatUsd(notional(row.size, row.price))}</span>
-                      <span className="text-right">{formatMicroPerMtok(row.entryPrice)}</span>
-                      <span className="text-right">{formatMicroPerMtok(row.price)}</span>
-                      <span className="text-right">
-                        {signedUsd(pnl)} /{" "}
-                        {row.margin > 0n ? `${(Number((pnl * 10_000n) / row.margin) / 100).toFixed(2)}%` : "—"}
-                      </span>
-                      <span className="text-right">
-                        {row.liquidationPrice > 0n ? formatMicroPerMtok(row.liquidationPrice) : "—"}
-                      </span>
-                      <span className="text-right">{formatUsd(row.margin)}</span>
-                      <span className="text-right">
-                        {signedUsd(-row.fundingOwed)}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditing(editing === row.model ? null : row.model);
-                            setMarginInput("");
-                          }}
-                          aria-expanded={editing === row.model}
-                          className="ml-2 underline"
-                        >
-                          margin
-                        </button>
-                        <button
-                          type="button"
-                          disabled={!wallet || pending}
-                          onClick={() => {
-                            if (wallet) void send(() => modify(wallet, row.model, -row.size, 0n));
-                          }}
-                          className="ml-2 underline disabled:text-[#C9C9C9]"
-                        >
-                          close
-                        </button>
-                      </span>
-                      {editing === row.model ? (
-                        <div className="col-span-3 flex flex-wrap items-center justify-end gap-3 pt-2 md:col-span-9">
-                          <span className={MUTED}>
-                            margin {formatUsd(row.margin)} · remove up to {formatUsd(removable > 0n ? removable : 0n)}
-                          </span>
-                          <input
-                            value={marginInput}
-                            onChange={(event) => setMarginInput(event.target.value)}
-                            inputMode="decimal"
-                            placeholder="USD"
-                            aria-label={`USD of margin to add to or remove from ${row.model}`}
-                            className="h-[28px] w-24 border border-[#CECECE] bg-white px-2 text-right outline-none focus:border-[#1743FF]"
-                          />
-                          <button
-                            type="button"
-                            disabled={!wallet || pending || !amount || (usdc ?? 0n) < amount}
-                            onClick={() => {
-                              if (wallet && amount) void send(() => modify(wallet, row.model, 0n, amount));
-                            }}
-                            className="underline disabled:text-[#C9C9C9]"
-                          >
-                            add
-                          </button>
-                          <button
-                            type="button"
-                            disabled={!wallet || pending || !amount || amount > removable}
-                            onClick={() => {
-                              if (wallet && amount) void send(() => modify(wallet, row.model, 0n, -amount));
-                            }}
-                            className="underline disabled:text-[#C9C9C9]"
-                          >
-                            remove
-                          </button>
-                        </div>
-                      ) : null}
-                    </div>
-                  );
-                })
-              )}
-            </>
-          ) : null}
-
-          {stripTab === "Trade History" ? (
-            <>
-              <div className={`hidden border-y border-[#CECECE] py-2 text-[12px] md:grid md:grid-cols-6 ${MUTED}`}>
-                {["Time, UTC", "Market", "Size", "Price", "Realized PNL", "Fee"].map((head, i) => (
-                  <span key={head} className={i < 2 ? "pr-2" : "text-right"}>
+        {stripTab === "Positions" ? (
+          <>
+            <div className={`hidden gap-x-3 px-4 py-1.5 text-[11px] md:grid md:grid-cols-9 ${MUTED}`}>
+              {["Market", "Size", "Position value", "Entry price", "Mark price", "PNL / ROE %", "Liq. price", "Margin", "Funding"].map(
+                (head, i) => (
+                  <span key={head} className={i === 0 ? "pr-2" : "text-right"}>
                     {head}
                   </span>
-                ))}
-              </div>
-              {history.length === 0 ? (
-                <p className="border-t border-[#CECECE] py-5 text-[14px] text-[#757575] md:border-t-0">
-                  {address
-                    ? "No perp trades from this wallet yet. The keeper records each trade within a minute."
-                    : "Connect a wallet to see its trades."}
-                </p>
-              ) : (
-                history.map((fill) => {
-                  const change = BigInt(fill.size_change);
-                  const pnl = BigInt(fill.realized_pnl_usd_micro);
-                  const price = BigInt(fill.price_micro_per_mtok);
-                  return (
-                    <div
-                      key={`${fill.tx_hash}:${fill.kind}`}
-                      className="grid grid-cols-3 gap-y-1 border-t border-[#CECECE] py-3 text-[13px] tabular-nums text-[#1E1E1E] md:grid-cols-6"
-                    >
-                      <a
-                        href={`${galileo.blockExplorers.default.url}/tx/${fill.tx_hash}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className={`pr-2 hover:underline ${MUTED}`}
-                      >
-                        {stampFormat.format(new Date(fill.at))}
-                      </a>
-                      <span className="pr-2">
-                        {fill.model}
-                        {fill.kind === "liquidate" ? <span className="ml-1.5 text-[#F6465D]">liquidated</span> : null}
-                      </span>
-                      <span className={`text-right ${change > 0n ? "text-[#2EBD85]" : change < 0n ? "text-[#F6465D]" : ""}`}>
-                        {change > 0n ? "+" : change < 0n ? "−" : ""}
-                        {formatMtok(change < 0n ? -change : change)} MTok
-                      </span>
-                      <span className="text-right">{price > 0n ? formatMicroPerMtok(price) : "—"}</span>
-                      <span className={`text-right ${pnl > 0n ? "text-[#2EBD85]" : pnl < 0n ? "text-[#F6465D]" : ""}`}>
-                        {pnl === 0n ? "—" : signedUsd(pnl)}
-                      </span>
-                      <span className="text-right">
-                        {fill.kind === "liquidate"
-                          ? `reward ${formatUsd(BigInt(fill.reward_usd_micro))}`
-                          : formatUsd(BigInt(fill.fee_usd_micro))}
-                      </span>
-                    </div>
-                  );
-                })
+                ),
               )}
-            </>
-          ) : null}
-        </div>
+            </div>
+            {held.length === 0 ? (
+              <p className="border-t border-[#D9D9D9] px-4 py-5 text-[13px] text-[#757575] md:border-t-0">
+                No open positions yet.
+              </p>
+            ) : (
+              held.map((row) => {
+                const size = row.size < 0n ? -row.size : row.size;
+                const pnl = (row.size * (row.price - row.entryPrice)) / 1_000_000n;
+                const value = notional(row.size, row.price);
+                const leverage = row.equity > 0n ? Number((value * 100n) / row.equity) / 100 : null;
+                const headroom = row.equity - (value + MAX_LEVERAGE - 1n) / MAX_LEVERAGE - 1n;
+                const settled = row.margin - row.fundingOwed;
+                const removable = headroom < settled ? headroom : settled;
+                const amount = parseUsd(marginInput);
+                return (
+                  <div
+                    key={row.model}
+                    className="grid grid-cols-3 gap-x-3 gap-y-1 border-t border-[#D9D9D9] px-4 py-2.5 text-[13px] tabular-nums text-[#1E1E1E] md:grid-cols-9"
+                  >
+                    <span className="pr-2">
+                      {row.model}
+                      {leverage !== null ? (
+                        <span className="ml-1.5 rounded-[6px] border border-[#CECECE] bg-white px-1 text-[11px] text-[#1743FF]">
+                          {leverage.toFixed(1)}x
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className={`text-right ${row.size > 0n ? "text-[#2EBD85]" : "text-[#F6465D]"}`}>
+                      {row.size > 0n ? "+" : "−"}
+                      {formatMtok(size)}
+                    </span>
+                    <span className="text-right">{formatUsd(notional(row.size, row.price))}</span>
+                    <span className="text-right">{formatMicroPerMtok(row.entryPrice)}</span>
+                    <span className="text-right">{formatMicroPerMtok(row.price)}</span>
+                    <span className="text-right">
+                      {signedUsd(pnl)} /{" "}
+                      {row.margin > 0n ? `${(Number((pnl * 10_000n) / row.margin) / 100).toFixed(2)}%` : "—"}
+                    </span>
+                    <span className="text-right">
+                      {row.liquidationPrice > 0n ? formatMicroPerMtok(row.liquidationPrice) : "—"}
+                    </span>
+                    <span className="text-right">{formatUsd(row.margin)}</span>
+                    <span className="text-right">
+                      {signedUsd(-row.fundingOwed)}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditing(editing === row.model ? null : row.model);
+                          setMarginInput("");
+                        }}
+                        aria-expanded={editing === row.model}
+                        className="ml-2 underline"
+                      >
+                        margin
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!wallet || pending}
+                        onClick={() => {
+                          if (wallet) void send(() => modify(wallet, row.model, -row.size, 0n));
+                        }}
+                        className="ml-2 underline disabled:text-[#C9C9C9]"
+                      >
+                        close
+                      </button>
+                    </span>
+                    {editing === row.model ? (
+                      <div className="col-span-3 flex flex-wrap items-center justify-end gap-3 pt-2 md:col-span-9">
+                        <span className={MUTED}>
+                          margin {formatUsd(row.margin)} · remove up to {formatUsd(removable > 0n ? removable : 0n)}
+                        </span>
+                        <input
+                          value={marginInput}
+                          onChange={(event) => setMarginInput(event.target.value)}
+                          inputMode="decimal"
+                          placeholder="USD"
+                          aria-label={`USD of margin to add to or remove from ${row.model}`}
+                          className="h-[28px] w-24 rounded-[6px] border border-[#CECECE] bg-white px-2 text-right outline-none focus:border-[#1743FF]"
+                        />
+                        <button
+                          type="button"
+                          disabled={!wallet || pending || !amount || (usdc ?? 0n) < amount}
+                          onClick={() => {
+                            if (wallet && amount) void send(() => modify(wallet, row.model, 0n, amount));
+                          }}
+                          className="underline disabled:text-[#C9C9C9]"
+                        >
+                          add
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!wallet || pending || !amount || amount > removable}
+                          onClick={() => {
+                            if (wallet && amount) void send(() => modify(wallet, row.model, 0n, -amount));
+                          }}
+                          className="underline disabled:text-[#C9C9C9]"
+                        >
+                          remove
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })
+            )}
+          </>
+        ) : null}
+
+        {stripTab === "Trade History" ? (
+          <>
+            <div className={`hidden gap-x-3 px-4 py-1.5 text-[11px] md:grid md:grid-cols-6 ${MUTED}`}>
+              {["Time, UTC", "Market", "Size", "Price", "Realized PNL", "Fee"].map((head, i) => (
+                <span key={head} className={i < 2 ? "pr-2" : "text-right"}>
+                  {head}
+                </span>
+              ))}
+            </div>
+            {history.length === 0 ? (
+              <p className="border-t border-[#D9D9D9] px-4 py-5 text-[13px] text-[#757575] md:border-t-0">
+                {address
+                  ? "No perp trades from this wallet yet. The keeper records each trade within a minute."
+                  : "Connect a wallet to see its trades."}
+              </p>
+            ) : (
+              history.map((fill) => {
+                const change = BigInt(fill.size_change);
+                const pnl = BigInt(fill.realized_pnl_usd_micro);
+                const price = BigInt(fill.price_micro_per_mtok);
+                return (
+                  <div
+                    key={`${fill.tx_hash}:${fill.kind}`}
+                    className="grid grid-cols-3 gap-x-3 gap-y-1 border-t border-[#D9D9D9] px-4 py-2.5 text-[13px] tabular-nums text-[#1E1E1E] md:grid-cols-6"
+                  >
+                    <a
+                      href={`${galileo.blockExplorers.default.url}/tx/${fill.tx_hash}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className={`pr-2 hover:underline ${MUTED}`}
+                    >
+                      {stampFormat.format(new Date(fill.at))}
+                    </a>
+                    <span className="pr-2">
+                      {fill.model}
+                      {fill.kind === "liquidate" ? <span className="ml-1.5 text-[#F6465D]">liquidated</span> : null}
+                    </span>
+                    <span className={`text-right ${change > 0n ? "text-[#2EBD85]" : change < 0n ? "text-[#F6465D]" : ""}`}>
+                      {change > 0n ? "+" : change < 0n ? "−" : ""}
+                      {formatMtok(change < 0n ? -change : change)} MTok
+                    </span>
+                    <span className="text-right">{price > 0n ? formatMicroPerMtok(price) : "—"}</span>
+                    <span className={`text-right ${pnl > 0n ? "text-[#2EBD85]" : pnl < 0n ? "text-[#F6465D]" : ""}`}>
+                      {pnl === 0n ? "—" : signedUsd(pnl)}
+                    </span>
+                    <span className="text-right">
+                      {fill.kind === "liquidate"
+                        ? `reward ${formatUsd(BigInt(fill.reward_usd_micro))}`
+                        : formatUsd(BigInt(fill.fee_usd_micro))}
+                    </span>
+                  </div>
+                );
+              })
+            )}
+          </>
+        ) : null}
       </div>
     </section>
   );
 }
 
 type Stat = { label: string; value: string; tone?: "up" | "down" | undefined };
+
+function Stat({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: "up" | "down" | undefined;
+}) {
+  return (
+    <div>
+      <p className="text-[11px] leading-4 text-[#757575]">{label}</p>
+      <p
+        className={`text-[14px] font-semibold tabular-nums ${
+          tone === "up" ? "text-[#2EBD85]" : tone === "down" ? "text-[#F6465D]" : "text-[#1E1E1E]"
+        }`}
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
