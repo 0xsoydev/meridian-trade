@@ -830,18 +830,18 @@ M9 and M10 sit outside this table: two OAuth flows and two protocol translators 
 - Vercel production with own Privy app; second instance `pnpm dev` on `localhost:3000` with 0G's Privy app id for the credit view.
 - Keeper running ≥ 30 min before judging so the index has history.
 - Seed with `scripts/seed.ts`: two 0G asks on the demo model — a small one 15% under reference and a larger one 3% under — plus a funded router key, vault funding and MockUSDC for judges. Re-running it is idempotent.
-- The demo model is `0gm-1.0-35b-a3b`, the only model the 0G testnet router serves. The seed, the keeper's `MARKETS` and the frontend defaults must all use it. If its provider is unhealthy the day before judging, switch all of them to `glm-5.3` at once.
+- Inference in the demo runs on Command Code `deepseek-v4.1-flash`, which needs a seller ask with capacity left. `0gm-1.0-35b-a3b` stays listed and tradeable, priced from 0G's public model list; show 0G inference only if the testnet router has a healthy 0gm provider that day.
 - Agent terminal ready with a fresh Hedera agent account (created ≥ 1 min earlier).
 - `ENABLE_OAUTH_RAILS=0` for the demo and the recording; only the 0G and (optionally) one API-key rail appear on stage.
 
-Video (2:30–2:55, human voice):
+Video (2:45–2:55, human voice): the shot list, lines, pre-flight checks and fallbacks are in [`docs/demo-script.md`](demo-script.md).
 1. 0:00 Expiring credits problem.
-2. 0:20 Seller lists: World verify, capped key, ask below list.
+2. 0:20 Seller lists: World verify, a stored key, an ask below list.
 3. 0:45 Agent with $0 balance: request → 402 → USDC on Hedera → answer streams; HashScan link.
-4. 1:15 On `/trade`: buy MTokens, the book drains past the cheap ask, the minute VWAP jumps and the index steps; the agent then spends those tokens at charge 0.
-5. 1:45 On `/perps`: index from HCS rollups → long on Galileo.
-6. 2:10 Agent hits the cap → World approval: deny, then approve.
-7. 2:35 `/receipts`: recompute index from the public log.
+4. 1:10 On `/trade`: buy MTokens, resell part into a bid and list the rest; the agent spends what it holds at charge 0.
+5. 1:40 On `/perps`: index from HCS rollups → long, add margin, flip short in one order, Trade History.
+6. 2:05 Agent hits the cap → World approval: deny, then approve.
+7. 2:30 `/receipts`: recompute index from the public log; an executed payout on HashScan.
 
 ---
 
