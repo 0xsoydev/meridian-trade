@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { BaseError } from "viem";
 import { useConnection, useSignMessage } from "wagmi";
 import { z } from "zod";
+import { CORNERS, CTA } from "../../../components/landing/hero";
 import { formatMicroPerMtok, formatUsd, parseUsd, stampFormat, TOPUP_MAX_MICRO } from "../../../lib/price";
 import type { ApprovalStart, Balance, DepositResult, RouterError } from "../../../lib/types";
 import { useModels } from "../models";
@@ -32,6 +33,17 @@ const usageSchema = z.object({
   ),
 });
 
+const COLUMN = "flex flex-col self-start rounded-[6px] border border-[#CECECE] bg-white lg:h-[calc(100svh-277px)] lg:min-h-[423px]";
+const TAB_ROW = "flex shrink-0 items-center gap-5 border-b border-[#D9D9D9] px-4 py-2.5 text-[14px]";
+const INPUT =
+  "h-[34px] w-full rounded-[6px] border border-[#CECECE] bg-white px-2.5 text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF]";
+const BUTTON =
+  "h-[34px] w-full rounded-[6px] bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4] disabled:text-white";
+const KEY_CTA = `${CTA} relative flex h-[34px] w-full items-center justify-center text-[14px] font-semibold text-white disabled:pointer-events-none disabled:bg-[#D4D4D4]`;
+
+const tabClass = (active: boolean) =>
+  active ? "font-semibold text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4" : "text-[#757575] hover:text-[#1E1E1E]";
+
 export function Keys() {
   const { ready, authenticated, login, logout } = usePrivy();
   const { address } = useConnection();
@@ -44,6 +56,9 @@ export function Keys() {
   const [balance, setBalance] = useState<Balance | null>(null);
   const [accountError, setAccountError] = useState<"rejected" | "down" | null>(null);
   const [version, setVersion] = useState(0);
+  const [pane, setPane] = useState<"connect" | "usage">("connect");
+  const [keyTab, setKeyTab] = useState<"create" | "paste">("create");
+  const [fundTab, setFundTab] = useState<"wallet" | "transfer" | "agent">("wallet");
 
   const models = useModels();
   const [autoTopup, setAutoTopup] = useState("");
@@ -272,7 +287,7 @@ export function Keys() {
         const body = (await res.json().catch(() => null)) as RouterError | null;
         if (res.status === 401) {
           setAccountError("rejected");
-          setSaveError("router key rejected — paste it again");
+          setSaveError("Router key rejected. Paste it again.");
         } else {
           setApproval(body?.approval ?? null);
           setSaveError(body?.error?.message ?? `save failed (${res.status})`);
@@ -289,290 +304,392 @@ export function Keys() {
     }
   };
 
-  const stats = [
+  const stats: { label: string; value: string; tone?: "up" | undefined }[] = [
     { label: "Balance", value: balance ? formatUsd(BigInt(balance.balance_usd_micro)) : "—" },
     { label: "Reserved", value: balance ? formatUsd(BigInt(balance.reserved_usd_micro)) : "—" },
     { label: "Topped up today", value: balance ? formatUsd(BigInt(balance.topped_up_today_usd_micro)) : "—" },
     { label: "Daily cap", value: balance ? formatUsd(BigInt(balance.daily_topup_cap_usd_micro)) : "—" },
     { label: "Auto top-up", value: balance ? formatUsd(BigInt(balance.auto_topup_usd_micro)) : "—" },
+    {
+      label: "Human link",
+      value: balance ? (balance.human_linked ? "linked" : "not linked") : "—",
+      tone: balance?.human_linked ? "up" : undefined,
+    },
   ];
 
   const snippets = [
-    { id: "base", label: "base URL", text: `${origin}/api/v1` },
-    { id: "auth", label: "auth header", text: `Authorization: Bearer ${key ?? "rk_…"}` },
-    { id: "chat", label: "chat call", text: `POST ${origin}/api/v1/chat/completions` },
-    { id: "topup", label: "top-up call", text: `POST ${origin}/api/v1/topup?usd=1.00` },
+    { id: "base", label: "Base URL", text: `${origin}/api/v1` },
+    { id: "auth", label: "Auth header", text: `Authorization: Bearer ${key ?? "rk_…"}` },
+    { id: "chat", label: "Chat call", text: `POST ${origin}/api/v1/chat/completions` },
+    { id: "topup", label: "Top-up call", text: `POST ${origin}/api/v1/topup?usd=1.00` },
   ];
+
+  const keyState = !key
+    ? "none"
+    : accountError === "rejected"
+      ? "rejected"
+      : accountError === "down"
+        ? "offline"
+        : balance
+          ? "live"
+          : "checking";
+  const wallet = balance?.wallet ?? null;
+  const walletShort = wallet ? `${wallet.slice(0, 6)}…${wallet.slice(-4)}` : "";
 
   return (
     <section>
       <div className="flex flex-wrap items-center gap-x-8 gap-y-3 rounded-[6px] border border-[#CECECE] bg-white px-4 py-3">
-        {stats.map((stat) => (
-          <Stat key={stat.label} label={stat.label} value={stat.value} />
-        ))}
-        <div className="ml-auto text-[13px]">
+        <div className="flex w-64 items-center gap-2.5 p-2 pr-3">
+          <span
+            aria-hidden
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#1E1E1E] text-[11px] font-medium tracking-wide text-white"
+          >
+            rk
+          </span>
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="truncate text-[14px] font-semibold leading-5 text-[#1E1E1E]">Router key</span>
+            <span className="truncate text-[11px] leading-4 tabular-nums text-[#757575]">
+              {key ? maskKey(key) : "none in this browser"}
+            </span>
+          </span>
+          <span
+            className={`shrink-0 rounded-[6px] border border-[#CECECE] px-1.5 py-0.5 text-[11px] leading-none ${
+              keyState === "live" ? "text-[#2EBD85]" : keyState === "rejected" ? "text-[#F6465D]" : "text-[#1E1E1E]"
+            }`}
+          >
+            {keyState}
+          </span>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-x-7 gap-y-2">
+          {stats.map((stat) => (
+            <div key={stat.label}>
+              <p className="text-[11px] leading-4 text-[#757575]">{stat.label}</p>
+              <p className={`text-[14px] font-semibold tabular-nums ${stat.tone === "up" ? "text-[#2EBD85]" : "text-[#1E1E1E]"}`}>
+                {stat.value}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        <div className="ml-auto text-[14px]">
           {accountError === "rejected" ? (
-            <span className="text-[#F6465D]">router key rejected — paste it again</span>
+            <span className="text-[13px] text-[#F6465D]">Router key rejected. Paste it again.</span>
           ) : accountError === "down" ? (
-            <span className="text-[#F6465D]">the account feed is unreachable; retry in a moment</span>
-          ) : !key ? (
-            <span className={MUTED}>paste a key below to wake the account</span>
+            <span className="text-[13px] text-[#F6465D]">The account feed is unreachable. Retry in a moment.</span>
+          ) : address ? (
+            <span className="tabular-nums text-[#1E1E1E]">
+              {address.slice(0, 6)}…{address.slice(-4)}
+            </span>
           ) : null}
         </div>
       </div>
 
-      <div className="mt-5 grid gap-[17px] lg:grid-cols-[1fr_300px]">
-        <div className="rounded-[6px] border border-[#CECECE] bg-white">
-          <div className="flex items-center gap-5 border-b border-[#D9D9D9] px-4 py-2.5 text-[14px]">
-            <span className="font-semibold text-[#1E1E1E]">One key, one balance.</span>
-            <span className={MUTED}>account</span>
-          </div>
-          <div className="space-y-4 p-4">
-            <label className="block">
-              <span className={`mb-1 block text-[13px] ${MUTED}`}>Router key</span>
-              <input
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                placeholder="rk_…"
-                className="h-[34px] w-full rounded-[6px] border border-[#CECECE] bg-white px-2.5 text-[14px] text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF]"
-              />
-            </label>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={saveKey}
-                disabled={!draft.trim().startsWith("rk_") || draft.trim().length < 8}
-                className="h-[34px] rounded-[6px] bg-black px-4 text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4] disabled:text-white"
-              >
-                Save key
+      <div className="mt-5 grid grid-cols-1 gap-[17px] lg:grid-cols-[minmax(0,1fr)_290px_290px]">
+        <div className={COLUMN}>
+          <div className={TAB_ROW}>
+            {(["connect", "usage"] as const).map((item) => (
+              <button key={item} type="button" onClick={() => setPane(item)} aria-pressed={pane === item} className={tabClass(pane === item)}>
+                {item === "connect" ? "Connect" : "Usage"}
               </button>
-              {key ? (
-                <button
-                  type="button"
-                  onClick={clearKey}
-                  className="h-[34px] rounded-[6px] border border-[#CECECE] bg-white px-4 text-[14px] text-[#1E1E1E] hover:border-[#1743FF]"
-                >
-                  Clear
-                </button>
-              ) : null}
-            </div>
-            <p className={`text-[13px] leading-5 ${MUTED}`}>
-              Stays in this browser, never in a URL. Currently saved:{" "}
-              <span className="tabular-nums text-[#1E1E1E]">{key ? maskKey(key) : "nothing"}</span>
-            </p>
-
-          <dl className="mt-5 border-t border-[#D9D9D9]">
-            {[
-              ["Balance", balance ? formatUsd(BigInt(balance.balance_usd_micro)) : "—"],
-              ["Reserved", balance ? formatUsd(BigInt(balance.reserved_usd_micro)) : "—"],
-              ["Topped up today", balance ? formatUsd(BigInt(balance.topped_up_today_usd_micro)) : "—"],
-              ["Daily cap", balance ? formatUsd(BigInt(balance.daily_topup_cap_usd_micro)) : "—"],
-              ["Auto top-up", balance ? formatUsd(BigInt(balance.auto_topup_usd_micro)) : "—"],
-            ].map(([label, value]) => (
-              <div key={label} className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
-                <dt className={MUTED}>{label}</dt>
-                <dd className="tabular-nums text-[#1E1E1E]">{value}</dd>
-              </div>
             ))}
-            <div className="flex justify-between py-2 text-[14px]">
-              <dt className={MUTED}>Human link</dt>
-              <dd className="flex items-center gap-2 tabular-nums text-[#1E1E1E]">
-                <span
-                  aria-hidden
-                  className={`h-[7px] w-[7px] rounded-full ${balance?.human_linked ? "bg-[#2EBD85]" : "bg-[#C9C9C9]"}`}
-                />
-                {balance ? (balance.human_linked ? "linked" : "not linked") : "—"}
-              </dd>
-            </div>
-          </dl>
-
-          <div className="mt-5 border-t border-[#D9D9D9] pt-4">
-            <p className="text-[13px] text-[#1E1E1E]">[ deposit ]</p>
-            {balance?.wallet ? (
-              <>
-                <p className={`mt-2 text-[13px] leading-5 ${MUTED}`}>
-                  Pay up to {formatUsd(TOPUP_MAX_MICRO)} at a time in Hedera testnet USDC from{" "}
-                  {`${balance.wallet.slice(0, 6)}…${balance.wallet.slice(-4)}`}, the wallet that created this key.
-                  The mirror verifies the transfer before it credits.
-                </p>
-                <div className="mt-3 flex gap-2">
-                  <span className="flex w-28 items-center gap-1 rounded-[6px] border border-[#CECECE] bg-white px-2.5 focus-within:border-[#1743FF]">
-                    <span className={`text-[13px] ${MUTED}`}>$</span>
-                    <input
-                      value={walletAmount}
-                      onChange={(event) => setWalletAmount(event.target.value)}
-                      inputMode="decimal"
-                      aria-label="deposit amount in USD"
-                      className="h-[34px] w-full bg-transparent text-[14px] tabular-nums text-[#1E1E1E] outline-none"
-                    />
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => void depositFromWallet()}
-                    disabled={
-                      !key ||
-                      walletPaying ||
-                      address?.toLowerCase() !== balance.wallet ||
-                      (parseUsd(walletAmount) ?? 0n) <= 0n ||
-                      (parseUsd(walletAmount) ?? 0n) > TOPUP_MAX_MICRO
-                    }
-                    className="h-[34px] flex-1 bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4] disabled:text-white"
-                  >
-                    {walletPaying
-                      ? "Paying from your wallet…"
-                      : address?.toLowerCase() === balance.wallet
-                        ? "Deposit from wallet"
-                        : `Connect ${balance.wallet.slice(0, 6)}…${balance.wallet.slice(-4)} below`}
-                  </button>
-                </div>
-                <p className={`mt-3 text-[13px] leading-5 ${MUTED}`}>
-                  Or send USDC to the treasury with this memo from any Hedera wallet, then paste the
-                  transaction id.
-                </p>
-              </>
-            ) : (
-              <p className={`mt-2 text-[13px] leading-5 ${MUTED}`}>
-                Send USDC to the venue treasury on Hedera with this memo, then paste the transaction
-                id. The mirror verifies the transfer before it credits.
-              </p>
-            )}
-            {balance ? (
-              <div className="mt-3 border-t border-[#CECECE]">
-                {[
-                  { id: "treasury", label: "treasury", value: balance.treasury ?? "—" },
-                  { id: "memo", label: "memo", value: balance.memo },
-                ].map((row) => (
-                  <div
-                    key={row.id}
-                    className="flex flex-wrap items-baseline justify-between gap-4 border-b border-[#CECECE] py-3"
-                  >
-                    <span className={`text-[13px] ${MUTED}`}>{row.label}</span>
-                    <code className="min-w-0 flex-1 truncate text-[13px] tabular-nums text-[#1E1E1E]">{row.value}</code>
-                    {row.value !== "—" ? (
-                      <button
-                        type="button"
-                        onClick={() => void copy(row.id, row.value)}
-                        className="text-[14px] text-[#1743FF] hover:underline"
-                      >
-                        {copied === row.id ? "copied" : "copy"}
-                      </button>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            ) : null}
-            <label className="mt-3 block">
-              <span className={`mb-1 block text-[13px] ${MUTED}`}>Hedera transaction id or EVM hash</span>
-              <input
-                value={depositTx}
-                onChange={(event) => setDepositTx(event.target.value)}
-                placeholder="0.0.12345@1700000000.000000000 or 0x…"
-                className="h-[34px] w-full rounded-[6px] border border-[#CECECE] bg-white px-2.5 text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF]"
-              />
-            </label>
-            <button
-              type="button"
-              onClick={() => void deposit()}
-              disabled={!key || !depositTx.trim() || depositing}
-              className="mt-2 h-[34px] w-full rounded-[6px] bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4] disabled:text-white"
-            >
-              {depositing ? "Verifying…" : "Deposit"}
-            </button>
-            {depositResult ? (
-              depositResult.ok ? (
-                <p className="mt-2 text-[13px] leading-5 text-[#2EBD85]">
-                  credited {formatUsd(BigInt(depositResult.result.amount_usd_micro))} — balance{" "}
-                  {formatUsd(BigInt(depositResult.result.balance_usd_micro))}
-                </p>
-              ) : (
-                <p className="mt-2 text-[13px] leading-5 text-[#F6465D]">{depositResult.message}</p>
-              )
-            ) : null}
-          </div>
-
-          <div className="mt-5 border-t border-[#D9D9D9] pt-4">
-            <p className="text-[13px] text-[#1E1E1E]">[ top up from the agent ]</p>
-            <p className={`mt-2 text-[13px] leading-5 ${MUTED}`}>
-              Your agent pays the x402 quote. With your key attached the credit lands here; with no
-              key the call mints a fresh funded key.
-            </p>
-            <button
-              type="button"
-              onClick={() => void copy("topup", `POST ${origin}/api/v1/topup?usd=1.00`)}
-              className="mt-2 w-full rounded-[6px] border border-[#CECECE] bg-white px-3 py-2 text-left text-[13px] tabular-nums text-[#1E1E1E] hover:border-[#1743FF]"
-            >
-              {copied === "topup" ? "Copied — run it from your agent." : "Copy top-up call"}
-            </button>
-          </div>
-
-          <div className="mt-5 border-t border-[#D9D9D9] pt-4">
-            <p className="text-[13px] text-[#1E1E1E]">[ wallet ]</p>
-            {authenticated && address ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => void createKey()}
-                  disabled={creating}
-                  className="mt-2 h-[34px] w-full bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4]"
-                >
-                  {creating ? "Waiting for the signature…" : "Create a key with your wallet"}
-                </button>
-                <p className={`mt-1.5 text-[13px] leading-5 ${MUTED}`}>
-                  {createError ?? `${address.slice(0, 6)}…${address.slice(-4)} signs once; the key stays in this browser.`}{" "}
-                  <button type="button" onClick={() => void logout()} className="underline">
-                    disconnect
-                  </button>
-                </p>
-              </>
-            ) : (
-              <button
-                type="button"
-                onClick={() => login()}
-                disabled={!ready}
-                className="mt-2 h-[34px] w-full bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4]"
-              >
-                Connect wallet
-              </button>
-            )}
-            {approval ? (
-              <a
-                href={approval.verification_uri_complete}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-3 flex h-[34px] w-full items-center justify-center rounded-[6px] border border-[#1743FF] bg-white text-[14px] text-[#1743FF]"
-              >
-                Approve with World ID · {approval.user_code}
-              </a>
-            ) : null}
-            <p className={`mt-1.5 text-[13px] leading-5 ${MUTED}`}>
-              {approval
-                ? "Approve in the new tab, then save the settings again."
-                : "Raising the daily cap asks for a World ID approval."}
-            </p>
-          </div>
-          </div>
-        </div>
-
-        <div className="flex flex-col self-start overflow-hidden rounded-[6px] border border-[#CECECE] bg-white">
-          <div className="flex border-b border-[#CECECE]">
-            <div className="w-1/2 bg-black py-2 text-center text-[14px] font-semibold text-white">Settings</div>
-            <span className="flex w-1/2 items-center justify-center border-l border-[#CECECE] py-2 text-[14px] font-semibold text-[#757575]">
-              saved with the key
+            <span className={`ml-auto text-[12px] ${MUTED}`}>
+              {calls.length} call{calls.length === 1 ? "" : "s"}
             </span>
           </div>
 
-          <div className="space-y-4 p-4">
+          {pane === "connect" ? (
+            <div className="min-h-0 flex-1 overflow-auto px-4 pb-4 pt-6">
+              <p className="text-[13px] text-[#1E1E1E]">[ the router ]</p>
+              <h2 className="mt-3 font-serif text-[32px] leading-[1.1] text-[#1E1E1E]">Point your agent at the router.</h2>
+              <p className={`mt-3 max-w-[560px] text-pretty text-[14px] leading-5 ${MUTED}`}>
+                OpenAI-compatible chat, one bearer token. The key stays in the header; every call prices itself at
+                the cheapest ask and settles once.
+              </p>
+
+              <div className="mt-5 border-t border-[#D9D9D9]">
+                {snippets.map((snippet) => (
+                  <div key={snippet.id} className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-b border-[#D9D9D9] py-3">
+                    <span className={`w-24 shrink-0 text-[13px] ${MUTED}`}>{snippet.label}</span>
+                    <code className="min-w-0 flex-1 truncate text-[13px] tabular-nums text-[#1E1E1E]">
+                      {snippet.id === "auth" && key ? `Authorization: Bearer ${maskKey(key)}` : snippet.text}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => void copy(snippet.id, snippet.text)}
+                      className="text-[13px] text-[#1743FF] hover:underline"
+                    >
+                      {copied === snippet.id ? "copied" : "copy"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <p className={`mt-4 max-w-[560px] text-pretty text-[13px] leading-5 ${MUTED}`}>
+                A top-up with no Authorization header mints a fresh funded key; with one, it credits that key.
+                Deposits are credited only after the Hedera mirror confirms the transfer.
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className={`hidden px-4 py-1.5 text-[11px] md:grid md:grid-cols-6 md:gap-x-3 ${MUTED}`}>
+                {["Time, UTC", "Model", "Rail", "Tokens in / out", "Paid from", "Charge"].map((head) => (
+                  <span key={head}>{head}</span>
+                ))}
+              </div>
+              <div className="max-h-[420px] min-h-0 flex-1 overflow-auto lg:max-h-none">
+                {!key ? (
+                  <p className="px-4 py-6 text-center text-[13px] text-[#757575]">Create or paste a key to see its calls.</p>
+                ) : calls.length === 0 ? (
+                  <p className="px-4 py-6 text-center text-[13px] text-[#757575]">
+                    No calls yet. Point an agent at the router and they show up here.
+                  </p>
+                ) : (
+                  calls.map((call, index) => (
+                    <div
+                      key={`${call.at}-${index}`}
+                      className="grid grid-cols-3 gap-x-3 gap-y-1 border-t border-[#D9D9D9] px-4 py-2 text-[13px] tabular-nums text-[#1E1E1E] md:grid-cols-6"
+                    >
+                      <span className={MUTED}>{stampFormat.format(new Date(call.at))}</span>
+                      <span className="truncate">{call.model}</span>
+                      <span className={MUTED}>{call.rail}</span>
+                      <span>
+                        {call.prompt_tokens.toLocaleString("en-US")} / {call.completion_tokens.toLocaleString("en-US")}
+                      </span>
+                      <span className={MUTED}>{call.status === "settled" ? call.paid_from : call.status}</span>
+                      <span>{call.paid_from === "prepaid" ? "prepaid MTokens" : formatUsd(BigInt(call.charge_usd_micro))}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-[17px] self-start lg:h-[calc(100svh-277px)] lg:min-h-[423px]">
+          <div className="shrink-0 rounded-[6px] border border-[#CECECE] bg-white">
+            <div className="flex border-b border-[#D9D9D9]">
+              {(["create", "paste"] as const).map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => setKeyTab(item)}
+                  aria-pressed={keyTab === item}
+                  className={`w-1/2 py-2 text-[14px] font-semibold ${item === "paste" ? "border-l border-[#CECECE]" : ""} ${
+                    keyTab === item ? "bg-black text-white" : "text-[#757575] hover:text-[#1E1E1E]"
+                  }`}
+                >
+                  {item === "create" ? "Create" : "Paste"}
+                </button>
+              ))}
+            </div>
+
+            <div className="space-y-3 p-4">
+              {keyTab === "create" ? (
+                authenticated && address ? (
+                  <>
+                    <button type="button" onClick={() => void createKey()} disabled={creating} className={KEY_CTA}>
+                      {CORNERS.map((corner) => (
+                        <span key={corner} aria-hidden className={corner} />
+                      ))}
+                      {creating ? "Waiting for the signature…" : "Create a key with your wallet"}
+                    </button>
+                    <p className={`text-[13px] leading-5 ${createError ? "text-[#F6465D]" : MUTED}`}>
+                      {createError ?? `${address.slice(0, 6)}…${address.slice(-4)} signs once. The key stays in this browser.`}{" "}
+                      <button type="button" onClick={() => void logout()} className="text-[#1743FF] hover:underline">
+                        Disconnect
+                      </button>
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <button type="button" onClick={() => login()} disabled={!ready} className={KEY_CTA}>
+                      {CORNERS.map((corner) => (
+                        <span key={corner} aria-hidden className={corner} />
+                      ))}
+                      Connect wallet
+                    </button>
+                    <p className={`text-[13px] leading-5 ${MUTED}`}>One wallet signature creates the key.</p>
+                  </>
+                )
+              ) : (
+                <>
+                  <label className="block">
+                    <span className={`mb-1 block text-[13px] ${MUTED}`}>Router key</span>
+                    <input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="rk_…" className={INPUT} />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={saveKey}
+                    disabled={!draft.trim().startsWith("rk_") || draft.trim().length < 8}
+                    className={BUTTON}
+                  >
+                    Save key
+                  </button>
+                  <p className={`text-[13px] leading-5 ${MUTED}`}>Stays in this browser, never in a URL.</p>
+                </>
+              )}
+              {key ? (
+                <p className={`border-t border-[#D9D9D9] pt-3 text-[13px] leading-5 ${MUTED}`}>
+                  Saved <span className="tabular-nums text-[#1E1E1E]">{maskKey(key)}</span>.{" "}
+                  <button type="button" onClick={clearKey} className="text-[#1743FF] hover:underline">
+                    Clear
+                  </button>
+                </p>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="flex min-h-0 flex-1 flex-col rounded-[6px] border border-[#CECECE] bg-white">
+            <div className={TAB_ROW}>
+              {(["wallet", "transfer", "agent"] as const).map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => setFundTab(item)}
+                  aria-pressed={fundTab === item}
+                  className={tabClass(fundTab === item)}
+                >
+                  {item === "wallet" ? "Wallet" : item === "transfer" ? "Transfer" : "Agent"}
+                </button>
+              ))}
+            </div>
+
+            <div className="min-h-0 flex-1 space-y-3 overflow-auto p-4">
+              {fundTab === "agent" ? (
+                <>
+                  <p className={`text-pretty text-[13px] leading-5 ${MUTED}`}>
+                    Your agent pays the x402 quote. With your key attached the credit lands here; with no key the call
+                    mints a fresh funded key.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void copy("agent", `POST ${origin}/api/v1/topup?usd=1.00`)}
+                    className="w-full rounded-[6px] border border-[#CECECE] bg-white px-3 py-2 text-left text-[13px] tabular-nums text-[#1E1E1E] hover:border-[#1743FF]"
+                  >
+                    {copied === "agent" ? "Copied. Run it from your agent." : "Copy top-up call"}
+                  </button>
+                </>
+              ) : !key ? (
+                <p className={`text-[13px] leading-5 ${MUTED}`}>Create or paste a key first.</p>
+              ) : fundTab === "wallet" ? (
+                wallet ? (
+                  <>
+                    <p className={`text-pretty text-[13px] leading-5 ${MUTED}`}>
+                      Pay up to {formatUsd(TOPUP_MAX_MICRO)} at a time in Hedera testnet USDC from {walletShort}, the wallet
+                      that created this key. The mirror verifies the transfer before it credits.
+                    </p>
+                    <span className="flex items-center gap-1 rounded-[6px] border border-[#CECECE] bg-white px-2.5 focus-within:border-[#1743FF]">
+                      <span className={`text-[13px] ${MUTED}`}>$</span>
+                      <input
+                        value={walletAmount}
+                        onChange={(event) => setWalletAmount(event.target.value)}
+                        inputMode="decimal"
+                        aria-label="deposit amount in USD"
+                        className="h-[32px] w-full bg-transparent text-[14px] tabular-nums text-[#1E1E1E] outline-none"
+                      />
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void depositFromWallet()}
+                      disabled={
+                        walletPaying ||
+                        address?.toLowerCase() !== wallet ||
+                        (parseUsd(walletAmount) ?? 0n) <= 0n ||
+                        (parseUsd(walletAmount) ?? 0n) > TOPUP_MAX_MICRO
+                      }
+                      className={BUTTON}
+                    >
+                      {walletPaying
+                        ? "Paying from your wallet…"
+                        : address?.toLowerCase() === wallet
+                          ? "Deposit from wallet"
+                          : `Connect ${walletShort} to pay`}
+                    </button>
+                  </>
+                ) : (
+                  <p className={`text-pretty text-[13px] leading-5 ${MUTED}`}>
+                    {balance
+                      ? "No wallet created this key. Send USDC with the memo under Transfer, or top up from your agent."
+                      : accountError
+                        ? "The key's account did not load. See the note at the top."
+                        : "Loading the key's account…"}
+                  </p>
+                )
+              ) : (
+                <>
+                  <p className={`text-pretty text-[13px] leading-5 ${MUTED}`}>
+                    Send USDC to the venue treasury on Hedera with this memo, then paste the transaction id. The mirror
+                    verifies the transfer before it credits.
+                  </p>
+                  {balance ? (
+                    <div className="border-t border-[#D9D9D9]">
+                      {[
+                        { id: "treasury", label: "Treasury", value: balance.treasury ?? "—" },
+                        { id: "memo", label: "Memo", value: balance.memo },
+                      ].map((row) => (
+                        <div key={row.id} className="flex items-baseline gap-3 border-b border-[#D9D9D9] py-2">
+                          <span className={`text-[13px] ${MUTED}`}>{row.label}</span>
+                          <code className="min-w-0 flex-1 truncate text-right text-[13px] tabular-nums text-[#1E1E1E]">{row.value}</code>
+                          {row.value !== "—" ? (
+                            <button
+                              type="button"
+                              onClick={() => void copy(row.id, row.value)}
+                              className="text-[13px] text-[#1743FF] hover:underline"
+                            >
+                              {copied === row.id ? "copied" : "copy"}
+                            </button>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  <label className="block">
+                    <span className={`mb-1 block text-[13px] ${MUTED}`}>Hedera transaction id or EVM hash</span>
+                    <input
+                      value={depositTx}
+                      onChange={(event) => setDepositTx(event.target.value)}
+                      placeholder="0.0.12345@1700000000.000000000 or 0x…"
+                      className={INPUT}
+                    />
+                  </label>
+                  <button type="button" onClick={() => void deposit()} disabled={!depositTx.trim() || depositing} className={BUTTON}>
+                    {depositing ? "Verifying…" : "Deposit"}
+                  </button>
+                </>
+              )}
+
+              {depositResult && fundTab !== "agent" ? (
+                depositResult.ok ? (
+                  <p className="text-[13px] leading-5 text-[#2EBD85]">
+                    Credited {formatUsd(BigInt(depositResult.result.amount_usd_micro))}. Balance{" "}
+                    {formatUsd(BigInt(depositResult.result.balance_usd_micro))}.
+                  </p>
+                ) : (
+                  <p className="text-[13px] leading-5 text-[#F6465D]">{depositResult.message}</p>
+                )
+              ) : null}
+            </div>
+          </div>
+        </div>
+
+        <div className={COLUMN}>
+          <div className={TAB_ROW}>
+            <span className="font-semibold text-[#1E1E1E]">Settings</span>
+          </div>
+
+          <div className="min-h-0 flex-1 space-y-4 overflow-auto p-4">
             <label className="block">
               <span className={`mb-1 flex items-baseline justify-between gap-2 text-[13px] ${MUTED}`}>
                 <span>Auto top-up, USD</span>
-                <span className="text-[12px]">0.10 – 20.00</span>
+                <span className="text-[12px]">0.10 to 20.00</span>
               </span>
               <input
                 value={autoTopup}
                 onChange={(event) => setAutoTopup(event.target.value)}
                 inputMode="decimal"
                 placeholder="0.50"
-                className="h-[34px] w-full rounded-[6px] border border-[#CECECE] bg-white px-2.5 text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF]"
+                className={INPUT}
               />
             </label>
             <div className="flex gap-5">
@@ -599,10 +716,10 @@ export function Keys() {
                 onChange={(event) => setDailyCap(event.target.value)}
                 inputMode="decimal"
                 placeholder="5.00"
-                className="h-[34px] w-full rounded-[6px] border border-[#CECECE] bg-white px-2.5 text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF]"
+                className={INPUT}
               />
             </label>
-            <p className={`text-[13px] leading-5 ${MUTED}`}>
+            <p className={`text-pretty text-[13px] leading-5 ${MUTED}`}>
               Lowering is free. Raising asks for a World ID approval first.
             </p>
 
@@ -649,115 +766,36 @@ export function Keys() {
               </details>
             </div>
 
-            <button
-              type="button"
-              onClick={() => void saveSettings()}
-              disabled={!key || saving}
-              className="h-[34px] w-full rounded-[6px] bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4] disabled:text-white"
-            >
+            <button type="button" onClick={() => void saveSettings()} disabled={!key || saving} className={BUTTON}>
               {saving ? "Saving…" : "Save settings"}
             </button>
 
             {!key ? (
-              <p className={`text-center text-[13px] ${MUTED}`}>create or paste a key first</p>
+              <p className={`text-center text-[13px] ${MUTED}`}>Create or paste a key first.</p>
             ) : saved ? (
               <p className="text-center text-[13px] text-[#2EBD85]">Saved.</p>
             ) : saveError ? (
               <p className="text-center text-[13px] leading-5 text-[#F6465D]">{saveError}</p>
             ) : (
-              <p className={`text-center text-[13px] ${MUTED}`}>saves with the key above</p>
+              <p className={`text-center text-[13px] ${MUTED}`}>Saves with the key.</p>
             )}
 
-            <div className="rounded-[6px] border border-[#CECECE] bg-white px-3 py-3">
-              <p className="text-[14px] text-[#1E1E1E]">Spends settle off the same ledger.</p>
-              <p className="mt-1 text-[13px] leading-5 text-[#757575]">
-                Every call reserves at the ask, settles on usage, and releases the rest. Receipts
-                back the public log.
-              </p>
-            </div>
+            {approval ? (
+              <>
+                <a
+                  href={approval.verification_uri_complete}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex h-[34px] w-full items-center justify-center rounded-[6px] border border-[#1743FF] bg-white text-[14px] text-[#1743FF] hover:bg-[#1743FF]/5"
+                >
+                  Approve with World ID: {approval.user_code}
+                </a>
+                <p className={`text-[13px] leading-5 ${MUTED}`}>Approve in the new tab, then save the settings again.</p>
+              </>
+            ) : null}
           </div>
         </div>
-      </div>
-
-      {key ? (
-        <div className="mt-5 overflow-hidden rounded-[6px] border border-[#CECECE] bg-white">
-          <div className="flex items-center gap-5 border-b border-[#D9D9D9] px-4 py-2.5 text-[14px]">
-            <span className="font-semibold text-[#1E1E1E]">Usage</span>
-            <span className={MUTED}>every call this key made</span>
-          </div>
-          <div className={`hidden gap-x-3 px-4 py-1.5 text-[11px] md:grid md:grid-cols-6 ${MUTED}`}>
-            {["Time, UTC", "Model", "Rail", "Tokens in / out", "Paid from", "Charge"].map((head) => (
-              <span key={head}>{head}</span>
-            ))}
-          </div>
-          {calls.length === 0 ? (
-            <p className="border-t border-[#D9D9D9] px-4 py-5 text-[13px] text-[#757575] md:border-t-0">
-              No calls yet. Point an agent at the router below and they show up here.
-            </p>
-          ) : (
-            calls.map((call, index) => (
-              <div
-                key={`${call.at}-${index}`}
-                className="grid grid-cols-3 gap-x-3 gap-y-1 border-t border-[#D9D9D9] px-4 py-2.5 text-[13px] tabular-nums text-[#1E1E1E] md:grid-cols-6"
-              >
-                <span className={MUTED}>{stampFormat.format(new Date(call.at))}</span>
-                <span>{call.model}</span>
-                <span className={MUTED}>{call.rail}</span>
-                <span>
-                  {call.prompt_tokens.toLocaleString("en-US")} / {call.completion_tokens.toLocaleString("en-US")}
-                </span>
-                <span className={MUTED}>{call.status === "settled" ? call.paid_from : call.status}</span>
-                <span>{call.paid_from === "prepaid" ? "prepaid MTokens" : formatUsd(BigInt(call.charge_usd_micro))}</span>
-              </div>
-            ))
-          )}
-        </div>
-      ) : null}
-
-      <div className="mt-5 overflow-hidden rounded-[6px] border border-[#CECECE] bg-white">
-        <div className="flex items-center gap-5 border-b border-[#D9D9D9] px-4 py-2.5 text-[14px]">
-          <span className="font-semibold text-[#1E1E1E]">Point your agent at the router.</span>
-        </div>
-        <p className={`border-b border-[#D9D9D9] px-4 py-2 text-[12px] leading-5 ${MUTED}`}>
-          OpenAI-compatible chat, one bearer token. The key stays in the header; every call prices
-          itself at the cheapest ask and settles once.
-        </p>
-
-        <div>
-          {snippets.map((snippet) => (
-            <div
-              key={snippet.id}
-              className="flex flex-wrap items-baseline justify-between gap-4 border-b border-[#D9D9D9] px-4 py-3"
-            >
-              <span className={`text-[13px] ${MUTED}`}>{snippet.label}</span>
-              <code className="min-w-0 flex-1 truncate text-[13px] tabular-nums text-[#1E1E1E]">
-                {snippet.id === "auth" && key ? `Authorization: Bearer ${maskKey(key)}` : snippet.text}
-              </code>
-              <button
-                type="button"
-                onClick={() => void copy(snippet.id, snippet.text)}
-                className="text-[14px] text-[#1743FF] hover:underline"
-              >
-                {copied === snippet.id ? "copied" : "copy"}
-              </button>
-            </div>
-          ))}
-        </div>
-
-        <p className={`border-t border-[#D9D9D9] px-4 py-2 text-[12px] leading-5 ${MUTED}`}>
-          A top-up with no Authorization header mints a fresh funded key; with one, it credits that
-          key. Deposits are credited only after the Hedera mirror confirms the transfer.
-        </p>
       </div>
     </section>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <p className="text-[11px] leading-4 text-[#757575]">{label}</p>
-      <p className="text-[14px] font-semibold tabular-nums text-[#1E1E1E]">{value}</p>
-    </div>
   );
 }

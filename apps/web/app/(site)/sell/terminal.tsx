@@ -518,7 +518,7 @@ export function Sell() {
                   aria-pressed={!atMarket}
                   className={`h-[34px] flex-1 text-[13px] font-semibold ${
                     atMarket
-                      ? "border border-[#CECECE] bg-white text-[#757575] hover:text-[#1E1E1E]"
+                      ? "rounded-[6px] border border-[#CECECE] bg-white text-[#757575] hover:text-[#1E1E1E]"
                       : "bg-black text-white"
                   }`}
                 >
@@ -533,7 +533,7 @@ export function Sell() {
                   className={`h-[34px] flex-1 text-[13px] font-semibold disabled:cursor-not-allowed disabled:opacity-40 ${
                     atMarket
                       ? "bg-black text-white"
-                      : "border border-[#CECECE] bg-white text-[#757575] hover:text-[#1E1E1E]"
+                      : "rounded-[6px] border border-[#CECECE] bg-white text-[#757575] hover:text-[#1E1E1E]"
                   }`}
                 >
                   Market · 90%

@@ -403,7 +403,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
     <section className="relative -mx-4 -my-4 bg-[#F1F1F1] px-4 py-4 lg:-mx-6 lg:-my-6 lg:px-10 lg:py-6">
       <div aria-hidden className="pointer-events-none absolute inset-y-0 left-6 hidden w-px bg-[#CECECE] lg:block" />
       <div aria-hidden className="pointer-events-none absolute inset-y-0 right-6 hidden w-px bg-[#CECECE] lg:block" />
-      <div className="flex flex-wrap items-center gap-x-8 gap-y-3 border border-[#E4E4E4] bg-white px-4 py-3">
+      <div className="flex flex-wrap items-center gap-x-8 gap-y-3 rounded-[6px] border border-[#E4E4E4] bg-white px-4 py-3">
         <p className="w-full text-[10px] font-medium tracking-[0.14em] text-[#757575] uppercase">
           Live book · {model}
         </p>
@@ -449,7 +449,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
       ) : null}
 
       <div className={`mt-5 grid gap-[17px] ${expanded ? "" : "lg:grid-cols-[minmax(0,1fr)_250px_290px]"}`}>
-        <div className="flex flex-col self-start border border-[#E4E4E4] bg-white">
+        <div className="flex flex-col self-start rounded-[6px] border border-[#E4E4E4] bg-white">
           <div className="flex items-center gap-5 border-b border-[#ECECEC] px-4 py-2.5 text-[14px]">
             <span className="font-semibold text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4">
               Chart
@@ -543,7 +543,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
             <OrderBook book={book} model={model} listPrice={listPrice} />
 
             <div className="flex flex-col gap-[17px] self-start lg:h-[calc(100svh-277px)] lg:min-h-[423px]">
-              <div className="flex min-h-0 flex-1 flex-col border border-[#E4E4E4] bg-white">
+              <div className="flex min-h-0 flex-1 flex-col rounded-[6px] border border-[#E4E4E4] bg-white">
                 <div className="flex shrink-0 border-b border-[#ECECEC]">
                   {(["buy", "sell"] as const).map((item) => (
                     <button
@@ -870,7 +870,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
         ? createPortal(
             <div
               role="status"
-              className="absolute bottom-full right-4 mb-4 w-[min(290px,calc(100vw-2rem))] border border-[#E4E4E4] bg-white p-4 shadow-[0_8px_24px_rgba(30,30,30,0.08)] transition-[opacity,translate] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] starting:translate-y-2 starting:opacity-0 motion-reduce:transition-none lg:right-6"
+              className="absolute bottom-full right-4 mb-4 w-[min(290px,calc(100vw-2rem))] rounded-[6px] border border-[#E4E4E4] bg-white p-4 shadow-[0_8px_24px_rgba(30,30,30,0.08)] transition-[opacity,translate] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] starting:translate-y-2 starting:opacity-0 motion-reduce:transition-none lg:right-6"
             >
               <div className="flex items-center justify-between">
                 <p className="text-[14px] font-semibold text-[#1E1E1E]">Announcements</p>

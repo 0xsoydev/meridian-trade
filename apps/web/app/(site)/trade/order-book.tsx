@@ -20,7 +20,7 @@ export function OrderBook({ book, model, listPrice }: { book: Book | null; model
   );
 
   return (
-    <div className="flex flex-col self-start border border-[#E4E4E4] bg-white lg:h-[calc(100svh-277px)] lg:min-h-[423px]">
+    <div className="flex flex-col self-start rounded-[6px] border border-[#E4E4E4] bg-white lg:h-[calc(100svh-277px)] lg:min-h-[423px]">
       <div className="flex items-center gap-5 border-b border-[#ECECEC] px-4 py-2.5 text-[14px]">
         {(["book", "tape"] as const).map((item) => (
           <button

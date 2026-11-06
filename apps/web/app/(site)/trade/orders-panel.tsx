@@ -170,7 +170,7 @@ export function OrdersPanel({
   const needsKey = routerKey === null && tab !== "Venue Fills" && !(tab === "Open Orders" && asks.length > 0);
 
   return (
-    <div id="orders" className="mt-5 border border-[#E4E4E4] bg-white">
+    <div id="orders" className="mt-5 rounded-[6px] border border-[#E4E4E4] bg-white">
       <div className="flex flex-wrap items-center gap-5 border-b border-[#ECECEC] px-4 py-2.5 text-[14px]">
         {TABS.map((item) => (
           <button
