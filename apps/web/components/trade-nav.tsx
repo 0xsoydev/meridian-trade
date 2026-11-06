@@ -1,8 +1,10 @@
 "use client";
 
+import { usePrivy } from "@privy-io/react-auth";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
+import { useConnection, useDisconnect } from "wagmi";
 
 const LINKS = [
   { label: "Trade", href: "/trade" },
@@ -22,6 +24,9 @@ const itemClass = (active: boolean) =>
 export function TradeNav() {
   const pathname = usePathname();
   const isActive = (href: string) => pathname.startsWith(href);
+  const { ready, login, logout } = usePrivy();
+  const { address } = useConnection();
+  const { mutate: disconnect } = useDisconnect();
 
   return (
     <header className="sticky top-0 z-40 border-b border-[#CECECE] bg-white">
@@ -69,13 +74,35 @@ export function TradeNav() {
         </nav>
 
         <div className="ml-auto flex items-center gap-2.5">
-          <button
-            type="button"
-            title="waits on the wallet provider — providers.tsx (Privy + wagmi) lands next"
-            className="h-[34px] rounded-[6px] bg-black px-4 text-[14px] font-semibold text-white hover:bg-[#1E1E1E]"
-          >
-            Connect
-          </button>
+          {address ? (
+            <details className="group relative">
+              <summary className="flex h-[34px] cursor-pointer list-none items-center gap-1.5 rounded-[6px] border border-[#CECECE] bg-white px-3 text-[14px] tabular-nums text-[#1E1E1E] hover:border-[#1743FF] [&::-webkit-details-marker]:hidden">
+                {address.slice(0, 6)}…{address.slice(-4)}
+                <Chevron />
+              </summary>
+              <div className="absolute right-0 top-full mt-2 w-40 rounded-[6px] border border-[#CECECE] bg-white py-1">
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.currentTarget.closest("details")?.removeAttribute("open");
+                    void logout().finally(() => disconnect());
+                  }}
+                  className="block w-full px-4 py-2 text-left text-[14px] text-[#1E1E1E] hover:bg-[#F5F5F5]"
+                >
+                  Disconnect
+                </button>
+              </div>
+            </details>
+          ) : (
+            <button
+              type="button"
+              disabled={!ready}
+              onClick={() => login()}
+              className="h-[34px] rounded-[6px] bg-black px-4 text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4]"
+            >
+              Connect
+            </button>
+          )}
           <IconButton label="language">
             <Globe />
           </IconButton>
