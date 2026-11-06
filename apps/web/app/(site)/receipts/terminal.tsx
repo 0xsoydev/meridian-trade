@@ -202,7 +202,7 @@ export function Receipts({
             type="button"
             onClick={() => void recompute()}
             disabled={!config.ok || recomputing}
-            className="bg-black px-4 py-2 text-[14px] font-semibold text-white disabled:opacity-40"
+            className="rounded-[6px] bg-black px-4 py-2 text-[14px] font-semibold text-white disabled:opacity-40"
           >
             {recomputing ? "recomputing…" : "Recompute from the public log"}
           </button>

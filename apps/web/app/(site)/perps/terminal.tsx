@@ -672,7 +672,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
                 type="button"
                 disabled={!ready}
                 onClick={() => login()}
-                className="h-[34px] w-full bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4]"
+                className="h-[34px] w-full rounded-[6px] bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4]"
               >
                 Connect wallet
               </button>
@@ -680,7 +680,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
               <button
                 type="button"
                 onClick={() => void switchChain({ chainId: galileo.id })}
-                className="h-[34px] w-full bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E]"
+                className="h-[34px] w-full rounded-[6px] bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E]"
               >
                 Switch to 0G Galileo
               </button>
@@ -702,7 +702,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
                     return hash;
                   });
                 }}
-                className="h-[34px] w-full bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4] disabled:text-white"
+                className="h-[34px] w-full rounded-[6px] bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4] disabled:text-white"
               >
                 {pending ? "Confirming…" : action}
               </button>

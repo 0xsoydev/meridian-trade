@@ -355,7 +355,7 @@ export function Keys() {
                 type="button"
                 onClick={saveKey}
                 disabled={!draft.trim().startsWith("rk_") || draft.trim().length < 8}
-                className="h-[34px] bg-black px-4 text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4] disabled:text-white"
+                className="h-[34px] rounded-[6px] bg-black px-4 text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4] disabled:text-white"
               >
                 Save key
               </button>
@@ -488,7 +488,7 @@ export function Keys() {
               type="button"
               onClick={() => void deposit()}
               disabled={!key || !depositTx.trim() || depositing}
-              className="mt-2 h-[34px] w-full bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4] disabled:text-white"
+              className="mt-2 h-[34px] w-full rounded-[6px] bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4] disabled:text-white"
             >
               {depositing ? "Verifying…" : "Deposit"}
             </button>
@@ -661,7 +661,7 @@ export function Keys() {
               type="button"
               onClick={() => void saveSettings()}
               disabled={!key || saving}
-              className="h-[34px] w-full bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4] disabled:text-white"
+              className="h-[34px] w-full rounded-[6px] bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4] disabled:text-white"
             >
               {saving ? "Saving…" : "Save settings"}
             </button>

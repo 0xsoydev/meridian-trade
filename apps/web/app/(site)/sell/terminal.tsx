@@ -572,7 +572,7 @@ export function Sell() {
               type="button"
               disabled={blocker !== null || busy}
               onClick={() => void list()}
-              className="h-[34px] w-full bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4] disabled:text-white"
+              className="h-[34px] w-full rounded-[6px] bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4] disabled:text-white"
             >
               {busy ? "Probing the key…" : "List capacity"}
             </button>
