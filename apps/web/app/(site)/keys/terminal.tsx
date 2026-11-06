@@ -5,8 +5,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { BaseError } from "viem";
 import { useConnection, useSignMessage } from "wagmi";
 import { z } from "zod";
-import { formatMicroPerMtok, formatUsd, parseUsd, TOPUP_MAX_MICRO } from "../../../lib/price";
-import type { ApprovalStart, Balance, DepositResult, ModelRow, RouterError } from "../../../lib/types";
+import { formatMicroPerMtok, formatUsd, parseUsd, stampFormat, TOPUP_MAX_MICRO } from "../../../lib/price";
+import type { ApprovalStart, Balance, DepositResult, RouterError } from "../../../lib/types";
+import { useModels } from "../models";
 import { useWalletDeposit } from "../wallet-deposit";
 
 const KEY_STORAGE = "router_key";
@@ -30,14 +31,6 @@ const usageSchema = z.object({
     }),
   ),
 });
-const usageStamp = new Intl.DateTimeFormat("en-GB", {
-  timeZone: "UTC",
-  hour12: false,
-  day: "2-digit",
-  month: "short",
-  hour: "2-digit",
-  minute: "2-digit",
-});
 
 export function Keys() {
   const { ready, authenticated, login, logout } = usePrivy();
@@ -52,7 +45,7 @@ export function Keys() {
   const [accountError, setAccountError] = useState<"rejected" | "down" | null>(null);
   const [version, setVersion] = useState(0);
 
-  const [models, setModels] = useState<ModelRow[]>([]);
+  const models = useModels();
   const [autoTopup, setAutoTopup] = useState("");
   const [dailyCap, setDailyCap] = useState("");
   const [defaultModel, setDefaultModel] = useState<string | null>(null);
@@ -92,19 +85,6 @@ export function Keys() {
   useEffect(() => {
     setKey(window.localStorage.getItem(KEY_STORAGE));
     setOrigin(window.location.origin);
-  }, []);
-
-  useEffect(() => {
-    let alive = true;
-    fetch("/api/v1/models")
-      .then((res) => (res.ok ? (res.json() as Promise<{ data: ModelRow[] }>) : null))
-      .then((body) => {
-        if (alive && body) setModels(body.data);
-      })
-      .catch(() => undefined);
-    return () => {
-      alive = false;
-    };
   }, []);
 
   useEffect(() => {
@@ -726,7 +706,7 @@ export function Keys() {
                 key={`${call.at}-${index}`}
                 className="grid grid-cols-3 gap-y-1 border-t border-[#CECECE] py-3 text-[13px] tabular-nums text-[#1E1E1E] md:grid-cols-6"
               >
-                <span className={MUTED}>{usageStamp.format(new Date(call.at))}</span>
+                <span className={MUTED}>{stampFormat.format(new Date(call.at))}</span>
                 <span>{call.model}</span>
                 <span className={MUTED}>{call.rail}</span>
                 <span>

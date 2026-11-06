@@ -43,6 +43,23 @@ export function formatMicroPerMtok(value: MicroPerMTok): string {
 
 export const formatUsd = (micro: Micro): string => `$${formatMicroPerMtok(micro)}`;
 
+export const clockFormat = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "UTC",
+  hour12: false,
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+});
+
+export const stampFormat = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "UTC",
+  hour12: false,
+  day: "2-digit",
+  month: "short",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
 const group = (whole: bigint) => whole.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 
 export function formatMtok(tokens: bigint): string {

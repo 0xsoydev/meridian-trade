@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useConnection, useSignMessage } from "wagmi";
 import { z } from "zod";
 import { charge, formatMicroPerMtok, formatMtok, formatUsd, parseMtok, parseUsd, sellerEarning } from "../../../lib/price";
-import type { ModelRow } from "../../../lib/types";
+import { useModels } from "../models";
 
 const TAKE_BPS = 1000n;
 const MUTED = "text-[#757575]";
@@ -79,7 +79,7 @@ export function Sell() {
   const [listed, setListed] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [models, setModels] = useState<ModelRow[]>([]);
+  const models = useModels();
   const [model, setModel] = useState<string | null>(null);
   const [rail, setRail] = useState<RailId>("0g");
   const [price, setPrice] = useState("");
@@ -111,19 +111,6 @@ export function Sell() {
       alive = false;
     };
   }, [address, listed, verified]);
-
-  useEffect(() => {
-    let alive = true;
-    fetch("/api/v1/models")
-      .then((res) => (res.ok ? (res.json() as Promise<{ data: ModelRow[] }>) : null))
-      .then((body) => {
-        if (alive && body) setModels(body.data);
-      })
-      .catch(() => undefined);
-    return () => {
-      alive = false;
-    };
-  }, []);
 
   const railModels = models.filter((row) => row.rails.includes(rail));
   const selected = railModels.find((row) => row.id === model) ?? railModels[0] ?? null;

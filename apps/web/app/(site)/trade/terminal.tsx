@@ -9,6 +9,7 @@ import { useConnection } from "wagmi";
 import { z } from "zod";
 import {
   charge,
+  clockFormat,
   fillsToPoints,
   formatMicroPerMtok,
   formatMtok,
@@ -19,7 +20,8 @@ import {
   sellerEarning,
   TOPUP_MAX_MICRO,
 } from "../../../lib/price.ts";
-import type { Balance, Bid, Book, ModelRow, RouterError, TradeResult } from "../../../lib/types";
+import type { Balance, Bid, Book, RouterError, TradeResult } from "../../../lib/types";
+import { useModels } from "../models";
 import { useWalletDeposit } from "../wallet-deposit";
 import { FillsChart, INTERVALS, type ScaleMode } from "./chart";
 import { OrdersPanel } from "./orders-panel";
@@ -36,14 +38,6 @@ const PRESETS = [
   { label: "1K", value: "1000" },
 ];
 
-const clockFormat = new Intl.DateTimeFormat("en-GB", {
-  timeZone: "UTC",
-  hour12: false,
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-});
-
 const MUTED = "text-[#757575]";
 
 type Stat = { label: string; value: string; tone?: "up" | "down" | undefined };
@@ -58,7 +52,7 @@ const soldSchema = z.object({
 export function Trade({ initialModel }: { initialModel: string }) {
   const router = useRouter();
   const [model, setModel] = useState(initialModel);
-  const [models, setModels] = useState<ModelRow[]>([]);
+  const models = useModels();
   const [book, setBook] = useState<Book | null>(null);
   const [bookFailed, setBookFailed] = useState<"unknown" | "down" | null>(null);
   const [pane, setPane] = useState<"book" | "tape">("book");
@@ -91,19 +85,6 @@ export function Trade({ initialModel }: { initialModel: string }) {
     }, 1000);
     setClock(clockFormat.format(new Date()));
     return () => window.clearInterval(id);
-  }, []);
-
-  useEffect(() => {
-    let alive = true;
-    fetch("/api/v1/models")
-      .then((res) => (res.ok ? (res.json() as Promise<{ data: ModelRow[] }>) : null))
-      .then((body) => {
-        if (alive && body) setModels(body.data);
-      })
-      .catch(() => undefined);
-    return () => {
-      alive = false;
-    };
   }, []);
 
   useEffect(() => {
