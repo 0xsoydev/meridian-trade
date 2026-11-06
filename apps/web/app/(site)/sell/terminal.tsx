@@ -338,35 +338,25 @@ export function Sell() {
                 <p className={`mt-1 text-[13px] leading-5 ${MUTED}`}>
                   The rail decides the capping story and whether listing at market is allowed.
                 </p>
-                <div className="mt-3">
+                <div className="mt-3 flex flex-wrap gap-2">
                   {RAILS.map((item) => (
                     <button
                       key={item.id}
                       type="button"
                       onClick={() => setRail(item.id)}
                       aria-pressed={rail === item.id}
-                      className={`flex w-full items-start justify-between gap-4 border-t border-[#D9D9D9] py-3 text-left ${
-                        rail === item.id ? "text-[#1E1E1E]" : "text-[#757575] hover:text-[#1E1E1E]"
+                      title={item.story}
+                      className={`h-[34px] rounded-[6px] px-4 text-[14px] font-semibold ${
+                        rail === item.id
+                          ? "bg-black text-white"
+                          : "border border-[#CECECE] bg-white text-[#757575] hover:border-[#1743FF] hover:text-[#1E1E1E]"
                       }`}
                     >
-                      <span className="min-w-0">
-                        <span className="flex items-baseline gap-2">
-                          <span className="text-[14px] font-semibold">{item.label}</span>
-                          <span className="text-[12px] text-[#757575]">{item.id}</span>
-                        </span>
-                        <span className="mt-0.5 block text-[13px] leading-5 text-[#757575]">
-                          {item.story}
-                        </span>
-                      </span>
-                      <span
-                        aria-hidden
-                        className={`mt-1.5 h-[7px] w-[7px] shrink-0 rounded-full ${
-                          rail === item.id ? "bg-[#1743FF]" : "bg-[#C9C9C9]"
-                        }`}
-                      />
+                      {item.label}
                     </button>
                   ))}
                 </div>
+                <p className={`mt-2 text-[13px] leading-5 ${MUTED}`}>{railConfig.story}</p>
                 <p className={`mt-3 text-[13px] leading-5 ${MUTED}`}>
                   OAuth rails — Claude Code and Codex — are flagged off. The key is checked once against
                   the model you list, through the provider&apos;s model list or, on Command Code, a 1-token
