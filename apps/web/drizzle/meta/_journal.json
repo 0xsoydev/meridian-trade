@@ -50,6 +50,13 @@
       "when": 1793812551436,
       "tag": "0006_perp_events",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793814660510,
+      "tag": "0007_resale",
+      "breakpoints": true
     }
   ]
 }

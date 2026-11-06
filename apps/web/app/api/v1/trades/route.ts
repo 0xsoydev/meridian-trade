@@ -4,6 +4,7 @@ import { restBid } from "../../../../lib/bids.ts";
 import { asks, type Ask } from "../../../../lib/book.ts";
 import { fail } from "../../../../lib/errors.ts";
 import { fill, nextUtcMidnight, prepaidHolding } from "../../../../lib/ledger.ts";
+import { buyOffer, offerAsks, type OfferAsk } from "../../../../lib/offers.ts";
 import { charge, formatMicroPerMtok, listCeiling, sellerEarning } from "../../../../lib/price.ts";
 import { catalog, reference } from "../../../../lib/rails.ts";
 import { applyPayment, paymentDue } from "../../../../lib/x402.ts";
@@ -17,7 +18,11 @@ const intentSchema = z.object({
   limit_price_micro_per_mtok: z.string().regex(/^[1-9]\d{0,12}$/).optional(),
 });
 
-type Step = { ask: Ask; take: bigint; cost: bigint };
+type Source = { price: bigint; tokensLeft: bigint; createdAt: Date } & (
+  | { kind: "listing"; ask: Ask }
+  | { kind: "resale"; offer: OfferAsk }
+);
+type Step = { source: Source; take: bigint; cost: bigint };
 
 export async function POST(request: Request): Promise<Response> {
   const key = await routerKey(request);
@@ -41,14 +46,20 @@ export async function POST(request: Request): Promise<Response> {
   if ("error" in payment) return payment.error;
   const headers: Record<string, string> = payment.header ? { "PAYMENT-RESPONSE": payment.header } : {};
 
+  const [listed, resold] = await Promise.all([asks(model), offerAsks(model, key.id)]);
+  const sources: Source[] = [
+    ...listed.map((ask) => ({ kind: "listing" as const, ask, price: ask.price, tokensLeft: ask.tokensLeft, createdAt: ask.createdAt })),
+    ...resold.map((offer) => ({ kind: "resale" as const, offer, price: offer.price, tokensLeft: offer.tokensLeft, createdAt: offer.createdAt })),
+  ].sort((a, b) => (a.price === b.price ? a.createdAt.getTime() - b.createdAt.getTime() : a.price < b.price ? -1 : 1));
+
   const steps: Step[] = [];
   let left = tokens;
   let quote = 0n;
-  for (const ask of await asks(model)) {
-    if (left === 0n || (limit !== null && ask.price > limit)) break;
-    const take = ask.tokensLeft < left ? ask.tokensLeft : left;
-    const cost = charge(take, ask.price);
-    steps.push({ ask, take, cost });
+  for (const source of sources) {
+    if (left === 0n || (limit !== null && source.price > limit)) break;
+    const take = source.tokensLeft < left ? source.tokensLeft : left;
+    const cost = charge(take, source.price);
+    steps.push({ source, take, cost });
     quote += cost;
     left -= take;
   }
@@ -61,25 +72,31 @@ export async function POST(request: Request): Promise<Response> {
   const now = new Date();
   const fills: Trade[] = [];
   let filled = 0n;
-  for (const step of steps) {
-    const result = await fill({
-      keyId: key.id,
-      listingId: step.ask.listingId,
-      model,
-      tokens: step.take,
-      price: step.ask.price,
-      chargeMicro: step.cost,
-      sellerEarningMicro: sellerEarning(step.cost, takeBps),
-      expiresAt: step.ask.rail.resetPeriod === "daily" ? nextUtcMidnight(now) : null,
-    });
+  for (const { source, take, cost } of steps) {
+    const result =
+      source.kind === "listing"
+        ? await fill({
+            keyId: key.id,
+            listingId: source.ask.listingId,
+            model,
+            tokens: take,
+            price: source.price,
+            chargeMicro: cost,
+            sellerEarningMicro: sellerEarning(cost, takeBps),
+            expiresAt: source.ask.rail.resetPeriod === "daily" ? nextUtcMidnight(now) : null,
+          })
+        : await buyOffer({ offerId: source.offer.offerId, buyerKeyId: key.id, take, takeBps }).then((bought) => ({
+            listingOk: bought.offerOk,
+            keyOk: bought.keyOk,
+          }));
     if (result.listingOk && !result.keyOk) break;
     if (!result.listingOk) continue;
-    filled += step.take;
+    filled += take;
     fills.push({
-      listing_id: step.ask.listingId,
-      tokens: step.take.toString(),
-      price_micro_per_mtok: step.ask.price.toString(),
-      charge_usd_micro: step.cost.toString(),
+      listing_id: source.kind === "listing" ? source.ask.listingId : source.offer.listingId,
+      tokens: take.toString(),
+      price_micro_per_mtok: source.price.toString(),
+      charge_usd_micro: cost.toString(),
     });
   }
   const bid = limit !== null && filled < tokens ? await restBid(key.id, model, limit, tokens - filled) : null;

@@ -104,7 +104,15 @@ test("the book shows live asks and recent fills", { skip }, async () => {
   assert.equal(response.status, 200);
   const result = (await response.json()) as Book;
   assert.deepEqual(result.asks, [
-    { listing_id: dear, rail: "stub", price_micro_per_mtok: "1500000", tokens_left: "950000", verifiable: false },
+    {
+      listing_id: dear,
+      offer_id: null,
+      kind: "listing",
+      rail: "stub",
+      price_micro_per_mtok: "1500000",
+      tokens_left: "950000",
+      verifiable: false,
+    },
   ]);
   assert.equal(result.fills.length, 2);
   assert.equal(result.fills[0]?.listing_id, dear);

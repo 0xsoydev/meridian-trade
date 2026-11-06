@@ -1,5 +1,6 @@
 import { and, desc, eq, sum } from "drizzle-orm";
 import { asks } from "../../../../lib/book.ts";
+import { offerAsks } from "../../../../lib/offers.ts";
 import { db } from "../../../../lib/db.ts";
 import { fail } from "../../../../lib/errors.ts";
 import { reference } from "../../../../lib/rails.ts";
@@ -11,8 +12,9 @@ export async function GET(request: Request): Promise<Response> {
   if (!model) return fail(400, "invalid_request", "model is required");
   if (!(await reference(model))) return fail(404, "model_not_found", `unknown model: ${model}`);
 
-  const [open, recent, levels] = await Promise.all([
+  const [open, resold, recent, levels] = await Promise.all([
     asks(model),
+    offerAsks(model, null),
     db()
       .select({
         listingId: trades.listingId,
@@ -35,13 +37,38 @@ export async function GET(request: Request): Promise<Response> {
 
   const book: Book = {
     model,
-    asks: open.map((ask) => ({
-      listing_id: ask.listingId,
-      rail: ask.rail.id,
-      price_micro_per_mtok: ask.price.toString(),
-      tokens_left: ask.tokensLeft.toString(),
-      verifiable: ask.verifiability !== null,
-    })),
+    asks: [
+      ...open.map((ask) => ({
+        listing_id: ask.listingId,
+        offer_id: null,
+        kind: "listing" as const,
+        rail: ask.rail.id,
+        price: ask.price,
+        tokens_left: ask.tokensLeft.toString(),
+        verifiable: ask.verifiability !== null,
+        createdAt: ask.createdAt,
+      })),
+      ...resold.map((offer) => ({
+        listing_id: offer.listingId,
+        offer_id: offer.offerId,
+        kind: "resale" as const,
+        rail: offer.rail.id,
+        price: offer.price,
+        tokens_left: offer.tokensLeft.toString(),
+        verifiable: offer.verifiability !== null,
+        createdAt: offer.createdAt,
+      })),
+    ]
+      .sort((a, b) => (a.price === b.price ? a.createdAt.getTime() - b.createdAt.getTime() : a.price < b.price ? -1 : 1))
+      .map((ask) => ({
+        listing_id: ask.listing_id,
+        offer_id: ask.offer_id,
+        kind: ask.kind,
+        rail: ask.rail,
+        price_micro_per_mtok: ask.price.toString(),
+        tokens_left: ask.tokens_left,
+        verifiable: ask.verifiable,
+      })),
     bids: levels.map((level) => ({ price_micro_per_mtok: level.price.toString(), tokens: level.tokens ?? "0" })),
     fills: recent.map((row) => ({
       listing_id: row.listingId,
