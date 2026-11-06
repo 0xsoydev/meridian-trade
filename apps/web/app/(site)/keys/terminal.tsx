@@ -398,100 +398,111 @@ export function Keys() {
       <div className="mt-5 grid grid-cols-1 gap-[17px] lg:grid-cols-[minmax(0,1fr)_290px_290px]">
         <div className="flex flex-col gap-[17px] self-start lg:h-[calc(100svh-277px)] lg:min-h-[423px]">
           <div className="flex min-h-0 flex-1 flex-col justify-center-safe overflow-auto border border-[#CECECE] bg-white px-6 py-6 *:shrink-0">
-            <p className="text-[13px] text-[#1E1E1E]">[ api keys ]</p>
-            <h2 className="mt-3 font-serif text-[40px] leading-[1.05] text-[#1E1E1E]">One key, one balance.</h2>
-            <p className={`mt-3 max-w-[480px] text-pretty text-[14px] leading-5 ${MUTED}`}>
-              Name a key and your wallet signs once to create it. Keys stay in this browser, never in a URL, and Trade
-              spends from the one in use.
-            </p>
-            {address ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setCreateError(null);
-                  namer.current?.showModal();
-                }}
-                className={KEY_CTA}
-              >
-                {CORNERS.map((corner) => (
-                  <span key={corner} aria-hidden className={corner} />
-                ))}
-                Create API Key
-              </button>
-            ) : (
-              <button type="button" onClick={() => login()} disabled={!ready} className={KEY_CTA}>
-                {CORNERS.map((corner) => (
-                  <span key={corner} aria-hidden className={corner} />
-                ))}
-                Connect Wallet
-              </button>
-            )}
-            <p className={`mt-5 text-[13px] leading-5 ${MUTED}`}>
-              {address ? `${address.slice(0, 6)}…${address.slice(-4)} is connected.` : "No wallet connected yet."}
-              {address ? (
-                <>
-                  {" "}
+            <div className="grid items-start gap-6 xl:grid-cols-2 xl:gap-8">
+              <div className="flex flex-col">
+                <p className="text-[13px] text-[#1E1E1E]">[ api keys ]</p>
+                <h2 className="mt-3 font-serif text-[40px] leading-[1.05] text-[#1E1E1E]">One key, one balance.</h2>
+                <p className={`mt-3 max-w-[480px] text-pretty text-[14px] leading-5 ${MUTED}`}>
+                  Name a key and your wallet signs once to create it. Keys stay in this browser, never in a URL, and Trade
+                  spends from the one in use.
+                </p>
+                {address ? (
                   <button
                     type="button"
-                    onClick={() => void logout().finally(() => disconnect())}
-                    className="text-[#1743FF] hover:underline"
+                    onClick={() => {
+                      setCreateError(null);
+                      namer.current?.showModal();
+                    }}
+                    className={KEY_CTA}
                   >
-                    Disconnect
+                    {CORNERS.map((corner) => (
+                      <span key={corner} aria-hidden className={corner} />
+                    ))}
+                    Create API Key
                   </button>
-                </>
-              ) : null}
-            </p>
-            {entries.length > 0 ? (
-              <ul className="mt-5 max-w-[560px] border-t border-[#D9D9D9]">
-                {entries.map((entry) => (
-                  <li key={entry.key} className="border-b border-[#D9D9D9] py-2.5 text-[13px]">
-                    <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-                      <span className="min-w-32 flex-1 truncate text-[14px] text-[#1E1E1E]">{entry.name}</span>
-                      <code className={`tabular-nums ${MUTED}`}>{maskKey(entry.key)}</code>
-                      <span className="flex gap-4">
+                ) : (
+                  <button type="button" onClick={() => login()} disabled={!ready} className={KEY_CTA}>
+                    {CORNERS.map((corner) => (
+                      <span key={corner} aria-hidden className={corner} />
+                    ))}
+                    Connect Wallet
+                  </button>
+                )}
+                <p className={`mt-5 text-[13px] leading-5 ${MUTED}`}>
+                  {address ? `${address.slice(0, 6)}…${address.slice(-4)} is connected.` : "No wallet connected yet."}
+                  {address ? (
+                    <>
+                      {" "}
+                      <button
+                        type="button"
+                        onClick={() => void logout().finally(() => disconnect())}
+                        className="text-[#1743FF] hover:underline"
+                      >
+                        Disconnect
+                      </button>
+                    </>
+                  ) : null}
+                </p>
+              </div>
+
+              {entries.length > 0 ? (
+                <ul className="space-y-3">
+                  {entries.map((entry) => (
+                    <li key={entry.key} className="border border-[#CECECE] px-4 py-3 text-[13px]">
+                      <div className="flex items-baseline justify-between gap-4">
+                        <span className="min-w-0 truncate text-[14px] font-semibold text-[#1E1E1E]">{entry.name}</span>
                         {entry.key === key ? (
-                          <span className="text-[#2EBD85]">in use</span>
-                        ) : (
-                          <button type="button" onClick={() => store(entries, entry.key)} className="text-[#1743FF] hover:underline">
-                            use
-                          </button>
-                        )}
-                        <button type="button" onClick={() => void copy(entry.key, entry.key)} className="text-[#1743FF] hover:underline">
-                          {copied === entry.key ? "copied" : "copy"}
-                        </button>
-                        {confirming === entry.key ? (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => void remove(entry)}
-                              disabled={removing !== null}
-                              className="text-[#F6465D] hover:underline disabled:text-[#C9C9C9]"
-                            >
-                              {removing === entry.key ? "deleting…" : "delete for good"}
-                            </button>
-                            <button type="button" onClick={() => setConfirming(null)} className={`${MUTED} hover:underline`}>
-                              keep
-                            </button>
-                          </>
+                          <span className="shrink-0 text-[#2EBD85]">in use</span>
                         ) : (
                           <button
                             type="button"
-                            onClick={() => {
-                              setConfirming(entry.key);
-                              setRemoveError(null);
-                            }}
-                            className="text-[#F6465D] hover:underline"
+                            onClick={() => store(entries, entry.key)}
+                            className="shrink-0 text-[#1743FF] hover:underline"
                           >
-                            delete
+                            use
                           </button>
                         )}
-                      </span>
-                    </div>
-                    {removeError?.key === entry.key ? <p className="mt-1 leading-5 text-[#F6465D]">{removeError.message}</p> : null}
-                  </li>
-                ))}
-              </ul>
-            ) : null}
+                      </div>
+                      <div className="mt-1.5 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                        <code className={`tabular-nums ${MUTED}`}>{maskKey(entry.key)}</code>
+                        <span className="flex gap-4">
+                          <button type="button" onClick={() => void copy(entry.key, entry.key)} className="text-[#1743FF] hover:underline">
+                            {copied === entry.key ? "copied" : "copy"}
+                          </button>
+                          {confirming === entry.key ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => void remove(entry)}
+                                disabled={removing !== null}
+                                className="text-[#F6465D] hover:underline disabled:text-[#C9C9C9]"
+                              >
+                                {removing === entry.key ? "deleting…" : "delete for good"}
+                              </button>
+                              <button type="button" onClick={() => setConfirming(null)} className={`${MUTED} hover:underline`}>
+                                keep
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setConfirming(entry.key);
+                                setRemoveError(null);
+                              }}
+                              className="text-[#F6465D] hover:underline"
+                            >
+                              delete
+                            </button>
+                          )}
+                        </span>
+                      </div>
+                      {removeError?.key === entry.key ? <p className="mt-1.5 leading-5 text-[#F6465D]">{removeError.message}</p> : null}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
           </div>
 
           <div className="flex shrink-0 flex-col border border-[#CECECE] bg-white lg:h-[240px]">
