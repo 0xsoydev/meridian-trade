@@ -344,7 +344,7 @@ export function Sell() {
               </div>
             </li>
 
-            <li className="flex items-baseline gap-3 border-b border-[#D9D9D9] py-5 last:border-b-0">
+            <li id="gate-rail" className="flex items-baseline gap-3 border-b border-[#D9D9D9] py-5 last:border-b-0">
               <span className="font-serif text-[22px] leading-none text-[#A3A3A3]">3</span>
               <div className="min-w-0 flex-1">
                 <p className="text-[14px] font-semibold text-[#1E1E1E]">Pick your rail</p>
@@ -455,41 +455,59 @@ export function Sell() {
               </details>
             </div>
 
-            <div className="flex justify-between text-[14px]">
+            <div className="flex items-baseline justify-between text-[14px]">
               <span className={MUTED}>Rail</span>
-              <span className="tabular-nums text-[#1E1E1E]">
-                {railConfig.label} · {railConfig.id}
+              <span className="flex items-baseline gap-3">
+                <span className="tabular-nums text-[#1E1E1E]">
+                  {railConfig.label} · {railConfig.id}
+                </span>
+                <a href="#gate-rail" className="text-[13px] text-[#1743FF] hover:underline">
+                  change
+                </a>
               </span>
             </div>
 
-            <label className="block">
-              <span className={`mb-1 flex items-baseline justify-between gap-2 text-[13px] ${MUTED}`}>
-                <span>Price, USD / MTok</span>
-                {railConfig.market ? <span className="text-[12px] text-[#1743FF]">market allowed</span> : null}
-              </span>
-              <input
-                value={atMarket ? "" : price}
-                onChange={(event) => setPrice(event.target.value)}
-                disabled={atMarket}
-                inputMode="decimal"
-                placeholder={blended !== null ? formatMicroPerMtok(blended) : "0.00"}
-                className="h-[34px] w-full rounded-[6px] border border-[#CECECE] bg-white px-2.5 text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF] disabled:text-[#C9C9C9]"
-              />
-            </label>
+            <div>
+              <span className={`mb-1 block text-[13px] ${MUTED}`}>Price, USD / MTok</span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setMarketWanted(false)}
+                  aria-pressed={!atMarket}
+                  className={`h-[34px] flex-1 text-[13px] font-semibold ${
+                    atMarket
+                      ? "border border-[#CECECE] bg-white text-[#757575] hover:text-[#1E1E1E]"
+                      : "bg-black text-white"
+                  }`}
+                >
+                  Fixed price
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMarketWanted(true)}
+                  disabled={!railConfig.market}
+                  aria-pressed={atMarket}
+                  title={railConfig.market ? "90% of the blended reference" : "daily rails only"}
+                  className={`h-[34px] flex-1 text-[13px] font-semibold disabled:cursor-not-allowed disabled:opacity-40 ${
+                    atMarket
+                      ? "bg-black text-white"
+                      : "border border-[#CECECE] bg-white text-[#757575] hover:text-[#1E1E1E]"
+                  }`}
+                >
+                  Market · 90%
+                </button>
+              </div>
+            </div>
 
-            <label className="flex items-start gap-2 text-[13px] leading-5">
-              <input
-                type="checkbox"
-                checked={atMarket}
-                disabled={!railConfig.market}
-                onChange={(event) => setMarketWanted(event.target.checked)}
-                className="mt-1 accent-[#1743FF] disabled:opacity-40"
-              />
-              <span className={railConfig.market ? "text-[#1E1E1E]" : "text-[#C9C9C9]"}>
-                list at market — 90% of the blended reference
-                {!railConfig.market ? " (daily rails only)" : ""}
-              </span>
-            </label>
+            <input
+              value={atMarket ? "" : price}
+              onChange={(event) => setPrice(event.target.value)}
+              disabled={atMarket}
+              inputMode="decimal"
+              placeholder={blended !== null ? formatMicroPerMtok(blended) : "0.00"}
+              aria-label="price in USD per MTok"
+              className="h-[34px] w-full rounded-[6px] border border-[#CECECE] bg-white px-2.5 text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF] disabled:text-[#C9C9C9]"
+            />
 
             {!atMarket && price.trim() !== "" && typed === null ? (
               <p className="text-[13px] leading-5 text-[#F6465D]">That price is not a USD amount.</p>
