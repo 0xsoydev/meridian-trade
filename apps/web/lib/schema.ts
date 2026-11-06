@@ -8,6 +8,7 @@ import {
   integer,
   numeric,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -265,6 +266,30 @@ export const approvals = pgTable(
   (t) => [
     check("approvals_kind", sql`${t.kind} in ('link_human','raise_cap')`),
     check("approvals_status", sql`${t.status} in ('pending','approved','denied','expired')`),
+  ],
+);
+
+export const perpEvents = pgTable(
+  "perp_events",
+  {
+    txHash: text("tx_hash").notNull(),
+    logIndex: integer("log_index").notNull(),
+    account: text("account").notNull(),
+    model: text("model").notNull(),
+    kind: text("kind").notNull(),
+    size: bigint("size", { mode: "bigint" }).notNull(),
+    margin: bigint("margin", { mode: "bigint" }).notNull(),
+    price: bigint("price", { mode: "bigint" }).notNull(),
+    realizedPnl: bigint("realized_pnl", { mode: "bigint" }).notNull(),
+    fee: bigint("fee", { mode: "bigint" }).notNull(),
+    reward: bigint("reward", { mode: "bigint" }).notNull(),
+    block: bigint("block", { mode: "bigint" }).notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.txHash, t.logIndex] }),
+    check("perp_events_kind", sql`${t.kind} in ('modify','liquidate')`),
+    index("perp_events_account_block_idx").on(t.account, t.block),
   ],
 );
 
