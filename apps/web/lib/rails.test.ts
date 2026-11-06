@@ -29,6 +29,10 @@ before(async () => {
       });
       return;
     }
+    if (url === "/og/models") {
+      send({ data: [{ id: "0gm-1.0-35b-a3b", pricing_usd: price("0.00000008", "0.00000048") }] });
+      return;
+    }
     if (url.startsWith("/or/datasets/rankings-daily")) {
       rankingAuth = request.headers.authorization ?? "";
       send({
@@ -63,6 +67,7 @@ before(async () => {
   process.env.COMMANDCODE_BASE_URL = `${url}/cc`;
   process.env.OPENROUTER_API_KEY = "sk-or-test";
   process.env.OG_ROUTER_URL = "http://127.0.0.1:1";
+  process.env.OG_MODELS_URL = `${url}/og/models`;
   delete process.env.STUB_RAIL_URL;
 });
 
@@ -128,8 +133,17 @@ test("key-scoped rails keep their priced chat models and check the seller's mode
   const go = rails.find((entry) => entry.id === "opencode-go");
   assert.equal(go?.extraHeaders["user-agent"], "celestial-trade/1.0");
   assert.deepEqual(go?.models.map((model) => model.canonical), ["glm-5.3", "glm-5.3-flash"]);
+});
 
-  assert.equal(rails.some((entry) => entry.id === "0g"), false);
+test("0G is priced from its public model list while requests still go to its router", async () => {
+  const og = (await catalog()).find((entry) => entry.id === "0g");
+  assert.ok(og);
+  assert.equal(og.baseUrl, "http://127.0.0.1:1");
+  assert.equal(og.resetPeriod, "daily");
+  assert.deepEqual(
+    og.models.map((model) => [model.canonical, model.listPrompt, model.listCompletion]),
+    [["0gm-1.0-35b-a3b", 80_000n, 480_000n]],
+  );
 });
 
 test("reference picks the cheapest listed price and misses unknown models", async () => {

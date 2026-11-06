@@ -10,6 +10,7 @@ import { seal } from "./secrets.ts";
 
 process.env.NEXT_PUBLIC_WORLD_BYPASS = "false";
 process.env.COMMANDCODE_BASE_URL = "http://127.0.0.1:1";
+process.env.OG_MODELS_URL = "http://127.0.0.1:1/models";
 
 export const hasDb = Boolean(process.env.DATABASE_URL && process.env.SECRETS_KEY);
 export const skip = hasDb ? false : "DATABASE_URL and SECRETS_KEY required";
@@ -62,6 +63,7 @@ export async function stubRail(
   const url = `http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}`;
   process.env.STUB_RAIL_URL = url;
   process.env.OG_ROUTER_URL = url;
+  process.env.OG_MODELS_URL = `${url}/models`;
   process.env.OPENROUTER_BASE_URL = url;
   return {
     calls,
