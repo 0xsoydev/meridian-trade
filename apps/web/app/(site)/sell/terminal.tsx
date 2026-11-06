@@ -91,6 +91,7 @@ export function Sell() {
   const [paid, setPaid] = useState<z.infer<typeof payoutsSchema> | null>(null);
   const [useStored, setUseStored] = useState(true);
   const picker = useRef<HTMLDetailsElement | null>(null);
+  const railPicker = useRef<HTMLDetailsElement | null>(null);
 
   useEffect(() => {
     if (!address) {
@@ -147,6 +148,27 @@ export function Sell() {
                 : credential.trim() === "" && !usingStored
                   ? "paste the rail's API key"
                   : null;
+
+  const keyHint = (() => {
+    const value = credential.trim();
+    const prefixes: Record<RailId, string | null> = {
+      "0g": "sk-",
+      anthropic: "sk-ant-",
+      openai: "sk-",
+      openrouter: "sk-or-",
+      commandcode: null,
+      zen: null,
+      "opencode-go": null,
+    };
+    const prefix = prefixes[rail];
+    if (value === "") {
+      return { ok: false, text: prefix ? `expected a key starting with ${prefix}…` : "the rail's API key" };
+    }
+    if (prefix !== null && !value.startsWith(prefix)) {
+      return { ok: false, text: `that doesn't look like a ${railConfig.label} key — ${prefix}… expected` };
+    }
+    return { ok: true, text: `✓ looks like a ${railConfig.label} key` };
+  })();
 
   const signal = (address ?? "").toLowerCase();
   const preset = useMemo(() => proofOfHuman({ signal }), [signal]);
@@ -461,9 +483,29 @@ export function Sell() {
                 <span className="tabular-nums text-[#1E1E1E]">
                   {railConfig.label} · {railConfig.id}
                 </span>
-                <a href="#gate-rail" className="text-[13px] text-[#1743FF] hover:underline">
-                  change
-                </a>
+                <details ref={railPicker} className="relative">
+                  <summary className="cursor-pointer list-none text-[13px] text-[#1743FF] hover:underline [&::-webkit-details-marker]:hidden">
+                    change
+                  </summary>
+                  <ul className="absolute right-0 top-full z-20 mt-1 w-52 rounded-[6px] border border-[#CECECE] bg-white py-1">
+                    {RAILS.map((item) => (
+                      <li key={item.id}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRail(item.id);
+                            if (railPicker.current) railPicker.current.open = false;
+                          }}
+                          className={`w-full px-3 py-1.5 text-left text-[13px] hover:bg-[#F5F5F5] ${
+                            item.id === rail ? "text-[#1E1E1E]" : "text-[#757575]"
+                          }`}
+                        >
+                          {item.label} · {item.id}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
               </span>
             </div>
 
@@ -508,6 +550,14 @@ export function Sell() {
               aria-label="price in USD per MTok"
               className="h-[34px] w-full rounded-[6px] border border-[#CECECE] bg-white px-2.5 text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF] disabled:text-[#C9C9C9]"
             />
+
+            <p className={`text-[13px] leading-5 ${MUTED}`}>
+              {atMarket && marketAnchor !== null
+                ? `you'll list at ${formatMicroPerMtok(marketAnchor)} USD / MTok — 90% of ${formatMicroPerMtok(blended ?? 0n)}`
+                : blended !== null
+                  ? `reference ${formatMicroPerMtok(blended)} USD / MTok`
+                  : "no reference price for this model yet"}
+            </p>
 
             {!atMarket && price.trim() !== "" && typed === null ? (
               <p className="text-[13px] leading-5 text-[#F6465D]">That price is not a USD amount.</p>
@@ -555,16 +605,14 @@ export function Sell() {
               </div>
               <div className="flex justify-between py-3">
                 <dt className="text-[15px] font-semibold text-[#1E1E1E]">You receive</dt>
-                <dd className="text-[16px] font-semibold tabular-nums text-[#1E1E1E]">
+                <dd className="text-[18px] font-semibold tabular-nums text-[#1743FF]">
                   {earning > 0n ? formatUsd(earning) : "—"}
                 </dd>
               </div>
             </dl>
 
             <p className={`text-[13px] leading-5 ${MUTED}`}>
-              {atMarket && marketAnchor !== null
-                ? `at market: ${formatMicroPerMtok(marketAnchor)} USD / MTok, 90% of the ${formatMicroPerMtok(blended ?? 0n)} reference`
-                : `capacity ${formatMtok(capacityTokens)} MTok · paid daily at 01:00 UTC`}
+              capacity {formatMtok(capacityTokens)} MTok · paid daily at 01:00 UTC
             </p>
 
             {stored ? (
@@ -590,6 +638,14 @@ export function Sell() {
                   placeholder={rail === "0g" ? "sk-… from pc.testnet.0g.ai" : "the rail's API key"}
                   className="h-[34px] w-full rounded-[6px] border border-[#CECECE] bg-white px-2.5 text-[14px] text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF]"
                 />
+                <span
+                  className={`mt-1 block text-[12px] leading-4 ${keyHint.ok ? "text-[#2EBD85]" : MUTED}`}
+                >
+                  {keyHint.text}
+                </span>
+                <span className={`mt-0.5 block text-[12px] leading-4 ${MUTED}`}>
+                  probed once, then sealed with AES-256-GCM — it never leaves the server
+                </span>
               </label>
             )}
 
@@ -604,14 +660,6 @@ export function Sell() {
             <p className={`text-center text-[13px] leading-5 ${MUTED}`}>
               {failure ?? (listed ? `listed ${listed.slice(0, 8)}…, live in the book` : (blocker ?? "the key is probed once, then sealed"))}
             </p>
-
-            <div className="border-t border-[#D9D9D9] pt-3">
-              <p className="text-[14px] text-[#1E1E1E]">Your key never leaves the server.</p>
-              <p className="mt-1 text-[13px] leading-5 text-[#757575]">
-                It is probed once, then sealed with AES-256-GCM and opened only inside the request
-                that uses it.
-              </p>
-            </div>
           </div>
         </div>
       </div>
