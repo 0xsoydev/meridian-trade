@@ -61,7 +61,7 @@ export function AgentsTerminal({ variant }: { variant: "page" | "canvas" }) {
   const [step, setStep] = useState(0);
 
   return (
-    <section className={canvas ? "absolute left-[55px] top-[3400px] w-[1617px]" : "border-t border-[#CECECE] pb-14 pt-10"}>
+    <section className={canvas ? "absolute left-[55px] top-[3400px] w-[1617px]" : "mt-16 border-t border-[#CECECE] pb-14 pt-10"}>
       <h2
         className={
           canvas

@@ -19,10 +19,10 @@ export default function Home() {
           <Hero variant="page" />
         </div>
         <WhatWeDo variant="page" />
-        <Proof variant="page" />
-        <Panorama variant="page" />
         <HowItWorks variant="page" />
         <Flow variant="page" />
+        <Proof variant="page" />
+        <Panorama variant="page" />
         <AgentsTerminal variant="page" />
         <SiteFooter variant="page" />
       </div>
@@ -32,10 +32,12 @@ export default function Home() {
           <Hero variant="canvas" nav={<Navbar />} />
           <div className="absolute inset-x-0 top-[307px]">
             <WhatWeDo variant="canvas" />
-            <Proof variant="canvas" />
-            <Panorama variant="canvas" />
             <HowItWorks variant="canvas" />
             <Flow variant="canvas" />
+            <div className="absolute inset-x-0 top-[554px]">
+              <Proof variant="canvas" />
+              <Panorama variant="canvas" />
+            </div>
             <AgentsTerminal variant="canvas" />
             <div className="absolute inset-x-0 top-[866px]">
               <SiteFooter variant="canvas" />
