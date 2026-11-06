@@ -346,12 +346,20 @@ export function Sell() {
                       onClick={() => setRail(item.id)}
                       aria-pressed={rail === item.id}
                       title={item.story}
-                      className={`h-[43px] rounded-[6px] px-6 text-[16px] font-semibold ${
+                      className={`group relative h-[43px] px-6 text-[16px] font-semibold ${
                         rail === item.id
                           ? "bg-black text-white"
                           : "border border-[#CECECE] bg-white text-[#757575] hover:border-[#1743FF] hover:text-[#1E1E1E]"
                       }`}
                     >
+                      {CORNERS.map((corner) => (
+                        <span
+                          key={corner}
+                          aria-hidden
+                          className={`${corner} opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100`}
+                          style={{ transitionProperty: "opacity, transform" }}
+                        />
+                      ))}
                       {item.label}
                     </button>
                   ))}
