@@ -236,7 +236,9 @@ export function Sell() {
   };
 
   return (
-    <section>
+    <section className="relative lg:px-6">
+      <div aria-hidden className="pointer-events-none absolute inset-y-0 left-0 hidden w-px bg-[#CECECE] lg:block" />
+      <div aria-hidden className="pointer-events-none absolute inset-y-0 right-0 hidden w-px bg-[#CECECE] lg:block" />
       <div className="flex flex-wrap items-center gap-x-8 gap-y-3 border-b border-[#D9D9D9] pb-4">
         <Stat label="Fee" value="10 percent of every fill" />
         <Stat label="Payouts" value="daily, paid at 01:00 UTC" />
