@@ -108,7 +108,7 @@ export async function settle(input: SettleInput): Promise<void> {
       returning reserved_tokens, reserved_usd_micro, listing_id, key_id, prepaid_id, charge_usd_micro
     ), p as (
       update prepaid set
-        tokens_remaining = prepaid.tokens_remaining + u.reserved_tokens - least(${input.mixedTokens}::bigint, u.reserved_tokens)
+        tokens_remaining = greatest(prepaid.tokens_remaining + u.reserved_tokens - ${input.mixedTokens}::bigint, 0)
       from u
       where prepaid.id = u.prepaid_id
       returning prepaid.id
