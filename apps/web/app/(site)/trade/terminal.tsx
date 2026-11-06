@@ -406,7 +406,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
 
   return (
     <section>
-      <div className="flex flex-wrap items-center gap-x-8 gap-y-3 border border-[#CECECE] bg-white px-4 py-3">
+      <div className="flex flex-wrap items-center gap-x-8 gap-y-3 rounded-[6px] border border-[#CECECE] bg-white px-4 py-3">
         <ProfileDropdown
           accounts={modelAccounts}
           defaultAccountId={model}
@@ -449,7 +449,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
       ) : null}
 
       <div className={`mt-5 grid gap-[17px] ${expanded ? "" : "lg:grid-cols-[minmax(0,1fr)_250px_290px]"}`}>
-        <div className="flex flex-col self-start border border-[#CECECE] bg-white">
+        <div className="flex flex-col self-start rounded-[6px] border border-[#CECECE] bg-white">
           <div className="flex items-center gap-5 border-b border-[#D9D9D9] px-4 py-2.5 text-[14px]">
             <span className="font-semibold text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4">
               Chart
@@ -540,7 +540,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
 
         {!expanded && (
           <>
-            <div className="flex flex-col self-start border border-[#CECECE] bg-white lg:h-[calc(100svh-277px)] lg:min-h-[423px]">
+            <div className="flex flex-col self-start rounded-[6px] border border-[#CECECE] bg-white lg:h-[calc(100svh-277px)] lg:min-h-[423px]">
               <div className="flex items-center gap-5 border-b border-[#D9D9D9] px-4 py-2.5 text-[14px]">
                 {(["book", "tape"] as const).map((item) => (
                   <button
@@ -648,7 +648,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
             </div>
 
             <div className="flex flex-col gap-[17px] self-start lg:h-[calc(100svh-277px)] lg:min-h-[423px]">
-              <div className="flex min-h-0 flex-1 flex-col border border-[#CECECE] bg-white">
+              <div className="flex min-h-0 flex-1 flex-col rounded-[6px] border border-[#CECECE] bg-white">
                 <div className="flex shrink-0 border-b border-[#D9D9D9]">
                   {(["buy", "sell"] as const).map((item) => (
                     <button
@@ -681,7 +681,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
 
                   <label className="block">
                     <span className={`mb-1 block text-[13px] ${MUTED}`}>Size, in MTokens</span>
-                    <span className="flex items-center gap-2 border border-[#CECECE] bg-white px-2.5 focus-within:border-[#1743FF]">
+                    <span className="flex items-center gap-2 rounded-[6px] border border-[#CECECE] bg-white px-2.5 focus-within:border-[#1743FF]">
                       <input
                         value={size}
                         onChange={(event) => setSize(event.target.value)}
@@ -827,7 +827,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
                   ) : null}
 
                   {key === null ? (
-                    <div className="border border-[#CECECE] bg-white px-3 py-3">
+                    <div className="rounded-[6px] border border-[#CECECE] bg-white px-3 py-3">
                       <p className="text-[14px] text-[#1E1E1E]">{side === "buy" ? "Buying" : "Selling"} needs a router key.</p>
                       <p className="mt-1 text-[13px] leading-5 text-[#757575]">
                         Create one with your wallet on Keys, or paste an agent&apos;s key there. It stays in this
@@ -919,13 +919,13 @@ export function Trade({ initialModel }: { initialModel: string }) {
                   ) : null}
 
                   {problem ? (
-                    <div className="border border-[#F6465D]/40 bg-white px-3 py-2">
+                    <div className="rounded-[6px] border border-[#F6465D]/40 bg-white px-3 py-2">
                       <p className="text-[13px] leading-5 text-[#F6465D]">{problem.message}</p>
                       {problem.shortfall !== null ? (
                         <button
                           type="button"
                           onClick={() => void copyTopup()}
-                          className="mt-2 w-full border border-[#CECECE] bg-white px-2 py-1.5 text-left text-[13px] tabular-nums text-[#1E1E1E] hover:border-[#1743FF]"
+                          className="mt-2 w-full rounded-[6px] border border-[#CECECE] bg-white px-2 py-1.5 text-left text-[13px] tabular-nums text-[#1E1E1E] hover:border-[#1743FF]"
                         >
                           {copied ? "Copied — run it from your agent. " : "Copy top-up, "}
                           {`POST /api/v1/topup?usd=${formatMicroPerMtok(problem.shortfall)}`}
@@ -975,7 +975,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
         ? createPortal(
             <div
               role="status"
-              className="absolute bottom-full right-4 mb-4 w-[min(290px,calc(100vw-2rem))] border border-[#CECECE] bg-white p-4 shadow-[0_8px_24px_rgba(30,30,30,0.08)] transition-[opacity,translate] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] starting:translate-y-2 starting:opacity-0 motion-reduce:transition-none lg:right-6"
+              className="absolute bottom-full right-4 mb-4 w-[min(290px,calc(100vw-2rem))] rounded-[6px] border border-[#CECECE] bg-white p-4 shadow-[0_8px_24px_rgba(30,30,30,0.08)] transition-[opacity,translate] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] starting:translate-y-2 starting:opacity-0 motion-reduce:transition-none lg:right-6"
             >
               <div className="flex items-center justify-between">
                 <p className="text-[14px] font-semibold text-[#1E1E1E]">Announcements</p>

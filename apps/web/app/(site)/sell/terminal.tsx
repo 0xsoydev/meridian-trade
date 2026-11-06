@@ -360,7 +360,7 @@ export function Sell() {
                       className={`group relative inline-flex h-[46px] items-center justify-center gap-2.5 px-6 text-[16px] font-semibold transition-transform duration-200 hover:scale-[0.98] ${
                         rail === item.id
                           ? "bg-black text-white"
-                          : "border border-[#CECECE] bg-white text-[#757575] hover:border-[#1743FF] hover:text-[#1E1E1E]"
+                          : "rounded-[6px] border border-[#CECECE] bg-white text-[#757575] hover:border-[#1743FF] hover:text-[#1E1E1E]"
                       }`}
                     >
                       {CORNERS.map((corner) => (

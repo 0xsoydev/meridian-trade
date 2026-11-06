@@ -46,7 +46,7 @@ export function TradeNav() {
               More
               <Chevron />
             </summary>
-            <div className="absolute left-0 top-full mt-3 w-40 border border-[#CECECE] bg-white py-1">
+            <div className="absolute left-0 top-full mt-3 w-40 rounded-[6px] border border-[#CECECE] bg-white py-1">
               {MORE.map((link) => (
                 <Link
                   key={link.href}

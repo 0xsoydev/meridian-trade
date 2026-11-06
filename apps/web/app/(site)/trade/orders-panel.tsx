@@ -14,7 +14,7 @@ const TABS = ["Balances", "Open Orders", "Trade History", "Venue Fills"] as cons
 const ROW = "grid grid-cols-3 gap-x-3 gap-y-1 border-t border-[#CECECE] py-3 text-[13px] tabular-nums text-[#1E1E1E] md:grid-cols-6";
 const SCROLL = "max-h-[225px] overflow-y-auto";
 const HEAD = `hidden border-y border-[#CECECE] py-2 text-[12px] md:grid md:grid-cols-6 md:gap-x-3 ${MUTED}`;
-const INPUT = "h-[26px] w-20 border border-[#CECECE] bg-white px-1.5 text-right outline-none focus:border-[#1743FF]";
+const INPUT = "h-[26px] w-20 rounded-[6px] border border-[#CECECE] bg-white px-1.5 text-right outline-none focus:border-[#1743FF]";
 
 const text = z.string();
 const holdingsSchema = z.object({

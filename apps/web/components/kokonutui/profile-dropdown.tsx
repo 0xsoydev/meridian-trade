@@ -461,7 +461,7 @@ export default function ProfileDropdown({
             uid={uid}
           />
         </span>
-        <span className="shrink-0 border border-[#CECECE] px-1.5 py-0.5 text-[11px] leading-none text-[#1E1E1E]">
+        <span className="shrink-0 rounded-[6px] border border-[#CECECE] px-1.5 py-0.5 text-[11px] leading-none text-[#1E1E1E]">
           spot
         </span>
         <ChevronsUpDown

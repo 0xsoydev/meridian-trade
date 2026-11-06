@@ -52,7 +52,7 @@ export function SiteFooter({ variant }: { variant: "page" | "canvas" | "site" })
   if (variant === "site") {
     return (
       <footer className="relative h-[min(42.4769vw,734px)]">
-        <div className="absolute left-[calc(55*min(100vw,1728px)/1728_+_max(0px,(100vw_-_1728px)/2))] right-[calc(56*min(100vw,1728px)/1728_+_max(0px,(100vw_-_1728px)/2))] top-0 h-[min(16.5509vw,286px)] border border-[#CECECE] bg-[#EBEBEB]" />
+        <div className="absolute left-[calc(55*min(100vw,1728px)/1728_+_max(0px,(100vw_-_1728px)/2))] right-[calc(56*min(100vw,1728px)/1728_+_max(0px,(100vw_-_1728px)/2))] top-0 h-[min(16.5509vw,286px)] rounded-[6px] border border-[#CECECE] bg-[#EBEBEB]" />
 
         <div
           className="absolute bottom-0 left-[calc(413*min(100vw,1728px)/1728_+_max(0px,(100vw_-_1728px)/2))] h-[min(38.0787vw,658px)] w-[min(76.0995vw,1315px)] bg-cover bg-center"
@@ -75,7 +75,7 @@ export function SiteFooter({ variant }: { variant: "page" | "canvas" | "site" })
 
   return (
     <>
-      <div className="absolute left-[55px] top-[3351px] h-[730px] w-[1617px] border border-[#CECECE] bg-[#EBEBEB]" />
+      <div className="absolute left-[55px] top-[3351px] h-[730px] w-[1617px] rounded-[6px] border border-[#CECECE] bg-[#EBEBEB]" />
       <p className="absolute left-[864px] top-[3747px] -translate-x-1/2 font-['Instrument_Sans','Instrument_Serif_Fallback'] font-black text-[320px] leading-none text-[#757575]/30">MERIDIAN</p>
 
       <div

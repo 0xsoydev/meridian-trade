@@ -427,7 +427,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
                 accrual lands on every modify and every liquidation, off the keeper&apos;s index — the
                 same TWAP of venue fills you can recompute on /receipts.
               </p>
-              <dl className="mt-5 border border-[#CECECE] bg-white px-4 py-3">
+              <dl className="mt-5 rounded-[6px] border border-[#CECECE] bg-white px-4 py-3">
                 {FUNDING_FORMULAS.map((row) => (
                   <div key={row.name} className="border-b border-[#D9D9D9] py-2 last:border-0">
                     <dt className={`text-[13px] ${MUTED}`}>{row.name}</dt>
