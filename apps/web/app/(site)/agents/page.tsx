@@ -1,10 +1,13 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
-import { Agents } from "./terminal";
+import { listComfy } from "../../../lib/comfy.ts";
+import { formatUsd } from "../../../lib/price.ts";
+import { Agents, type ConnectedAgent } from "./terminal";
 
 export const metadata: Metadata = {
   title: "Agents — LLM Token Exchange",
 };
+export const dynamic = "force-dynamic";
 
 async function baseUrl(): Promise<string> {
   const configured = process.env.PUBLIC_HOST;
@@ -15,6 +18,26 @@ async function baseUrl(): Promise<string> {
   return `${proto}://${host}`;
 }
 
+async function connected(): Promise<ConnectedAgent[] | null> {
+  try {
+    return (await listComfy()).map((row) => ({
+      agent: row.agent,
+      since: row.since.toISOString(),
+      requests: row.requests,
+      spent: formatUsd(row.spentUsdMicro),
+    }));
+  } catch (error) {
+    console.error("comfy agents list failed", error);
+    return null;
+  }
+}
+
 export default async function AgentsPage() {
-  return <Agents base={await baseUrl()} network={process.env.HEDERA_NETWORK ?? "hedera:testnet"} />;
+  return (
+    <Agents
+      base={await baseUrl()}
+      network={process.env.HEDERA_NETWORK ?? "hedera:testnet"}
+      connected={await connected()}
+    />
+  );
 }
