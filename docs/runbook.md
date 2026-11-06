@@ -58,7 +58,7 @@ If the portal leaves a keyless alias account (faucet transfer to an EVM address)
 curl.exe -s -H "Authorization: Bearer $env:OG_API_KEY" "$env:OG_ROUTER_URL/providers"
 ```
 
-`0gm-1.0-35b-a3b` must report `is_healthy: true`.
+`0gm-1.0-35b-a3b` must report `is_healthy: true` before 0G inference can be shown. Prices and the model list come from `OG_MODELS_URL` (default: 0G's public mainnet `/models`). That keeps 0G markets listed and tradeable even when the testnet router has no provider for a model.
 
 ### OpenRouter rankings
 
@@ -99,12 +99,41 @@ Re-run it any time to restore the listings and the key balance.
 
 ```powershell
 pnpm --filter web dev
+node --env-file=.env keeper/main.ts
 pnpm --filter demo-agent start
 ```
 
+Run exactly one keeper. It reads the root `.env`. On Linux, run it as a systemd user service so it survives logouts and reboots, in `~/.config/systemd/user/celestial-keeper.service`:
+
+```ini
+[Unit]
+Description=Celestial Trade keeper
+After=network-online.target
+
+[Service]
+WorkingDirectory=/path/to/the/repo
+ExecStart=/usr/bin/systemd-inhibit --what=sleep:idle --who=keeper --why=payouts /path/to/node --env-file=.env keeper/main.ts
+Restart=always
+RestartSec=5
+StandardOutput=append:%h/keeper.log
+StandardError=append:%h/keeper.log
+
+[Install]
+WantedBy=default.target
+```
+
+Then `systemctl --user daemon-reload && systemctl --user enable --now celestial-keeper` and `loginctl enable-linger $USER`. Restart it after pulling keeper or `lib` changes.
+
 The agent prints a HashScan link for the top-up, then two approval URLs.
 
-`pnpm --filter web e2e` runs the human money path against the dev server: wallet signup, a 0.10 USDC memo deposit from the agent account, the replay refused, a spot buy, one inference paid from prepaid tokens.
+Live checks against the running app (`ROUTER_URL`, default `http://localhost:3000`), on `deepseek-v4.1-flash` unless `MODEL` says otherwise:
+- `pnpm --filter web e2e`:
+  - wallet signup, a 0.10 USDC memo deposit, and a 0.05 USDC wallet deposit on Hedera EVM, each with its replay refused;
+  - a spot buy;
+  - one inference paid from prepaid tokens.
+- `pnpm --filter web perps-e2e`: a 5x long and a 2x short from throwaway Galileo wallets; the keeper liquidates the long once the index falls, and the short closes in profit.
+
+All three need an ask on the model.
 
 ## 5. Approvals
 
@@ -137,11 +166,19 @@ To test without a World App, set `NEXT_PUBLIC_WORLD_BYPASS=true` in both env cop
 | `fetch failed` in the agent | app not running | start `pnpm --filter web dev` first |
 | Approval stays `pending` | no proof submitted | open the URL and approve; the agent waits 90s |
 | Env value includes the next variable | missing newline | one variable per line |
+| x402 `payment failed: fetch failed` | a facilitator is down | nothing: the router benches it for 5 min and offers from the next one; the client retries for a fresh offer |
+| Payout logged "still pending after its … slot" | Hedera refused the schedule for 10 min, or the keeper stopped mid-schedule | look up a schedule with the payout id as memo on the mirror; clear `payouts.execute_at` only if none exists |
+| `/perps` reads "no spot price yet" | no fills in the index window and no ask | list an ask on the model |
+| `next dev` answers 500 `Symbol(drizzle:Columns)` | the dev server cached an older `schema.ts` | restart `pnpm --filter web dev` after a migration |
 
 ## 7. Evidence to keep
 
-- x402 top-up: `0.0.7162784@1793283780.350790133`
+- x402 top-ups: `0.0.7162784@1793283780.350790133`, `0.0.7162784@1793807815.756838941`
+- Memo deposit: `0.0.11223929@1793807780.705800106`
+- Wallet deposit on Hedera EVM: `0x27eb2b1917ebdd27cfc157c807decf401b4ed99975303bb81aa7c7c41ee4c56c`
+- Executed payout schedules: `0.0.11309252`, `0.0.11309253`, `0.0.11309255`
 - Hedge on Galileo: `0x39580f2e05e803b6a9fce7aaabe982bfb637e236cac58e03080cca78fe1e3fe5`
+- Keeper liquidation on Galileo: `0x81edbf8aca4bc3ef24f1d1b1d993dac4f4da891a5f430ec683e3b73257eae024`
 - HCS topic: `0.0.11222352`
 - Treasury: `0.0.11220913`
 - Agent: `0.0.11223929`, Galileo `0x770926FA371e0BAe516917369FCCEcAE054Ad051`
