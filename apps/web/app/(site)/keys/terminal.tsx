@@ -290,11 +290,11 @@ export function Keys() {
   };
 
   const stats = [
-    { label: "balance", value: balance ? formatUsd(BigInt(balance.balance_usd_micro)) : "—" },
-    { label: "reserved", value: balance ? formatUsd(BigInt(balance.reserved_usd_micro)) : "—" },
-    { label: "topped up today", value: balance ? formatUsd(BigInt(balance.topped_up_today_usd_micro)) : "—" },
-    { label: "daily cap", value: balance ? formatUsd(BigInt(balance.daily_topup_cap_usd_micro)) : "—" },
-    { label: "auto top-up", value: balance ? formatUsd(BigInt(balance.auto_topup_usd_micro)) : "—" },
+    { label: "Balance", value: balance ? formatUsd(BigInt(balance.balance_usd_micro)) : "—" },
+    { label: "Reserved", value: balance ? formatUsd(BigInt(balance.reserved_usd_micro)) : "—" },
+    { label: "Topped up today", value: balance ? formatUsd(BigInt(balance.topped_up_today_usd_micro)) : "—" },
+    { label: "Daily cap", value: balance ? formatUsd(BigInt(balance.daily_topup_cap_usd_micro)) : "—" },
+    { label: "Auto top-up", value: balance ? formatUsd(BigInt(balance.auto_topup_usd_micro)) : "—" },
   ];
 
   const snippets = [
@@ -306,48 +306,35 @@ export function Keys() {
 
   return (
     <section>
-      <h1 className="font-serif text-[50px] leading-[1.05] text-[#1E1E1E]">
-        Fund what <span className="text-[#A3A3A3]">expires</span>
-      </h1>
-      <p className="mt-4 max-w-[425px] text-[14px] leading-[18px] text-black">
-        One router key holds the balance, spends it at the ask, and tops up when it thins. Paste a
-        key once; Trade and Perps read the same one from this browser.
-      </p>
-
-      <div className="mt-6 border-t border-[#CECECE] pt-5">
-        <p className="text-[13px] text-[#1E1E1E]">[ key account ]</p>
-        <dl className="mt-3 flex flex-wrap gap-x-[26px] gap-y-3">
-          {stats.map((stat) => (
-            <div key={stat.label}>
-              <dt className={`text-[13px] ${MUTED}`}>{stat.label}</dt>
-              <dd className="text-[13px] tabular-nums text-[#1E1E1E]">{stat.value}</dd>
-            </div>
-          ))}
-        </dl>
-        {accountError === "rejected" ? (
-          <p className="mt-2 text-[13px] text-[#F6465D]">router key rejected — paste it again</p>
-        ) : accountError === "down" ? (
-          <p className="mt-2 text-[13px] text-[#F6465D]">the account feed is unreachable; retry in a moment</p>
-        ) : !key ? (
-          <p className={`mt-2 text-[13px] ${MUTED}`}>paste a key below to wake the account</p>
-        ) : null}
+      <div className="flex flex-wrap items-center gap-x-8 gap-y-3 rounded-[6px] border border-[#CECECE] bg-white px-4 py-3">
+        {stats.map((stat) => (
+          <Stat key={stat.label} label={stat.label} value={stat.value} />
+        ))}
+        <div className="ml-auto text-[13px]">
+          {accountError === "rejected" ? (
+            <span className="text-[#F6465D]">router key rejected — paste it again</span>
+          ) : accountError === "down" ? (
+            <span className="text-[#F6465D]">the account feed is unreachable; retry in a moment</span>
+          ) : !key ? (
+            <span className={MUTED}>paste a key below to wake the account</span>
+          ) : null}
+        </div>
       </div>
 
       <div className="mt-5 grid gap-[17px] lg:grid-cols-[1fr_300px]">
-        <div className="border border-[#CECECE] bg-[#EBEBEB] p-4">
-          <p className="text-[13px] text-[#1E1E1E]">[ account ]</p>
-          <h2 className="mt-2 font-serif text-[22px] leading-tight text-[#1E1E1E]">
-            One key, one balance.
-          </h2>
-
-          <div className="mt-4 space-y-3">
+        <div className="rounded-[6px] border border-[#CECECE] bg-white">
+          <div className="flex items-center gap-5 border-b border-[#D9D9D9] px-4 py-2.5 text-[14px]">
+            <span className="font-semibold text-[#1E1E1E]">One key, one balance.</span>
+            <span className={MUTED}>account</span>
+          </div>
+          <div className="space-y-4 p-4">
             <label className="block">
               <span className={`mb-1 block text-[13px] ${MUTED}`}>Router key</span>
               <input
                 value={draft}
                 onChange={(event) => setDraft(event.target.value)}
                 placeholder="rk_…"
-                className="h-[34px] w-full border border-[#CECECE] bg-white px-2.5 text-[14px] text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF]"
+                className="h-[34px] w-full rounded-[6px] border border-[#CECECE] bg-white px-2.5 text-[14px] text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF]"
               />
             </label>
             <div className="flex gap-2">
@@ -363,7 +350,7 @@ export function Keys() {
                 <button
                   type="button"
                   onClick={clearKey}
-                  className="h-[34px] border border-[#CECECE] bg-white px-4 text-[14px] text-[#1E1E1E] hover:border-[#1743FF]"
+                  className="h-[34px] rounded-[6px] border border-[#CECECE] bg-white px-4 text-[14px] text-[#1E1E1E] hover:border-[#1743FF]"
                 >
                   Clear
                 </button>
@@ -373,7 +360,6 @@ export function Keys() {
               Stays in this browser, never in a URL. Currently saved:{" "}
               <span className="tabular-nums text-[#1E1E1E]">{key ? maskKey(key) : "nothing"}</span>
             </p>
-          </div>
 
           <dl className="mt-5 border-t border-[#D9D9D9]">
             {[
@@ -410,7 +396,7 @@ export function Keys() {
                   The mirror verifies the transfer before it credits.
                 </p>
                 <div className="mt-3 flex gap-2">
-                  <span className="flex w-28 items-center gap-1 border border-[#CECECE] bg-white px-2.5 focus-within:border-[#1743FF]">
+                  <span className="flex w-28 items-center gap-1 rounded-[6px] border border-[#CECECE] bg-white px-2.5 focus-within:border-[#1743FF]">
                     <span className={`text-[13px] ${MUTED}`}>$</span>
                     <input
                       value={walletAmount}
@@ -481,7 +467,7 @@ export function Keys() {
                 value={depositTx}
                 onChange={(event) => setDepositTx(event.target.value)}
                 placeholder="0.0.12345@1700000000.000000000 or 0x…"
-                className="h-[34px] w-full border border-[#CECECE] bg-white px-2.5 text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF]"
+                className="h-[34px] w-full rounded-[6px] border border-[#CECECE] bg-white px-2.5 text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF]"
               />
             </label>
             <button
@@ -513,7 +499,7 @@ export function Keys() {
             <button
               type="button"
               onClick={() => void copy("topup", `POST ${origin}/api/v1/topup?usd=1.00`)}
-              className="mt-2 w-full border border-[#CECECE] bg-white px-3 py-2 text-left text-[13px] tabular-nums text-[#1E1E1E] hover:border-[#1743FF]"
+              className="mt-2 w-full rounded-[6px] border border-[#CECECE] bg-white px-3 py-2 text-left text-[13px] tabular-nums text-[#1E1E1E] hover:border-[#1743FF]"
             >
               {copied === "topup" ? "Copied — run it from your agent." : "Copy top-up call"}
             </button>
@@ -553,7 +539,7 @@ export function Keys() {
                 href={approval.verification_uri_complete}
                 target="_blank"
                 rel="noreferrer"
-                className="mt-3 flex h-[34px] w-full items-center justify-center border border-[#1743FF] bg-white text-[14px] text-[#1743FF]"
+                className="mt-3 flex h-[34px] w-full items-center justify-center rounded-[6px] border border-[#1743FF] bg-white text-[14px] text-[#1743FF]"
               >
                 Approve with World ID · {approval.user_code}
               </a>
@@ -564,12 +550,18 @@ export function Keys() {
                 : "Raising the daily cap asks for a World ID approval."}
             </p>
           </div>
+          </div>
         </div>
 
-        <div className="border border-[#CECECE] bg-[#EBEBEB] p-4">
-          <div className="bg-black py-2 text-center text-[14px] font-semibold text-white">Settings</div>
+        <div className="flex flex-col self-start overflow-hidden rounded-[6px] border border-[#CECECE] bg-white">
+          <div className="flex border-b border-[#CECECE]">
+            <div className="w-1/2 bg-black py-2 text-center text-[14px] font-semibold text-white">Settings</div>
+            <span className="flex w-1/2 items-center justify-center border-l border-[#CECECE] py-2 text-[14px] font-semibold text-[#757575]">
+              saved with the key
+            </span>
+          </div>
 
-          <div className="mt-4 space-y-4">
+          <div className="space-y-4 p-4">
             <label className="block">
               <span className={`mb-1 flex items-baseline justify-between gap-2 text-[13px] ${MUTED}`}>
                 <span>Auto top-up, USD</span>
@@ -580,7 +572,7 @@ export function Keys() {
                 onChange={(event) => setAutoTopup(event.target.value)}
                 inputMode="decimal"
                 placeholder="0.50"
-                className="h-[34px] w-full border border-[#CECECE] bg-white px-2.5 text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF]"
+                className="h-[34px] w-full rounded-[6px] border border-[#CECECE] bg-white px-2.5 text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF]"
               />
             </label>
             <div className="flex gap-5">
@@ -607,7 +599,7 @@ export function Keys() {
                 onChange={(event) => setDailyCap(event.target.value)}
                 inputMode="decimal"
                 placeholder="5.00"
-                className="h-[34px] w-full border border-[#CECECE] bg-white px-2.5 text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF]"
+                className="h-[34px] w-full rounded-[6px] border border-[#CECECE] bg-white px-2.5 text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9] focus:border-[#1743FF]"
               />
             </label>
             <p className={`text-[13px] leading-5 ${MUTED}`}>
@@ -617,11 +609,11 @@ export function Keys() {
             <div>
               <span className={`mb-1 block text-[13px] ${MUTED}`}>Default model</span>
               <details ref={modelPicker} className="relative">
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-2 border border-[#CECECE] bg-white px-2.5 py-2 text-[14px] text-[#1E1E1E] [&::-webkit-details-marker]:hidden">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-2 rounded-[6px] border border-[#CECECE] bg-white px-2.5 py-2 text-[14px] text-[#1E1E1E] [&::-webkit-details-marker]:hidden">
                   <span className="truncate">{defaultModel ?? "router default"}</span>
                   <span aria-hidden className="text-[#757575]">⌄</span>
                 </summary>
-                <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-auto border border-[#CECECE] bg-white py-1">
+                <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-auto rounded-[6px] border border-[#CECECE] bg-white py-1">
                   <li>
                     <button
                       type="button"
@@ -676,7 +668,7 @@ export function Keys() {
               <p className={`text-center text-[13px] ${MUTED}`}>saves with the key above</p>
             )}
 
-            <div className="border border-[#CECECE] bg-white px-3 py-3">
+            <div className="rounded-[6px] border border-[#CECECE] bg-white px-3 py-3">
               <p className="text-[14px] text-[#1E1E1E]">Spends settle off the same ledger.</p>
               <p className="mt-1 text-[13px] leading-5 text-[#757575]">
                 Every call reserves at the ask, settles on usage, and releases the rest. Receipts
@@ -688,23 +680,25 @@ export function Keys() {
       </div>
 
       {key ? (
-        <div className="mt-10 border-t border-[#CECECE] pt-8">
-          <p className="text-[13px] text-[#1E1E1E]">[ usage ]</p>
-          <h2 className="mt-3 font-serif text-[32px] leading-[1.1] text-[#1E1E1E]">Every call this key made.</h2>
-          <div className={`mt-4 hidden border-y border-[#CECECE] py-2 text-[12px] md:grid md:grid-cols-6 ${MUTED}`}>
+        <div className="mt-5 overflow-hidden rounded-[6px] border border-[#CECECE] bg-white">
+          <div className="flex items-center gap-5 border-b border-[#D9D9D9] px-4 py-2.5 text-[14px]">
+            <span className="font-semibold text-[#1E1E1E]">Usage</span>
+            <span className={MUTED}>every call this key made</span>
+          </div>
+          <div className={`hidden gap-x-3 px-4 py-1.5 text-[11px] md:grid md:grid-cols-6 ${MUTED}`}>
             {["Time, UTC", "Model", "Rail", "Tokens in / out", "Paid from", "Charge"].map((head) => (
               <span key={head}>{head}</span>
             ))}
           </div>
           {calls.length === 0 ? (
-            <p className="border-t border-[#CECECE] py-5 text-[14px] text-[#757575] md:border-t-0">
+            <p className="border-t border-[#D9D9D9] px-4 py-5 text-[13px] text-[#757575] md:border-t-0">
               No calls yet. Point an agent at the router below and they show up here.
             </p>
           ) : (
             calls.map((call, index) => (
               <div
                 key={`${call.at}-${index}`}
-                className="grid grid-cols-3 gap-y-1 border-t border-[#CECECE] py-3 text-[13px] tabular-nums text-[#1E1E1E] md:grid-cols-6"
+                className="grid grid-cols-3 gap-x-3 gap-y-1 border-t border-[#D9D9D9] px-4 py-2.5 text-[13px] tabular-nums text-[#1E1E1E] md:grid-cols-6"
               >
                 <span className={MUTED}>{stampFormat.format(new Date(call.at))}</span>
                 <span>{call.model}</span>
@@ -720,21 +714,20 @@ export function Keys() {
         </div>
       ) : null}
 
-      <div className="mt-10 border-t border-[#CECECE] pt-8">
-        <p className="text-[13px] text-[#1E1E1E]">[ the router ]</p>
-        <h2 className="mt-3 font-serif text-[32px] leading-[1.1] text-[#1E1E1E]">
-          Point your agent at the router.
-        </h2>
-        <p className={`mt-3 max-w-[560px] text-[14px] leading-5 ${MUTED}`}>
+      <div className="mt-5 overflow-hidden rounded-[6px] border border-[#CECECE] bg-white">
+        <div className="flex items-center gap-5 border-b border-[#D9D9D9] px-4 py-2.5 text-[14px]">
+          <span className="font-semibold text-[#1E1E1E]">Point your agent at the router.</span>
+        </div>
+        <p className={`border-b border-[#D9D9D9] px-4 py-2 text-[12px] leading-5 ${MUTED}`}>
           OpenAI-compatible chat, one bearer token. The key stays in the header; every call prices
           itself at the cheapest ask and settles once.
         </p>
 
-        <div className="mt-4 border-t border-[#CECECE]">
+        <div>
           {snippets.map((snippet) => (
             <div
               key={snippet.id}
-              className="flex flex-wrap items-baseline justify-between gap-4 border-b border-[#CECECE] py-4"
+              className="flex flex-wrap items-baseline justify-between gap-4 border-b border-[#D9D9D9] px-4 py-3"
             >
               <span className={`text-[13px] ${MUTED}`}>{snippet.label}</span>
               <code className="min-w-0 flex-1 truncate text-[13px] tabular-nums text-[#1E1E1E]">
@@ -751,11 +744,20 @@ export function Keys() {
           ))}
         </div>
 
-        <p className={`mt-4 text-[13px] leading-5 ${MUTED}`}>
+        <p className={`border-t border-[#D9D9D9] px-4 py-2 text-[12px] leading-5 ${MUTED}`}>
           A top-up with no Authorization header mints a fresh funded key; with one, it credits that
           key. Deposits are credited only after the Hedera mirror confirms the transfer.
         </p>
       </div>
     </section>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-[11px] leading-4 text-[#757575]">{label}</p>
+      <p className="text-[14px] font-semibold tabular-nums text-[#1E1E1E]">{value}</p>
+    </div>
   );
 }
