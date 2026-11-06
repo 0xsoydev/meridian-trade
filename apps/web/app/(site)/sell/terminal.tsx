@@ -20,11 +20,11 @@ const PRESETS = [
 ];
 
 const RAILS = [
-  { id: "0g", label: "0G iAI", story: "daily credits reset at 00:00 UTC", market: true, logo: null },
+  { id: "0g", label: "0G iAI", story: "daily credits reset at 00:00 UTC", market: true, logo: "/images/rails/0g.svg" },
   { id: "anthropic", label: "Anthropic", story: "Console workspace key with a spend limit", market: false, logo: "/images/rails/anthropic.svg" },
   { id: "openai", label: "OpenAI", story: "project key with a budget", market: false, logo: "/images/rails/openai.svg" },
   { id: "openrouter", label: "OpenRouter", story: "the gateway's own spend limit — the probe shows credits left", market: false, logo: "/images/rails/openrouter.svg" },
-  { id: "commandcode", label: "Command Code", story: "the gateway's own spend limit · OpenAI chat, max_completion_tokens", market: false, logo: null },
+  { id: "commandcode", label: "Command Code", story: "the gateway's own spend limit · OpenAI chat, max_completion_tokens", market: false, logo: "/images/rails/commandcode.svg" },
   { id: "zen", label: "OpenCode Zen", story: "the gateway's own spend limit", market: false, logo: "/images/rails/opencode.svg" },
   { id: "opencode-go", label: "OpenCode Go", story: "the gateway's own spend limit", market: false, logo: "/images/rails/opencode.svg" },
 ] as const;
