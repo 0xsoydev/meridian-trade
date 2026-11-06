@@ -31,6 +31,7 @@ Provider credits expire and cannot be cashed out: 0G iAI credits reset daily, mo
   - `MockUSDC` `0x00a56d50DF396Ad754ED1F58c17B41529260A992`.
 - **Perp markets:** `glm-5.3`, `0gm-1.0-35b-a3b` and `deepseek-v4.1-flash`. The keeper posts each index from the venue's HCS rollups, clamped to a tenth of list up to list.
 - **Keeper liquidation:** https://chainscan-galileo.0g.ai/tx/0x81edbf8aca4bc3ef24f1d1b1d993dac4f4da891a5f430ec683e3b73257eae024
+- **comfy.fun agents:** `/agents` hands a comfy agent (0G mainnet) one prompt or snippet. It mints its own router key by paying over x402, then sends `model: "cheapest:<ids>"` so each task is filled at the lowest live ask among models good enough for it. The owner steps in with World ID only to raise the daily cap.
 - **Known limit:** the 0G testnet router currently has no provider for `0gm-1.0-35b-a3b`. A 0gm request returns the router's own 404, and the request's prepaid hold is released. 0G request ids will be added once a provider serves it, or with a mainnet key. Everything else, including 0gm spot and perps, works without it.
 
 ## Hedera
