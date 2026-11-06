@@ -276,7 +276,7 @@ export function Sell() {
           </div>
 
           <ol>
-            <li className="flex items-baseline gap-3 border-b border-[#D9D9D9] py-5 last:border-b-0">
+            <li className="flex items-baseline gap-3 border-b border-[#D9D9D9] py-6 last:border-b-0">
               <span className="font-serif text-[22px] leading-none text-[#A3A3A3]">1</span>
               <div className="min-w-0">
                 <p className="text-[14px] font-semibold text-[#1E1E1E]">Connect your wallet</p>
@@ -313,7 +313,7 @@ export function Sell() {
               </div>
             </li>
 
-            <li className="flex items-baseline gap-3 border-b border-[#D9D9D9] py-5 last:border-b-0">
+            <li className="flex items-baseline gap-3 border-b border-[#D9D9D9] py-6 last:border-b-0">
               <span className="font-serif text-[22px] leading-none text-[#A3A3A3]">2</span>
               <div className="min-w-0">
                 <p className="text-[14px] font-semibold text-[#1E1E1E]">Verify once with World ID</p>
@@ -366,7 +366,7 @@ export function Sell() {
               </div>
             </li>
 
-            <li id="gate-rail" className="flex items-baseline gap-3 border-b border-[#D9D9D9] py-5 last:border-b-0">
+            <li id="gate-rail" className="flex items-baseline gap-3 border-b border-[#D9D9D9] py-6 last:border-b-0">
               <span className="font-serif text-[22px] leading-none text-[#A3A3A3]">3</span>
               <div className="min-w-0 flex-1">
                 <p className="text-[14px] font-semibold text-[#1E1E1E]">Pick your rail</p>
@@ -436,7 +436,7 @@ export function Sell() {
             </Link>
           </div>
 
-          <div className="space-y-4 pt-4">
+          <div className="space-y-6 pt-4">
             <div>
               <span className={`mb-1 block text-[13px] ${MUTED}`}>Model</span>
               <details ref={picker} className="relative">
