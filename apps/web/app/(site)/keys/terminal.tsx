@@ -2,8 +2,9 @@
 
 import { usePrivy } from "@privy-io/react-auth";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BaseError } from "viem";
-import { useConnection, useDisconnect, useSignMessage } from "wagmi";
+import { BaseError, erc20Abi, isAddress } from "viem";
+import { hederaTestnet } from "viem/chains";
+import { useConnection, useDisconnect, useReadContract, useSignMessage } from "wagmi";
 import { z } from "zod";
 import { CORNERS, CTA } from "../../../components/landing/hero";
 import { formatMicroPerMtok, formatUsd, parseUsd, stampFormat, TOPUP_MAX_MICRO } from "../../../lib/price";
@@ -12,10 +13,23 @@ import { useModels } from "../models";
 import { useWalletDeposit } from "../wallet-deposit";
 
 const KEY_STORAGE = "router_key";
+const KEYS_STORAGE = "router_keys";
 const MUTED = "text-[#757575]";
 const TOPUP_PRESETS = ["0.50", "1.00", "5.00"];
+const DEPOSIT_PRESETS = ["1", "5", "10", "20"];
 
 const maskKey = (key: string) => `${key.slice(0, 7)}…${key.slice(-4)}`;
+const entriesSchema = z.array(z.object({ name: z.string(), key: z.string().startsWith("rk_") }));
+type Entry = z.infer<typeof entriesSchema>[number];
+
+function storedEntries(): Entry[] {
+  try {
+    return entriesSchema.parse(JSON.parse(window.localStorage.getItem(KEYS_STORAGE) ?? "[]"));
+  } catch {
+    return [];
+  }
+}
+
 const createdSchema = z.object({ key: z.string().startsWith("rk_"), key_id: z.string() });
 const failureSchema = z.object({ error: z.object({ message: z.string() }) });
 const usageSchema = z.object({
@@ -53,7 +67,11 @@ export function Keys() {
   const [createError, setCreateError] = useState<string | null>(null);
   const [approval, setApproval] = useState<ApprovalStart | null>(null);
   const [key, setKey] = useState<string | null>(null);
-  const [draft, setDraft] = useState("");
+  const [entries, setEntries] = useState<Entry[]>([]);
+  const [keyName, setKeyName] = useState("");
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<string | null>(null);
+  const [removeError, setRemoveError] = useState<{ key: string; message: string } | null>(null);
   const [balance, setBalance] = useState<Balance | null>(null);
   const [accountError, setAccountError] = useState<"rejected" | "down" | null>(null);
   const [version, setVersion] = useState(0);
@@ -69,7 +87,7 @@ export function Keys() {
   const [saving, setSaving] = useState(false);
 
   const walletDeposit = useWalletDeposit();
-  const [walletAmount, setWalletAmount] = useState("1.00");
+  const [walletAmount, setWalletAmount] = useState("1");
   const [walletPaying, setWalletPaying] = useState(false);
   const [depositTx, setDepositTx] = useState("");
   const [depositResult, setDepositResult] = useState<{ ok: true; result: DepositResult } | { ok: false; message: string } | null>(null);
@@ -79,6 +97,7 @@ export function Keys() {
   const [copied, setCopied] = useState<string | null>(null);
   const [calls, setCalls] = useState<z.infer<typeof usageSchema>["data"]>([]);
   const modelPicker = useRef<HTMLDetailsElement | null>(null);
+  const namer = useRef<HTMLDialogElement | null>(null);
 
   useEffect(() => {
     if (!key) {
@@ -98,7 +117,10 @@ export function Keys() {
   }, [key, version]);
 
   useEffect(() => {
-    setKey(window.localStorage.getItem(KEY_STORAGE));
+    const active = window.localStorage.getItem(KEY_STORAGE);
+    const stored = storedEntries();
+    setEntries(active && !stored.some((entry) => entry.key === active) ? [{ name: "My key", key: active }, ...stored] : stored);
+    setKey(active);
     setOrigin(window.location.origin);
   }, []);
 
@@ -155,20 +177,28 @@ export function Keys() {
     }
   };
 
-  const saveKey = () => {
-    const next = draft.trim();
-    if (!next.startsWith("rk_") || next.length < 8) return;
-    window.localStorage.setItem(KEY_STORAGE, next);
-    setKey(next);
-    setDraft("");
-    setDepositResult(null);
-    setSaveError(null);
-    setSaved(false);
-  };
+  const wallet = balance?.wallet ?? null;
+  const walletShort = wallet ? `${wallet.slice(0, 6)}…${wallet.slice(-4)}` : "";
+  const payer = address !== undefined && address.toLowerCase() === wallet;
+  const usdc = balance?.usdc_evm && isAddress(balance.usdc_evm) ? balance.usdc_evm : undefined;
+  const depositMicro = parseUsd(walletAmount);
+  const depositOk = depositMicro !== null && depositMicro > 0n && depositMicro <= TOPUP_MAX_MICRO;
+  const { data: held, refetch: refetchHeld } = useReadContract({
+    chainId: hederaTestnet.id,
+    address: usdc,
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: address ? [address] : undefined,
+    query: { enabled: payer && usdc !== undefined },
+  });
 
-  const clearKey = () => {
-    window.localStorage.removeItem(KEY_STORAGE);
-    setKey(null);
+  const store = (next: Entry[], active: string | null) => {
+    window.localStorage.setItem(KEYS_STORAGE, JSON.stringify(next));
+    if (active) window.localStorage.setItem(KEY_STORAGE, active);
+    else window.localStorage.removeItem(KEY_STORAGE);
+    setEntries(next);
+    if (active === key) return;
+    setKey(active);
     setBalance(null);
     setAccountError(null);
     setDepositResult(null);
@@ -176,8 +206,29 @@ export function Keys() {
     setSaved(false);
   };
 
+  const remove = async (entry: Entry) => {
+    setRemoving(entry.key);
+    setRemoveError(null);
+    try {
+      const res = await fetch("/api/v1/keys", { method: "DELETE", headers: { authorization: `Bearer ${entry.key}` } });
+      if (!res.ok && res.status !== 401) {
+        const body: unknown = await res.json().catch(() => null);
+        setRemoveError({ key: entry.key, message: failureSchema.safeParse(body).data?.error.message ?? `delete failed (${res.status})` });
+        return;
+      }
+      const next = entries.filter((row) => row.key !== entry.key);
+      store(next, entry.key === key ? (next[0]?.key ?? null) : key);
+      setConfirming(null);
+    } catch {
+      setRemoveError({ key: entry.key, message: "the keys route is unreachable; retry in a moment" });
+    } finally {
+      setRemoving(null);
+    }
+  };
+
   const createKey = async () => {
-    if (!address || creating) return;
+    const name = keyName.trim();
+    if (!address || creating || !name) return;
     setCreating(true);
     setCreateError(null);
     try {
@@ -194,8 +245,9 @@ export function Keys() {
         setCreateError(failureSchema.safeParse(body).data?.error.message ?? `create failed (${res.status})`);
         return;
       }
-      window.localStorage.setItem(KEY_STORAGE, created.data.key);
-      setKey(created.data.key);
+      store([{ name, key: created.data.key }, ...entries], created.data.key);
+      setKeyName("");
+      namer.current?.close();
     } catch (cause) {
       setCreateError(cause instanceof Error ? cause.message : "the wallet did not sign");
     } finally {
@@ -241,6 +293,7 @@ export function Keys() {
       const result = await walletDeposit(key, amount, balance);
       setDepositResult({ ok: true, result });
       refresh();
+      void refetchHeld();
     } catch (cause) {
       setDepositResult({
         ok: false,
@@ -287,7 +340,7 @@ export function Keys() {
         const body = (await res.json().catch(() => null)) as RouterError | null;
         if (res.status === 401) {
           setAccountError("rejected");
-          setSaveError("Router key rejected. Paste it again.");
+          setSaveError("This key was rejected. Delete it and create a new one.");
         } else {
           setApproval(body?.approval ?? null);
           setSaveError(body?.error?.message ?? `save failed (${res.status})`);
@@ -324,16 +377,13 @@ export function Keys() {
     { id: "topup", label: "Top-up call", text: `POST ${origin}/api/v1/topup?usd=1.00` },
   ];
 
-  const wallet = balance?.wallet ?? null;
-  const walletShort = wallet ? `${wallet.slice(0, 6)}…${wallet.slice(-4)}` : "";
-
   return (
     <section>
       <div className="mb-4 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 px-1">
         <h1 className="text-[28px] font-normal leading-9 text-[#1E1E1E]">API Keys</h1>
         {accountError ? (
           <p className="text-[13px] text-[#F6465D]">
-            {accountError === "rejected" ? "Router key rejected. Paste it again." : "The account feed is unreachable. Retry in a moment."}
+            {accountError === "rejected" ? "This key was rejected. Delete it and create a new one." : "The account feed is unreachable. Retry in a moment."}
           </p>
         ) : null}
       </div>
@@ -347,19 +397,26 @@ export function Keys() {
       </div>
       <div className="mt-5 grid grid-cols-1 gap-[17px] lg:grid-cols-[minmax(0,1fr)_290px_290px]">
         <div className="flex flex-col gap-[17px] self-start lg:h-[calc(100svh-277px)] lg:min-h-[423px]">
-          <div className="flex min-h-0 flex-1 flex-col justify-center-safe overflow-auto border border-[#CECECE] bg-white px-6 py-8">
-            <p className="text-[13px] text-[#1E1E1E]">[ api key ]</p>
+          <div className="flex min-h-0 flex-1 flex-col justify-center-safe overflow-auto border border-[#CECECE] bg-white px-6 py-6 *:shrink-0">
+            <p className="text-[13px] text-[#1E1E1E]">[ api keys ]</p>
             <h2 className="mt-3 font-serif text-[40px] leading-[1.05] text-[#1E1E1E]">One key, one balance.</h2>
             <p className={`mt-3 max-w-[480px] text-pretty text-[14px] leading-5 ${MUTED}`}>
-              Your wallet signs one message to create it. The key stays in this browser, never in a URL, and Trade and
-              Perps read the same one.
+              Name a key and your wallet signs once to create it. Keys stay in this browser, never in a URL, and Trade
+              spends from the one in use.
             </p>
             {address ? (
-              <button type="button" onClick={() => void createKey()} disabled={creating} className={KEY_CTA}>
+              <button
+                type="button"
+                onClick={() => {
+                  setCreateError(null);
+                  namer.current?.showModal();
+                }}
+                className={KEY_CTA}
+              >
                 {CORNERS.map((corner) => (
                   <span key={corner} aria-hidden className={corner} />
                 ))}
-                {creating ? "Waiting for the signature…" : "Create API Key"}
+                Create API Key
               </button>
             ) : (
               <button type="button" onClick={() => login()} disabled={!ready} className={KEY_CTA}>
@@ -369,8 +426,8 @@ export function Keys() {
                 Connect Wallet
               </button>
             )}
-            <p className={`mt-5 text-[13px] leading-5 ${createError ? "text-[#F6465D]" : MUTED}`}>
-              {createError ?? (address ? `${address.slice(0, 6)}…${address.slice(-4)} is connected.` : "No wallet connected yet.")}
+            <p className={`mt-5 text-[13px] leading-5 ${MUTED}`}>
+              {address ? `${address.slice(0, 6)}…${address.slice(-4)} is connected.` : "No wallet connected yet."}
               {address ? (
                 <>
                   {" "}
@@ -384,13 +441,56 @@ export function Keys() {
                 </>
               ) : null}
             </p>
-            {key ? (
-              <p className={`mt-1 text-[13px] leading-5 ${MUTED}`}>
-                Saved <span className="tabular-nums text-[#1E1E1E]">{maskKey(key)}</span>.{" "}
-                <button type="button" onClick={clearKey} className="text-[#1743FF] hover:underline">
-                  Clear
-                </button>
-              </p>
+            {entries.length > 0 ? (
+              <ul className="mt-5 max-w-[560px] border-t border-[#D9D9D9]">
+                {entries.map((entry) => (
+                  <li key={entry.key} className="border-b border-[#D9D9D9] py-2.5 text-[13px]">
+                    <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+                      <span className="min-w-32 flex-1 truncate text-[14px] text-[#1E1E1E]">{entry.name}</span>
+                      <code className={`tabular-nums ${MUTED}`}>{maskKey(entry.key)}</code>
+                      <span className="flex gap-4">
+                        {entry.key === key ? (
+                          <span className="text-[#2EBD85]">in use</span>
+                        ) : (
+                          <button type="button" onClick={() => store(entries, entry.key)} className="text-[#1743FF] hover:underline">
+                            use
+                          </button>
+                        )}
+                        <button type="button" onClick={() => void copy(entry.key, entry.key)} className="text-[#1743FF] hover:underline">
+                          {copied === entry.key ? "copied" : "copy"}
+                        </button>
+                        {confirming === entry.key ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => void remove(entry)}
+                              disabled={removing !== null}
+                              className="text-[#F6465D] hover:underline disabled:text-[#C9C9C9]"
+                            >
+                              {removing === entry.key ? "deleting…" : "delete for good"}
+                            </button>
+                            <button type="button" onClick={() => setConfirming(null)} className={`${MUTED} hover:underline`}>
+                              keep
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setConfirming(entry.key);
+                              setRemoveError(null);
+                            }}
+                            className="text-[#F6465D] hover:underline"
+                          >
+                            delete
+                          </button>
+                        )}
+                      </span>
+                    </div>
+                    {removeError?.key === entry.key ? <p className="mt-1 leading-5 text-[#F6465D]">{removeError.message}</p> : null}
+                  </li>
+                ))}
+              </ul>
             ) : null}
           </div>
 
@@ -438,7 +538,7 @@ export function Keys() {
                 </div>
                 <div className="max-h-[300px] min-h-0 flex-1 overflow-auto lg:max-h-none">
                   {!key ? (
-                    <p className="px-4 py-6 text-center text-[13px] text-[#757575]">Create or paste a key to see its calls.</p>
+                    <p className="px-4 py-6 text-center text-[13px] text-[#757575]">Create a key to see its calls.</p>
                   ) : calls.length === 0 ? (
                     <p className="px-4 py-6 text-center text-[13px] text-[#757575]">
                       No calls yet. Point an agent at the router and they show up here.
@@ -467,27 +567,6 @@ export function Keys() {
         </div>
 
         <div className="flex flex-col gap-[17px] self-start lg:h-[calc(100svh-277px)] lg:min-h-[423px]">
-          <div className="shrink-0 border border-[#CECECE] bg-white">
-            <div className={TAB_ROW}>
-              <span className="font-semibold text-[#1E1E1E]">Paste a key</span>
-            </div>
-            <div className="space-y-3 p-4">
-              <label className="block">
-                <span className={`mb-1 block text-[13px] ${MUTED}`}>Router key</span>
-                <input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="rk_…" className={INPUT} />
-              </label>
-              <button
-                type="button"
-                onClick={saveKey}
-                disabled={!draft.trim().startsWith("rk_") || draft.trim().length < 8}
-                className={BUTTON}
-              >
-                Save key
-              </button>
-              <p className={`text-[13px] leading-5 ${MUTED}`}>Stays in this browser, never in a URL.</p>
-            </div>
-          </div>
-
           <div className="flex min-h-0 flex-1 flex-col border border-[#CECECE] bg-white">
             <div className={TAB_ROW}>
               {(["wallet", "transfer", "agent"] as const).map((item) => (
@@ -519,41 +598,74 @@ export function Keys() {
                   </button>
                 </>
               ) : !key ? (
-                <p className={`text-[13px] leading-5 ${MUTED}`}>Create or paste a key first.</p>
+                <p className={`text-[13px] leading-5 ${MUTED}`}>Create a key first.</p>
               ) : fundTab === "wallet" ? (
                 wallet ? (
                   <>
-                    <p className={`text-pretty text-[13px] leading-5 ${MUTED}`}>
-                      Pay up to {formatUsd(TOPUP_MAX_MICRO)} at a time in Hedera testnet USDC from {walletShort}, the wallet
-                      that created this key. The mirror verifies the transfer before it credits.
-                    </p>
-                    <span className="flex items-center gap-1 border border-[#CECECE] bg-white px-2.5 focus-within:border-[#1743FF]">
-                      <span className={`text-[13px] ${MUTED}`}>$</span>
-                      <input
-                        value={walletAmount}
-                        onChange={(event) => setWalletAmount(event.target.value)}
-                        inputMode="decimal"
-                        aria-label="deposit amount in USD"
-                        className="h-[32px] w-full bg-transparent text-[14px] tabular-nums text-[#1E1E1E] outline-none"
-                      />
-                    </span>
+                    <div className="flex justify-between text-[14px]">
+                      <span className={MUTED}>In your wallet</span>
+                      <span className="tabular-nums text-[#1E1E1E]">{payer && held !== undefined ? `${formatUsd(held)} USDC` : "—"}</span>
+                    </div>
+                    <label className="block">
+                      <span className={`mb-1 block text-[13px] ${MUTED}`}>Amount, USD</span>
+                      <span className="flex items-center gap-2 border border-[#CECECE] bg-white px-2.5 focus-within:border-[#1743FF]">
+                        <input
+                          value={walletAmount}
+                          onChange={(event) => setWalletAmount(event.target.value)}
+                          inputMode="decimal"
+                          placeholder="1"
+                          className="h-[34px] w-full bg-transparent text-[14px] tabular-nums text-[#1E1E1E] outline-none placeholder:text-[#C9C9C9]"
+                        />
+                        <span className={`text-[12px] ${MUTED}`}>USDC</span>
+                      </span>
+                    </label>
+                    <div className="flex gap-5">
+                      {DEPOSIT_PRESETS.map((preset) => (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => setWalletAmount(preset)}
+                          className={`text-[14px] ${
+                            walletAmount === preset
+                              ? "text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4"
+                              : "text-[#757575] hover:text-[#1E1E1E]"
+                          }`}
+                        >
+                          {preset}
+                        </button>
+                      ))}
+                    </div>
+                    <dl className="border-t border-[#D9D9D9]">
+                      <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
+                        <dt className={MUTED}>From</dt>
+                        <dd className="tabular-nums text-[#1E1E1E]">{walletShort}</dd>
+                      </div>
+                      <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
+                        <dt className={MUTED}>Per deposit</dt>
+                        <dd className="tabular-nums text-[#1E1E1E]">up to {formatUsd(TOPUP_MAX_MICRO)}</dd>
+                      </div>
+                      <div className="flex justify-between py-3">
+                        <dt className="text-[15px] font-semibold text-[#1E1E1E]">Balance after</dt>
+                        <dd className="text-[16px] font-semibold tabular-nums text-[#1E1E1E]">
+                          {balance && depositOk ? formatUsd(BigInt(balance.balance_usd_micro) + depositMicro) : "—"}
+                        </dd>
+                      </div>
+                    </dl>
                     <button
                       type="button"
                       onClick={() => void depositFromWallet()}
-                      disabled={
-                        walletPaying ||
-                        address?.toLowerCase() !== wallet ||
-                        (parseUsd(walletAmount) ?? 0n) <= 0n ||
-                        (parseUsd(walletAmount) ?? 0n) > TOPUP_MAX_MICRO
-                      }
+                      disabled={walletPaying || !payer || !depositOk}
                       className={BUTTON}
                     >
                       {walletPaying
                         ? "Paying from your wallet…"
-                        : address?.toLowerCase() === wallet
-                          ? "Deposit from wallet"
-                          : `Connect ${walletShort} to pay`}
+                        : !payer
+                          ? `Connect ${walletShort} to pay`
+                          : depositOk
+                            ? `Deposit ${formatUsd(depositMicro)}`
+                            : `Enter up to ${formatUsd(TOPUP_MAX_MICRO)}`}
                     </button>
+                    <p className={`text-center text-[13px] leading-5 ${MUTED}`}>Hedera testnet USDC. Credits once the mirror confirms.</p>
                   </>
                 ) : (
                   <p className={`text-pretty text-[13px] leading-5 ${MUTED}`}>
@@ -719,7 +831,7 @@ export function Keys() {
             </button>
 
             {!key ? (
-              <p className={`text-center text-[13px] ${MUTED}`}>Create or paste a key first.</p>
+              <p className={`text-center text-[13px] ${MUTED}`}>Create a key first.</p>
             ) : saved ? (
               <p className="text-center text-[13px] text-[#2EBD85]">Saved.</p>
             ) : saveError ? (
@@ -744,6 +856,46 @@ export function Keys() {
           </div>
         </div>
       </div>
+
+      <dialog
+        ref={namer}
+        aria-labelledby="new-key-title"
+        className="m-auto w-[min(400px,calc(100vw-2rem))] border border-[#CECECE] bg-white p-6 text-[#1E1E1E] backdrop:bg-[#1E1E1E]/20"
+      >
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void createKey();
+          }}
+        >
+          <p id="new-key-title" className="text-[13px]">
+            [ new api key ]
+          </p>
+          <label className="mt-4 block">
+            <span className={`mb-1 block text-[13px] ${MUTED}`}>Name</span>
+            <input
+              value={keyName}
+              onChange={(event) => setKeyName(event.target.value)}
+              maxLength={40}
+              placeholder="trading agent"
+              className={INPUT}
+            />
+          </label>
+          {createError ? <p className="mt-2 text-[13px] leading-5 text-[#F6465D]">{createError}</p> : null}
+          <div className="mt-5 flex gap-2">
+            <button
+              type="button"
+              onClick={() => namer.current?.close()}
+              className="h-[34px] w-full rounded-[6px] border border-[#CECECE] bg-white text-[14px] text-[#1E1E1E] hover:border-[#1743FF]"
+            >
+              Cancel
+            </button>
+            <button type="submit" disabled={creating || !keyName.trim()} className={BUTTON}>
+              {creating ? "Waiting for the signature…" : "Create API Key"}
+            </button>
+          </div>
+        </form>
+      </dialog>
     </section>
   );
 }

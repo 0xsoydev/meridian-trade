@@ -53,6 +53,6 @@ export function useWalletDeposit() {
       const message = failureSchema.safeParse(body).data?.error.message ?? `deposit failed (${res.status})`;
       if (!message.includes("not on the mirror yet")) throw new Error(`${message} (transaction ${hash})`);
     }
-    throw new Error(`the mirror has not shown ${hash} yet; paste that hash under Deposit on Keys in a minute`);
+    throw new Error(`the mirror has not shown ${hash} yet; paste that hash under Transfer on Keys in a minute`);
   };
 }
