@@ -20,7 +20,7 @@ const PRESETS = [
 ];
 
 const RAILS = [
-  { id: "0g", label: "0G iAI", story: "daily credits reset at 00:00 UTC", market: true, logo: "/images/rails/0g.svg", wide: true },
+  { id: "0g", label: "iAI", story: "daily credits reset at 00:00 UTC", market: true, logo: "/images/rails/0g.svg", wide: true },
   { id: "anthropic", label: "Anthropic", story: "Console workspace key with a spend limit", market: false, logo: "/images/rails/anthropic.svg", wide: false },
   { id: "openai", label: "OpenAI", story: "project key with a budget", market: false, logo: "/images/rails/openai.svg", wide: false },
   { id: "openrouter", label: "OpenRouter", story: "the gateway's own spend limit — the probe shows credits left", market: false, logo: "/images/rails/openrouter.svg", wide: false },
