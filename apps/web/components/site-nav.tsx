@@ -41,8 +41,8 @@ export function Navbar() {
       <nav className="absolute right-[56px] top-0 flex h-[73px] w-[500px] items-center justify-center gap-[31px] border-b border-l border-[#CECECE] text-[16px] leading-[20px] text-[#1E1E1E]">
         <NavLinks />
       </nav>
-      <div aria-hidden className="pointer-events-none absolute left-[54px] top-0 h-[4812px] w-px bg-[#CECECE]" />
-      <div aria-hidden className="pointer-events-none absolute left-[1671px] top-[73px] h-[4739px] w-px bg-[#CECECE]" />
+      <div aria-hidden className="pointer-events-none absolute left-[54px] top-0 h-[4612px] w-px bg-[#CECECE]" />
+      <div aria-hidden className="pointer-events-none absolute left-[1671px] top-[73px] h-[4539px] w-px bg-[#CECECE]" />
     </>
   );
 }

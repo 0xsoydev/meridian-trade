@@ -14,9 +14,4 @@ export const COLUMN_COPY = [
   { x: 1344, head: "The curve is settled", bodyText: "Perps clear against the house vault at 5x, funding on skew." },
 ];
 
-export const HOW_IT_WORKS = `01 A seller lists capacity: World-verified, key capped, ask below list.
-02 An agent with $0 asks for a completion; the venue answers with what it needs; the agent pays USDC; it streams.
-03 Traders clear the book — fills print to the public log, the index moves.
-04 The index becomes a market: short to lock tomorrow's revenue, or long to cap cost.`;
-
 export const LINE = "bg-[#CECECE]";
