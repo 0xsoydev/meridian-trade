@@ -58,6 +58,8 @@ If the portal leaves a keyless alias account (faucet transfer to an EVM address)
 curl.exe -s -H "Authorization: Bearer $env:OG_API_KEY" "$env:OG_ROUTER_URL/providers"
 ```
 
+`pnpm --filter web og-e2e` sends one real inference through the same request the router builds and fails unless the model answers; it spends a few hundred tokens of the key's balance.
+
 `0gm-1.0-35b-a3b` must report `is_healthy: true` before 0G inference can be shown. Prices and the model list come from `OG_MODELS_URL` (default: 0G's public mainnet `/models`). That keeps 0G markets listed and tradeable even when the testnet router has no provider for a model.
 
 ### OpenRouter rankings
