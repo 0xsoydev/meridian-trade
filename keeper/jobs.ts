@@ -141,7 +141,6 @@ export async function matchRestingBids(): Promise<void> {
   if (filled > 0) console.log(`[match] ${filled} resting bid fills`);
 }
 
-let resetDay: string | null = null;
 const printed = new Set<string>();
 
 export async function dailyClose(): Promise<void> {
@@ -155,9 +154,6 @@ export async function dailyClose(): Promise<void> {
     printed.add(line);
     console.log(line);
   }
-  resetDay ??= today;
-  if (resetDay !== today) {
-    console.log(`[reset] ${await resetDailyListings()} daily listings reset for ${today}`);
-    resetDay = today;
-  }
+  const reset = await resetDailyListings(today);
+  if (reset > 0) console.log(`[reset] ${reset} daily listings reset for ${today}`);
 }

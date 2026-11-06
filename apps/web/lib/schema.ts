@@ -75,6 +75,9 @@ export const listings = pgTable(
     reservedTokens: bigint("reserved_tokens", { mode: "bigint" }).notNull().default(sql`0`),
     throttledUntil: timestamp("throttled_until", { withTimezone: true }),
     status: text("status").notNull(),
+    resetOn: date("reset_on", { mode: "string" })
+      .notNull()
+      .default(sql`(now() at time zone 'utc')::date`),
     clientNonce: text("client_nonce").notNull().unique(),
     createdAt: createdAt(),
   },
