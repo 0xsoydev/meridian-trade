@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { createKey, ensureAccount, listKeys } from "../../../../lib/accounts.ts";
+import { createKey, ensureAccount, listKeys, revokeKey } from "../../../../lib/accounts.ts";
 import { approvalAction } from "../../../../lib/approvals.ts";
-import { expectedHost, verifySigned } from "../../../../lib/auth.ts";
+import { expectedHost, routerKey, verifySigned } from "../../../../lib/auth.ts";
 import { fail } from "../../../../lib/errors.ts";
 import { verifyWorld } from "../../../../lib/world.ts";
 import type { CreateKeyResult } from "../../../../lib/types";
@@ -46,4 +46,13 @@ export async function GET(request: Request): Promise<Response> {
   const account = await ensureAccount(signed.address, null);
   if ("conflict" in account) return fail(409, "invalid_request", "account unavailable");
   return Response.json({ keys: await listKeys(account.id) });
+}
+
+export async function DELETE(request: Request): Promise<Response> {
+  const key = await routerKey(request);
+  if (!key) return fail(401, "invalid_api_key", "invalid router key");
+  if (!(await revokeKey(key.id))) {
+    return fail(409, "invalid_request", "this key still holds a balance, bids, MTokens or offers; spend or cancel them first");
+  }
+  return new Response(null, { status: 204 });
 }
