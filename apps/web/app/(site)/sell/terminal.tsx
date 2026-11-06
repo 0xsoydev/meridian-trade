@@ -20,13 +20,13 @@ const PRESETS = [
 ];
 
 const RAILS = [
-  { id: "0g", label: "0G iAI", story: "daily credits reset at 00:00 UTC", market: true },
-  { id: "anthropic", label: "Anthropic", story: "Console workspace key with a spend limit", market: false },
-  { id: "openai", label: "OpenAI", story: "project key with a budget", market: false },
-  { id: "openrouter", label: "OpenRouter", story: "the gateway's own spend limit — the probe shows credits left", market: false },
-  { id: "commandcode", label: "Command Code", story: "the gateway's own spend limit · OpenAI chat, max_completion_tokens", market: false },
-  { id: "zen", label: "OpenCode Zen", story: "the gateway's own spend limit", market: false },
-  { id: "opencode-go", label: "OpenCode Go", story: "the gateway's own spend limit", market: false },
+  { id: "0g", label: "0G iAI", story: "daily credits reset at 00:00 UTC", market: true, logo: null },
+  { id: "anthropic", label: "Anthropic", story: "Console workspace key with a spend limit", market: false, logo: "/images/rails/anthropic.svg" },
+  { id: "openai", label: "OpenAI", story: "project key with a budget", market: false, logo: "/images/rails/openai.svg" },
+  { id: "openrouter", label: "OpenRouter", story: "the gateway's own spend limit — the probe shows credits left", market: false, logo: "/images/rails/openrouter.svg" },
+  { id: "commandcode", label: "Command Code", story: "the gateway's own spend limit · OpenAI chat, max_completion_tokens", market: false, logo: null },
+  { id: "zen", label: "OpenCode Zen", story: "the gateway's own spend limit", market: false, logo: "/images/rails/opencode.svg" },
+  { id: "opencode-go", label: "OpenCode Go", story: "the gateway's own spend limit", market: false, logo: "/images/rails/opencode.svg" },
 ] as const;
 
 type RailId = (typeof RAILS)[number]["id"];
@@ -357,7 +357,7 @@ export function Sell() {
                       onClick={() => setRail(item.id)}
                       aria-pressed={rail === item.id}
                       title={item.story}
-                      className={`group relative h-[46px] px-6 text-[16px] font-semibold transition-transform duration-200 hover:scale-[0.98] ${
+                      className={`group relative inline-flex h-[46px] items-center justify-center gap-2.5 px-6 text-[16px] font-semibold transition-transform duration-200 hover:scale-[0.98] ${
                         rail === item.id
                           ? "bg-black text-white"
                           : "border border-[#CECECE] bg-white text-[#757575] hover:border-[#1743FF] hover:text-[#1E1E1E]"
@@ -371,6 +371,22 @@ export function Sell() {
                           style={{ transitionProperty: "opacity, transform" }}
                         />
                       ))}
+                      {item.logo ? (
+                        <span
+                          aria-hidden
+                          className="h-[18px] w-[18px] shrink-0 bg-current"
+                          style={{
+                            maskImage: `url(${item.logo})`,
+                            maskSize: "contain",
+                            maskRepeat: "no-repeat",
+                            maskPosition: "center",
+                            WebkitMaskImage: `url(${item.logo})`,
+                            WebkitMaskSize: "contain",
+                            WebkitMaskRepeat: "no-repeat",
+                            WebkitMaskPosition: "center",
+                          }}
+                        />
+                      ) : null}
                       {item.label}
                     </button>
                   ))}
