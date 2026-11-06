@@ -30,7 +30,7 @@ export function Flow({ variant }: { variant: "page" | "canvas" }) {
   ];
 
   return (
-    <section className={canvas ? "absolute left-[103px] top-[3152px] w-[1522px]" : "px-6 pb-14"}>
+    <section className={canvas ? "absolute left-[103px] top-[2952px] w-[1522px]" : "px-6 pb-14"}>
       <div
         ref={container}
         className={canvas ? "relative grid grid-cols-[360px_1fr_360px] items-center" : "flex flex-col gap-10"}
