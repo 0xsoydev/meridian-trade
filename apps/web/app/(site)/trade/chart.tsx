@@ -56,8 +56,8 @@ export function FillsChart({
         fontSize: 11,
       },
       grid: {
-        vertLines: { visible: false },
-        horzLines: { color: "#DCDCDC" },
+        vertLines: { color: "rgba(30, 30, 30, 0.06)" },
+        horzLines: { color: "rgba(30, 30, 30, 0.06)" },
       },
       rightPriceScale: {
         borderColor: "#C9C9C9",
