@@ -379,7 +379,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
       label: "under list",
       value:
         bestAsk !== null && listPrice !== null && listPrice > 0n
-          ? `${formatMicroPerMtok(((listPrice - bestAsk) * 100_000_000n) / listPrice)}%`
+          ? `${(Number(((listPrice - bestAsk) * 10_000n) / listPrice) / 100).toFixed(2)}%`
           : "—",
       tone: "down",
     },
@@ -708,7 +708,7 @@ export function Trade({ initialModel }: { initialModel: string }) {
                   aria-label={side === "buy" ? "share of what the balance affords" : "share of what you hold"}
                   className="h-1 w-full accent-[#1743FF] disabled:opacity-40"
                 />
-                <span className={`w-12 text-right text-[12px] leading-4 tabular-nums ${MUTED}`}>
+                <span className={`shrink-0 whitespace-nowrap text-right text-[12px] leading-4 tabular-nums ${MUTED}`}>
                   {sizePct}% of {side === "buy" ? "balance" : "holding"}
                 </span>
               </div>

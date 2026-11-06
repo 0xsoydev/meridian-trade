@@ -250,7 +250,7 @@ export function Receipts({
           ) : null}
         </div>
         <div className="mt-3 overflow-x-auto">
-          <table className="w-full text-left text-[13px]">
+          <table className="w-full whitespace-nowrap text-left text-[13px] [&_td]:pr-4 [&_th]:pr-4">
             <thead>
               <tr className={MUTED}>
                 <th scope="col" className="pb-2 font-normal">UTC</th>

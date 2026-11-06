@@ -626,7 +626,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
                 aria-label="size as a percent of displayed depth"
                 className="h-1 w-full accent-[#1743FF]"
               />
-              <span className={`w-14 text-right text-[12px] leading-4 tabular-nums ${MUTED}`}>
+              <span className={`shrink-0 whitespace-nowrap text-right text-[12px] leading-4 tabular-nums ${MUTED}`}>
                 {sliderPct}% of depth
               </span>
             </div>

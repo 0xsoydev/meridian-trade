@@ -399,14 +399,12 @@ export function Sell() {
             >
               List
             </button>
-            <button
-              type="button"
-              disabled
-              title="amend lands with the listings API"
-              className="w-1/2 border-l border-[#CECECE] py-2 text-[14px] font-semibold text-[#C9C9C9]"
+            <Link
+              href="/trade#orders"
+              className="w-1/2 border-l border-[#CECECE] py-2 text-center text-[14px] font-semibold text-[#757575] hover:text-[#1E1E1E]"
             >
               Amend
-            </button>
+            </Link>
           </div>
 
           <div className="mt-4 space-y-4">

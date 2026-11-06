@@ -169,7 +169,7 @@ export function OrdersPanel({
   const needsKey = routerKey === null && tab !== "Venue Fills" && !(tab === "Open Orders" && asks.length > 0);
 
   return (
-    <div className="mt-10 border-t border-[#CECECE] pt-8">
+    <div id="orders" className="mt-10 border-t border-[#CECECE] pt-8">
       <p className="text-[13px] text-[#1E1E1E]">[ your account ]</p>
       <h2 className="mt-3 font-serif text-[32px] leading-[1.1] text-[#1E1E1E]">Balances, orders and fills.</h2>
 
