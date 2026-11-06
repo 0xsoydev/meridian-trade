@@ -160,7 +160,7 @@ async function streamOnce(client: OpenAI, prompt: string): Promise<void> {
     model: MODEL,
     messages: [{ role: "user", content: prompt }],
     stream: true,
-    max_tokens: 64,
+    max_tokens: 256,
   });
   let text = "";
   for await (const chunk of stream) {

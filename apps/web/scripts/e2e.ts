@@ -121,7 +121,7 @@ console.log(`bought     ${BUY_TOKENS} ${MODEL} tokens for ${cost} micro USD in $
 const chat = await fetch(`${BASE}/api/v1/chat/completions`, {
   method: "POST",
   headers,
-  body: JSON.stringify({ model: MODEL, max_tokens: 64, messages: [{ role: "user", content: "Answer in one word: ready?" }] }),
+  body: JSON.stringify({ model: MODEL, max_tokens: 256, messages: [{ role: "user", content: "Answer in one word: ready?" }] }),
 });
 if (!chat.ok) throw new Error(`chat answered ${chat.status}: ${await chat.text()}`);
 const completion = z
