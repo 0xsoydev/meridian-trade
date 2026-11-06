@@ -7,9 +7,9 @@ import { BaseError, type Hash } from "viem";
 import { useConnection, useSwitchChain, useWalletClient } from "wagmi";
 import { mockUsdcAbi } from "../../../lib/abi";
 import { addresses, galileo, publicClient } from "../../../lib/chain";
-import { MARKETS, liquidationPrice, modify, notional, openMargin, readMarket, readPosition } from "../../../lib/perp";
-import { fillsToPoints, formatMicroPerMtok, formatMtok, formatUsd, parseMtok } from "../../../lib/price";
-import type { Book, ModelRow } from "../../../lib/types";
+import { MARKETS, liquidationPrice, modify, notional, orderPlan, positionAfter, readMarket, readPosition } from "../../../lib/perp";
+import { fillsToPoints, formatMicroPerMtok, formatMtok, formatUsd, parseMtok, parseUsd } from "../../../lib/price";
+import type { Book, ModelRow, PerpFill } from "../../../lib/types";
 import { FillsChart, INTERVALS, type ScaleMode } from "../trade/chart";
 
 const POLL_MS = 15_000;
@@ -62,8 +62,17 @@ const clockFormat = new Intl.DateTimeFormat("en-GB", {
   second: "2-digit",
 });
 
+const historyFormat = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "UTC",
+  hour12: false,
+  day: "2-digit",
+  month: "short",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
 const BOOK_TABS = ["Order Book", "Trades"] as const;
-const STRIP_TABS = ["Positions", "Fills", "Funding History"] as const;
+const STRIP_TABS = ["Positions", "Trade History"] as const;
 
 export function Perps({ initialModel }: { initialModel: string }) {
   const router = useRouter();
@@ -90,6 +99,9 @@ export function Perps({ initialModel }: { initialModel: string }) {
   const [notice, setNotice] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
   const [clock, setClock] = useState<string | null>(null);
+  const [history, setHistory] = useState<PerpFill[]>([]);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [marginInput, setMarginInput] = useState("");
   const picker = useRef<HTMLDetailsElement | null>(null);
   const nowRef = useRef(Date.now());
 
@@ -170,6 +182,27 @@ export function Perps({ initialModel }: { initialModel: string }) {
     };
   }, [model, address, version]);
 
+  useEffect(() => {
+    if (!address) {
+      setHistory([]);
+      return;
+    }
+    let alive = true;
+    const load = () =>
+      fetch(`/api/v1/perps/history?account=${address}`, { cache: "no-store" })
+        .then((res) => (res.ok ? (res.json() as Promise<{ data: PerpFill[] }>) : null))
+        .then((body) => {
+          if (alive && body) setHistory(body.data);
+        })
+        .catch(() => undefined);
+    void load();
+    const id = window.setInterval(() => void load(), POLL_MS);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, [address, version]);
+
   const send = async (run: () => Promise<Hash>) => {
     setPending(true);
     setNotice(null);
@@ -187,6 +220,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
   };
 
   const selected = models.find((row) => row.id === model);
+  const marketRows = models.filter((row) => MARKETS.some((id) => id === row.id));
   const asks = book?.asks ?? [];
   const wanted = parseMtok(size);
   const depth = asks.reduce((total, ask) => total + BigInt(ask.tokens_left), 0n);
@@ -216,19 +250,23 @@ export function Perps({ initialModel }: { initialModel: string }) {
     !market || market.updatedAt === 0n || BigInt(Math.floor(nowRef.current / 1000)) - market.updatedAt > STALE_S;
   const mark = index ?? lastPrice ?? bestAsk;
   const orderValue = wanted > 0n && mark !== null ? notional(wanted, mark) : 0n;
-  const margin = wanted > 0n && mark !== null ? openMargin(wanted, mark, MAX_LEVERAGE) : 0n;
   const current = held.find((row) => row.model === model) ?? null;
+  const plan = mark !== null ? orderPlan(current?.size ?? 0n, side === "long" ? wanted : -wanted, mark, MAX_LEVERAGE) : [];
+  const margin = plan.reduce((sum, leg) => sum + leg.margin, 0n);
+  const resulting = mark !== null ? positionAfter(current, plan, mark) : null;
+  const liqPreview = resulting ? liquidationPrice(resulting) : 0n;
+  const heldSize = current ? (current.size < 0n ? -current.size : current.size) : 0n;
+  const heldSide = current && current.size > 0n ? "long" : "short";
+  const action =
+    plan.length === 2
+      ? `Close ${formatMtok(heldSize)} ${heldSide}, ${side} ${formatMtok(wanted - heldSize)} MTok`
+      : plan[0]?.margin === 0n
+        ? wanted === heldSize
+          ? `Close ${formatMtok(heldSize)} MTok ${heldSide}`
+          : `Reduce ${heldSide} by ${formatMtok(wanted)} MTok`
+        : `${side === "long" ? "Long" : "Short"} ${wanted > 0n ? `${formatMtok(wanted)} MTok` : ""}`;
   const equityTotal = held.reduce((sum, row) => sum + row.equity, 0n);
   const pnlTotal = held.reduce((sum, row) => sum + (row.size * (row.price - row.entryPrice)) / 1_000_000n, 0n);
-  const liqPreview =
-    wanted > 0n && mark !== null
-      ? liquidationPrice({
-          size: (side === "long" ? 1n : -1n) * wanted,
-          margin,
-          entryPrice: mark,
-          fundingOwed: 0n,
-        })
-      : 0n;
   const usableDepth = depth > 0n ? depth : 1n;
   const sliderPct = wanted >= usableDepth ? 100 : Number((wanted * 100n) / usableDepth);
   const first = points[0]?.value ?? null;
@@ -282,7 +320,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
             <span aria-hidden className="text-[#757575]">⌄</span>
           </summary>
           <ul className="absolute left-0 top-full z-20 mt-1 max-h-80 w-72 overflow-auto border border-[#CECECE] bg-white py-1">
-            {models.map((row) => (
+            {marketRows.map((row) => (
               <li key={row.id}>
                 <button
                   type="button"
@@ -298,8 +336,8 @@ export function Perps({ initialModel }: { initialModel: string }) {
                 </button>
               </li>
             ))}
-            {models.length === 0 ? (
-              <li className="px-3 py-2 text-[13px] text-[#757575]">loading models…</li>
+            {marketRows.length === 0 ? (
+              <li className="px-3 py-2 text-[13px] text-[#757575]">loading markets…</li>
             ) : null}
           </ul>
         </details>
@@ -650,7 +688,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
               </div>
               <div className="flex justify-between border-b border-[#D9D9D9] py-2 text-[14px]">
                 <dt className={MUTED}>Margin required · {MAX_LEVERAGE.toString()}x</dt>
-                <dd className="tabular-nums text-[#1E1E1E]">{margin > 0n ? formatUsd(margin) : "—"}</dd>
+                <dd className="tabular-nums text-[#1E1E1E]">{margin > 0n ? formatUsd(margin) : plan.length > 0 ? "none" : "—"}</dd>
               </div>
               <div className="flex justify-between py-3">
                 <dt className="text-[15px] font-semibold text-[#1E1E1E]">Venue fee</dt>
@@ -678,13 +716,24 @@ export function Perps({ initialModel }: { initialModel: string }) {
             ) : (
               <button
                 type="button"
-                disabled={!wallet || pending || stale || orderValue === 0n || (usdc ?? 0n) < margin || gas === 0n}
+                disabled={!wallet || pending || stale || plan.length === 0 || (usdc ?? 0n) < margin || gas === 0n}
                 onClick={() => {
-                  if (wallet) void send(() => modify(wallet, model, side === "long" ? wanted : -wanted, margin));
+                  if (!wallet) return;
+                  void send(async () => {
+                    let hash: Hash | null = null;
+                    for (const leg of plan) {
+                      if (hash && (await publicClient().waitForTransactionReceipt({ hash })).status !== "success") {
+                        throw new Error("closing the position reverted; nothing was opened");
+                      }
+                      hash = await modify(wallet, model, leg.sizeDelta, leg.margin);
+                    }
+                    if (!hash) throw new Error("enter a size");
+                    return hash;
+                  });
                 }}
                 className="h-[34px] w-full bg-black text-[14px] font-semibold text-white hover:bg-[#1E1E1E] disabled:bg-[#D4D4D4] disabled:text-white"
               >
-                {pending ? "Confirming…" : `${side === "long" ? "Long" : "Short"} ${wanted > 0n ? `${formatMtok(wanted)} MTok` : ""}`}
+                {pending ? "Confirming…" : action}
               </button>
             )}
             <p className={`text-center text-[13px] ${MUTED}`}>
@@ -692,7 +741,9 @@ export function Perps({ initialModel }: { initialModel: string }) {
                 (!address
                   ? "trades sign with your own wallet on 0G Galileo"
                   : stale
-                    ? "the index is stale; trading reopens after the keeper's next post"
+                    ? asks.length === 0
+                      ? `no spot price for ${model} yet; trading opens once a seller lists it`
+                      : "the index is stale; trading reopens after the keeper's next post"
                     : gas === 0n
                       ? "this wallet needs 0G gas: faucet.0g.ai"
                       : (usdc ?? 0n) < margin
@@ -748,7 +799,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
       <div className="mt-10 border-t border-[#CECECE] pt-8">
         <p className="text-[13px] text-[#1E1E1E]">[ positions ]</p>
         <h2 className="mt-3 font-serif text-[32px] leading-[1.1] text-[#1E1E1E]">
-          Positions, fills, funding.
+          Positions and trade history.
         </h2>
 
         <div className="mt-4 flex items-center gap-5">
@@ -768,11 +819,7 @@ export function Perps({ initialModel }: { initialModel: string }) {
             </button>
           ))}
           <span className={`text-[13px] ${MUTED}`}>
-            {stripTab === "Positions"
-              ? `${held.length} open`
-              : stripTab === "Fills"
-                ? `${book?.fills.length ?? 0} on ${model}`
-                : "nothing accrued"}
+            {stripTab === "Positions" ? `${held.length} open` : `${history.length} trades`}
           </span>
         </div>
 
@@ -796,13 +843,25 @@ export function Perps({ initialModel }: { initialModel: string }) {
                 held.map((row) => {
                   const size = row.size < 0n ? -row.size : row.size;
                   const pnl = (row.size * (row.price - row.entryPrice)) / 1_000_000n;
-                  const funding = row.margin + pnl - row.equity;
+                  const value = notional(row.size, row.price);
+                  const leverage = row.equity > 0n ? Number((value * 100n) / row.equity) / 100 : null;
+                  const headroom = row.equity - (value + MAX_LEVERAGE - 1n) / MAX_LEVERAGE - 1n;
+                  const settled = row.margin - row.fundingOwed;
+                  const removable = headroom < settled ? headroom : settled;
+                  const amount = parseUsd(marginInput);
                   return (
                     <div
                       key={row.model}
                       className="grid grid-cols-3 gap-y-1 border-t border-[#CECECE] py-3 text-[13px] tabular-nums text-[#1E1E1E] md:grid-cols-9"
                     >
-                      <span className="pr-2">{row.model}</span>
+                      <span className="pr-2">
+                        {row.model}
+                        {leverage !== null ? (
+                          <span className="ml-1.5 border border-[#CECECE] bg-white px-1 text-[11px] text-[#1743FF]">
+                            {leverage.toFixed(1)}x
+                          </span>
+                        ) : null}
+                      </span>
                       <span className={`text-right ${row.size > 0n ? "text-[#2EBD85]" : "text-[#F6465D]"}`}>
                         {row.size > 0n ? "+" : "−"}
                         {formatMtok(size)}
@@ -819,7 +878,18 @@ export function Perps({ initialModel }: { initialModel: string }) {
                       </span>
                       <span className="text-right">{formatUsd(row.margin)}</span>
                       <span className="text-right">
-                        {signedUsd(-funding)}
+                        {signedUsd(-row.fundingOwed)}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditing(editing === row.model ? null : row.model);
+                            setMarginInput("");
+                          }}
+                          aria-expanded={editing === row.model}
+                          className="ml-2 underline"
+                        >
+                          margin
+                        </button>
                         <button
                           type="button"
                           disabled={!wallet || pending}
@@ -831,6 +901,41 @@ export function Perps({ initialModel }: { initialModel: string }) {
                           close
                         </button>
                       </span>
+                      {editing === row.model ? (
+                        <div className="col-span-3 flex flex-wrap items-center justify-end gap-3 pt-2 md:col-span-9">
+                          <span className={MUTED}>
+                            margin {formatUsd(row.margin)} · remove up to {formatUsd(removable > 0n ? removable : 0n)}
+                          </span>
+                          <input
+                            value={marginInput}
+                            onChange={(event) => setMarginInput(event.target.value)}
+                            inputMode="decimal"
+                            placeholder="USD"
+                            aria-label={`USD of margin to add to or remove from ${row.model}`}
+                            className="h-[28px] w-24 border border-[#CECECE] bg-white px-2 text-right outline-none focus:border-[#1743FF]"
+                          />
+                          <button
+                            type="button"
+                            disabled={!wallet || pending || !amount || (usdc ?? 0n) < amount}
+                            onClick={() => {
+                              if (wallet && amount) void send(() => modify(wallet, row.model, 0n, amount));
+                            }}
+                            className="underline disabled:text-[#C9C9C9]"
+                          >
+                            add
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!wallet || pending || !amount || amount > removable}
+                            onClick={() => {
+                              if (wallet && amount) void send(() => modify(wallet, row.model, 0n, -amount));
+                            }}
+                            className="underline disabled:text-[#C9C9C9]"
+                          >
+                            remove
+                          </button>
+                        </div>
+                      ) : null}
                     </div>
                   );
                 })
@@ -838,32 +943,61 @@ export function Perps({ initialModel }: { initialModel: string }) {
             </>
           ) : null}
 
-          {stripTab === "Fills" ? (
-            (book?.fills.length ?? 0) === 0 ? (
-              <p className="border-t border-[#CECECE] py-5 text-[14px] text-[#757575]">
-                The venue has not printed a fill for {model} yet.
-              </p>
-            ) : (
-              book?.fills.map((fill) => (
-                <div
-                  key={`${fill.listing_id}-${fill.created_at}`}
-                  className="flex flex-wrap items-baseline justify-between gap-4 border-t border-[#CECECE] py-4"
-                >
-                  <span className={`text-[13px] tabular-nums ${MUTED}`}>{clockFormat.format(new Date(fill.created_at))} UTC</span>
-                  <span className="text-[14px] tabular-nums text-[#1E1E1E]">
-                    {formatMicroPerMtok(BigInt(fill.price_micro_per_mtok))}
-                    <span className={`ml-1.5 text-[12px] ${MUTED}`}>USD / MTok</span>
+          {stripTab === "Trade History" ? (
+            <>
+              <div className={`hidden border-y border-[#CECECE] py-2 text-[12px] md:grid md:grid-cols-6 ${MUTED}`}>
+                {["Time, UTC", "Market", "Size", "Price", "Realized PNL", "Fee"].map((head, i) => (
+                  <span key={head} className={i < 2 ? "pr-2" : "text-right"}>
+                    {head}
                   </span>
-                  <span className={`text-[13px] tabular-nums ${MUTED}`}>{formatMtok(BigInt(fill.tokens))} MTok</span>
-                </div>
-              ))
-            )
-          ) : null}
-
-          {stripTab === "Funding History" ? (
-            <p className="border-t border-[#CECECE] py-5 text-[14px] text-[#757575]">
-              No funding payments yet — accrual starts with the first PerpMarket modify.
-            </p>
+                ))}
+              </div>
+              {history.length === 0 ? (
+                <p className="border-t border-[#CECECE] py-5 text-[14px] text-[#757575] md:border-t-0">
+                  {address
+                    ? "No perp trades from this wallet yet. The keeper records each trade within a minute."
+                    : "Connect a wallet to see its trades."}
+                </p>
+              ) : (
+                history.map((fill) => {
+                  const change = BigInt(fill.size_change);
+                  const pnl = BigInt(fill.realized_pnl_usd_micro);
+                  const price = BigInt(fill.price_micro_per_mtok);
+                  return (
+                    <div
+                      key={`${fill.tx_hash}:${fill.kind}`}
+                      className="grid grid-cols-3 gap-y-1 border-t border-[#CECECE] py-3 text-[13px] tabular-nums text-[#1E1E1E] md:grid-cols-6"
+                    >
+                      <a
+                        href={`${galileo.blockExplorers.default.url}/tx/${fill.tx_hash}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className={`pr-2 hover:underline ${MUTED}`}
+                      >
+                        {historyFormat.format(new Date(fill.at))}
+                      </a>
+                      <span className="pr-2">
+                        {fill.model}
+                        {fill.kind === "liquidate" ? <span className="ml-1.5 text-[#F6465D]">liquidated</span> : null}
+                      </span>
+                      <span className={`text-right ${change > 0n ? "text-[#2EBD85]" : change < 0n ? "text-[#F6465D]" : ""}`}>
+                        {change > 0n ? "+" : change < 0n ? "−" : ""}
+                        {formatMtok(change < 0n ? -change : change)} MTok
+                      </span>
+                      <span className="text-right">{price > 0n ? formatMicroPerMtok(price) : "—"}</span>
+                      <span className={`text-right ${pnl > 0n ? "text-[#2EBD85]" : pnl < 0n ? "text-[#F6465D]" : ""}`}>
+                        {pnl === 0n ? "—" : signedUsd(pnl)}
+                      </span>
+                      <span className="text-right">
+                        {fill.kind === "liquidate"
+                          ? `reward ${formatUsd(BigInt(fill.reward_usd_micro))}`
+                          : formatUsd(BigInt(fill.fee_usd_micro))}
+                      </span>
+                    </div>
+                  );
+                })
+              )}
+            </>
           ) : null}
         </div>
       </div>
