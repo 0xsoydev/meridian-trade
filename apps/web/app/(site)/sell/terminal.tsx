@@ -237,7 +237,7 @@ export function Sell() {
 
   return (
     <section>
-      <div className="flex flex-wrap items-center gap-x-8 gap-y-3 rounded-[6px] border border-[#CECECE] bg-white px-4 py-3">
+      <div className="flex flex-wrap items-center gap-x-8 gap-y-3 border-b border-[#D9D9D9] pb-4">
         <Stat label="Fee" value="10 percent of every fill" />
         <Stat label="Payouts" value="daily, paid at 01:00 UTC" />
         <Stat label="Credentials" value="sealed AES-256-GCM, opened per request" />
@@ -245,14 +245,14 @@ export function Sell() {
       </div>
 
       <div className="mt-5 grid gap-[17px] lg:grid-cols-[1fr_300px]">
-        <div className="rounded-[6px] border border-[#CECECE] bg-white">
-          <div className="flex items-center gap-5 border-b border-[#D9D9D9] px-4 py-2.5 text-[14px]">
+        <div>
+          <div className="flex items-center gap-5 border-b border-[#D9D9D9] pb-2.5 text-[14px]">
             <span className="font-semibold text-[#1E1E1E]">Seller gate</span>
             <span className={MUTED}>prove first, then list</span>
           </div>
 
           <ol>
-            <li className="flex items-baseline gap-3 border-b border-[#D9D9D9] px-4 py-4 last:border-b-0">
+            <li className="flex items-baseline gap-3 border-b border-[#D9D9D9] py-5 last:border-b-0">
               <span className="font-serif text-[22px] leading-none text-[#A3A3A3]">1</span>
               <div className="min-w-0">
                 <p className="text-[14px] font-semibold text-[#1E1E1E]">Connect your wallet</p>
@@ -289,7 +289,7 @@ export function Sell() {
               </div>
             </li>
 
-            <li className="flex items-baseline gap-3 border-b border-[#D9D9D9] px-4 py-4 last:border-b-0">
+            <li className="flex items-baseline gap-3 border-b border-[#D9D9D9] py-5 last:border-b-0">
               <span className="font-serif text-[22px] leading-none text-[#A3A3A3]">2</span>
               <div className="min-w-0">
                 <p className="text-[14px] font-semibold text-[#1E1E1E]">Verify once with World ID</p>
@@ -342,7 +342,7 @@ export function Sell() {
               </div>
             </li>
 
-            <li className="flex items-baseline gap-3 border-b border-[#D9D9D9] px-4 py-4 last:border-b-0">
+            <li className="flex items-baseline gap-3 border-b border-[#D9D9D9] py-5 last:border-b-0">
               <span className="font-serif text-[22px] leading-none text-[#A3A3A3]">3</span>
               <div className="min-w-0 flex-1">
                 <p className="text-[14px] font-semibold text-[#1E1E1E]">Pick your rail</p>
@@ -402,24 +402,17 @@ export function Sell() {
           </ol>
         </div>
 
-        <div className="flex flex-col self-start overflow-hidden rounded-[6px] border border-[#CECECE] bg-white">
-          <div className="flex border-b border-[#CECECE]">
-            <button
-              type="button"
-              aria-pressed
-              className="w-1/2 bg-black py-2 text-[14px] font-semibold text-white"
-            >
+        <div className="flex flex-col self-start">
+          <div className="flex items-center justify-between gap-4 border-b border-[#D9D9D9] pb-2.5 text-[14px]">
+            <span className="font-semibold text-[#1E1E1E] underline decoration-[#1743FF] underline-offset-4">
               List
-            </button>
-            <Link
-              href="/trade#orders"
-              className="w-1/2 border-l border-[#CECECE] py-2 text-center text-[14px] font-semibold text-[#757575] hover:text-[#1E1E1E]"
-            >
-              Amend
+            </span>
+            <Link href="/trade#orders" className="text-[#1743FF] hover:underline">
+              Amend →
             </Link>
           </div>
 
-          <div className="space-y-4 p-4">
+          <div className="space-y-4 pt-4">
             <div>
               <span className={`mb-1 block text-[13px] ${MUTED}`}>Model</span>
               <details ref={picker} className="relative">
@@ -592,7 +585,7 @@ export function Sell() {
               {failure ?? (listed ? `listed ${listed.slice(0, 8)}…, live in the book` : (blocker ?? "the key is probed once, then sealed"))}
             </p>
 
-            <div className="rounded-[6px] border border-[#CECECE] bg-white px-3 py-3">
+            <div className="border-t border-[#D9D9D9] pt-3">
               <p className="text-[14px] text-[#1E1E1E]">Your key never leaves the server.</p>
               <p className="mt-1 text-[13px] leading-5 text-[#757575]">
                 It is probed once, then sealed with AES-256-GCM and opened only inside the request
@@ -603,8 +596,8 @@ export function Sell() {
         </div>
       </div>
 
-      <div className="mt-5 overflow-hidden rounded-[6px] border border-[#CECECE] bg-white">
-        <div className="flex flex-wrap items-center gap-5 border-b border-[#D9D9D9] px-4 py-2.5 text-[14px]">
+      <div className="mt-6">
+        <div className="flex flex-wrap items-center gap-5 border-b border-[#D9D9D9] pb-2.5 text-[14px]">
           {(["listings", "payouts"] as const).map((item) => (
             <button
               key={item}
@@ -629,7 +622,7 @@ export function Sell() {
 
         {tab === "listings" ? (
           <>
-            <div className={`hidden gap-x-3 px-4 py-1.5 text-[11px] md:grid md:grid-cols-5 ${MUTED}`}>
+            <div className={`hidden gap-x-3 py-1.5 text-[11px] md:grid md:grid-cols-5 ${MUTED}`}>
               {["Market", "Rail", "Price", "Left", "Status"].map((head, i) => (
                 <span key={head} className={i === 0 ? "pr-2" : "text-right"}>
                   {head}
@@ -637,7 +630,7 @@ export function Sell() {
               ))}
             </div>
             {mine.length === 0 ? (
-              <p className="border-t border-[#D9D9D9] px-4 py-5 text-[13px] text-[#757575] md:border-t-0">
+              <p className="border-t border-[#D9D9D9] py-5 text-[13px] text-[#757575] md:border-t-0">
                 {address ? "Nothing listed for this seller yet." : "Connect the seller wallet to see its listings."}
               </p>
             ) : (
@@ -647,7 +640,7 @@ export function Sell() {
                 return (
                   <div
                     key={row.listing_id}
-                    className="grid grid-cols-3 gap-x-3 gap-y-1 border-t border-[#D9D9D9] px-4 py-2.5 text-[13px] tabular-nums text-[#1E1E1E] md:grid-cols-5"
+                    className="grid grid-cols-3 gap-x-3 gap-y-1 border-t border-[#D9D9D9] py-2.5 text-[13px] tabular-nums text-[#1E1E1E] md:grid-cols-5"
                   >
                     <span className="pr-2">{row.model}</span>
                     <span className="text-right">{row.rail}</span>
@@ -663,7 +656,7 @@ export function Sell() {
               })
             )}
             {mine.length > 0 ? (
-              <p className={`border-t border-[#D9D9D9] px-4 py-2 text-[12px] ${MUTED}`}>
+              <p className={`border-t border-[#D9D9D9] py-2 text-[12px] ${MUTED}`}>
                 Amend or cancel an ask under Open Orders on{" "}
                 <Link href="/trade" className="text-[#1743FF] hover:underline">
                   Trade
@@ -674,7 +667,7 @@ export function Sell() {
           </>
         ) : (
           <>
-            <div className={`hidden gap-x-3 px-4 py-1.5 text-[11px] md:grid md:grid-cols-4 ${MUTED}`}>
+            <div className={`hidden gap-x-3 py-1.5 text-[11px] md:grid md:grid-cols-4 ${MUTED}`}>
               {["Day", "Amount", "Schedule", "Status"].map((head, i) => (
                 <span key={head} className={i === 0 ? "pr-2" : "text-right"}>
                   {head}
@@ -682,14 +675,14 @@ export function Sell() {
               ))}
             </div>
             {!paid || paid.data.length === 0 ? (
-              <p className="border-t border-[#D9D9D9] px-4 py-5 text-[13px] text-[#757575] md:border-t-0">
+              <p className="border-t border-[#D9D9D9] py-5 text-[13px] text-[#757575] md:border-t-0">
                 No payouts yet. The keeper closes the day at 00:00 UTC; schedules land by 01:00.
               </p>
             ) : (
               paid.data.map((row) => (
                 <div
                   key={row.day}
-                  className="grid grid-cols-2 gap-x-3 gap-y-1 border-t border-[#D9D9D9] px-4 py-2.5 text-[13px] tabular-nums text-[#1E1E1E] md:grid-cols-4"
+                  className="grid grid-cols-2 gap-x-3 gap-y-1 border-t border-[#D9D9D9] py-2.5 text-[13px] tabular-nums text-[#1E1E1E] md:grid-cols-4"
                 >
                   <span className="pr-2">{row.day}</span>
                   <span className="text-right">{formatUsd(BigInt(row.amount_usd_micro))}</span>
