@@ -1,3 +1,4 @@
+import { createServer } from "node:http";
 import { dailyClose, liquidateUnderwater, matchRestingBids, postIndexes, publishRollups, sweepStale } from "./jobs.ts";
 
 const REQUIRED = [
@@ -17,6 +18,8 @@ if (missing.length > 0) {
   console.error(`keeper: missing env ${missing.join(", ")}`);
   process.exit(1);
 }
+
+if (process.env.PORT) createServer((_, res) => res.end("ok")).listen(Number(process.env.PORT));
 
 function every(name: string, ms: number, job: () => Promise<unknown>): () => void {
   let running = false;
