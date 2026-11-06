@@ -266,7 +266,7 @@ export function Sell() {
                     if (authenticated) void logout();
                     else login();
                   }}
-                  className="mt-2 rounded-[6px] border border-[#CECECE] bg-white px-3 py-1.5 text-[13px] text-[#1E1E1E] hover:border-[#1743FF] disabled:text-[#C9C9C9]"
+                  className="mt-2 flex h-[43px] w-[294px] max-w-full items-center justify-center rounded-[6px] bg-black text-[20px] leading-[24px] text-white disabled:bg-[#D4D4D4] disabled:text-white"
                 >
                   {authenticated && address ? `${address.slice(0, 6)}…${address.slice(-4)} · disconnect` : "Connect wallet"}
                 </button>
@@ -295,9 +295,9 @@ export function Sell() {
                   type="button"
                   disabled={!address || verified !== null}
                   onClick={() => void startVerify()}
-                  className="mt-2 rounded-[6px] border border-[#CECECE] bg-white px-3 py-1.5 text-[13px] text-[#1E1E1E] hover:border-[#1743FF] disabled:text-[#C9C9C9]"
+                  className="mt-2 flex h-[43px] w-[294px] max-w-full items-center justify-center rounded-[6px] bg-black text-[20px] leading-[24px] text-white disabled:bg-[#D4D4D4] disabled:text-white"
                 >
-                  {verified ? "Verified" : WORLD_BYPASS ? "Verify with World ID (test bypass)" : "Verify with World ID"}
+                  {verified ? "Verified" : "Verify with World ID"}
                 </button>
                 <p className={`mt-1.5 text-[12px] ${MUTED}`}>
                   {verified ??
