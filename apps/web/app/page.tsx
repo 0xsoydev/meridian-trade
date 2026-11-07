@@ -22,15 +22,15 @@ export default function Home() {
         <WhatWeDo variant="page" />
         <HowItWorks variant="page" />
         <Flow variant="page" />
+        <HumansTerminal variant="page" />
         <Proof variant="page" />
         <Panorama variant="page" />
-        <HumansTerminal variant="page" />
         <AgentsTerminal variant="page" />
         <SiteFooter variant="page" />
       </div>
 
       <div className="desktop-wrap hidden lg:block">
-        <div className="desktop-canvas relative h-[6008px] w-[1728px] overflow-hidden bg-white">
+        <div className="desktop-canvas relative h-[6080px] w-[1728px] overflow-hidden bg-white">
           <Hero variant="canvas" nav={<Navbar />} />
           <div className="absolute inset-x-0 top-[307px]">
             <WhatWeDo variant="canvas" />
@@ -42,7 +42,7 @@ export default function Home() {
             </div>
             <HumansTerminal variant="canvas" />
             <AgentsTerminal variant="canvas" />
-            <div className="absolute inset-x-0 top-[1620px]">
+            <div className="absolute inset-x-0 top-[1692px]">
               <SiteFooter variant="canvas" />
             </div>
           </div>

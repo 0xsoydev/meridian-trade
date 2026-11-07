@@ -4,7 +4,7 @@ export function HumansTerminal({ variant }: { variant: "page" | "canvas" }) {
   const canvas = variant === "canvas";
 
   return (
-    <section className={canvas ? "absolute left-[55px] top-[3448px] w-[1617px]" : "mt-16 border-t border-[#CECECE] pb-14 pt-10"}>
+    <section className={canvas ? "absolute left-[55px] top-[2207px] w-[1617px]" : "mt-16 border-t border-[#CECECE] pb-14 pt-10"}>
       <h2
         className={
           canvas

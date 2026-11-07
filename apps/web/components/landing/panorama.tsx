@@ -18,17 +18,17 @@ export function Panorama({ variant }: { variant: "page" | "canvas" }) {
   return (
     <>
       <div
-        className="absolute left-[55px] top-[2151px] h-[539px] w-[1617px] bg-cover"
+        className="absolute left-[55px] top-[2929px] h-[539px] w-[1617px] bg-cover"
         style={{
           backgroundImage: "url(/images/panorama.webp)",
           filter: "contrast(98%) saturate(0%)",
         }}
       />
-      <div className="absolute left-[1199px] top-[2081px] h-[137px] w-[407px] bg-[#1743FF] opacity-30" />
-      <div className="absolute left-[137px] top-[2610px] h-[137px] w-[407px] bg-[#1743FF] opacity-30" />
-      <div className="absolute left-[55px] top-[2690px] h-[113px] w-[540px] border-2 border-[#A1A1A1]" />
-      <div className="absolute left-[593px] top-[2690px] h-[113px] w-[540px] border-2 border-[#A1A1A1]" />
-      <div className="absolute left-[1131px] top-[2690px] h-[113px] w-[543px] border-2 border-[#A1A1A1]" />
+      <div className="absolute left-[1199px] top-[2859px] h-[137px] w-[407px] bg-[#1743FF] opacity-30" />
+      <div className="absolute left-[137px] top-[3388px] h-[137px] w-[407px] bg-[#1743FF] opacity-30" />
+      <div className="absolute left-[55px] top-[3468px] h-[113px] w-[540px] border-2 border-[#A1A1A1]" />
+      <div className="absolute left-[593px] top-[3468px] h-[113px] w-[540px] border-2 border-[#A1A1A1]" />
+      <div className="absolute left-[1131px] top-[3468px] h-[113px] w-[543px] border-2 border-[#A1A1A1]" />
     </>
   );
 }
