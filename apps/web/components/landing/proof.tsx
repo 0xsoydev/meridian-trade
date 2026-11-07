@@ -27,28 +27,28 @@ export function Proof({ variant }: { variant: "page" | "canvas" }) {
 
   return (
     <>
-      <p className="absolute left-[96px] top-[1605px] w-[876px] whitespace-pre-wrap font-serif text-[60px] font-normal leading-[60px] text-black">
+      <p className="absolute left-[96px] top-[2383px] w-[876px] whitespace-pre-wrap font-serif text-[60px] font-normal leading-[60px] text-black">
         Proof over marketing. Recompute our index in your browser.
       </p>
 
-      <div className={`absolute left-[55px] top-[2078px] h-px w-[1618px] ${LINE}`} />
+      <div className={`absolute left-[55px] top-[2856px] h-px w-[1618px] ${LINE}`} />
       {DIVIDER_X.map((x) => (
-        <div key={x} className={`absolute top-[1814px] h-[265px] w-px ${LINE}`} style={{ left: x - 1 }} />
+        <div key={x} className={`absolute top-[2592px] h-[265px] w-px ${LINE}`} style={{ left: x - 1 }} />
       ))}
       {TICKS.map((x) => (
-        <div key={x} className={`absolute top-[2039px] h-[40px] w-px ${LINE}`} style={{ left: x - 1 }} />
+        <div key={x} className={`absolute top-[2817px] h-[40px] w-px ${LINE}`} style={{ left: x - 1 }} />
       ))}
       {COLUMN_COPY.map((c) => (
         <Fragment key={c.x}>
           <p
             className="absolute whitespace-pre text-[20px] leading-[24px] text-[#1E1E1E]"
-            style={{ left: c.x, top: 1816 }}
+            style={{ left: c.x, top: 2594 }}
           >
             {c.head}
           </p>
           <p
             className="absolute w-[199px] whitespace-pre-wrap text-[20px] leading-[24px] text-black"
-            style={{ left: c.x, top: 1850 }}
+            style={{ left: c.x, top: 2628 }}
           >
             {c.bodyText}
           </p>

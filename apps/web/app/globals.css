@@ -13,7 +13,7 @@
 
 @media (min-width: 1024px) {
   .desktop-wrap {
-    height: calc(5302 / 1728 * 100vw);
+    height: calc(6080 / 1728 * 100vw);
     overflow: hidden;
   }
   .desktop-canvas {
