@@ -11,7 +11,7 @@ export function WhatWeDo({ variant }: { variant: "page" | "canvas" }) {
         </h2>
         <div className="mt-9 flex flex-col gap-6">
           {CARDS.map((c) => (
-            <article key={c.title} className="rounded-[6px] border border-[#CECECE] bg-[#EBEBEB] px-6 py-7">
+            <article key={c.title} className="border border-[#CECECE] bg-[#EBEBEB] px-6 py-7">
               <p className="text-[15px] text-[#1E1E1E]">{c.title}</p>
               <img
                 src={c.art.src}
@@ -30,7 +30,7 @@ export function WhatWeDo({ variant }: { variant: "page" | "canvas" }) {
 
   return (
     <div className="absolute inset-0 -translate-x-[125px]">
-      <div className="absolute left-[575px] top-[726px] h-[821px] w-[1080px] rounded-[6px] border border-[#CECECE] bg-white" />
+      <div className="absolute left-[575px] top-[726px] h-[821px] w-[1080px] border border-[#CECECE] bg-white" />
 
       <p className="absolute left-[610px] top-[717px] whitespace-pre text-[20px] leading-[100px] text-black">
         [ what we do ]
@@ -42,7 +42,7 @@ export function WhatWeDo({ variant }: { variant: "page" | "canvas" }) {
       {CARDS.map((c) => (
         <Fragment key={c.card}>
           <div
-            className="absolute top-[965px] h-[547px] w-[336px] rounded-[6px] border border-[#CECECE] bg-[#EBEBEB]"
+            className="absolute top-[965px] h-[547px] w-[336px] border border-[#CECECE] bg-[#EBEBEB]"
             style={{ left: c.card }}
           />
           <p
