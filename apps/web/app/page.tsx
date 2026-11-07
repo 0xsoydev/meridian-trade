@@ -1,4 +1,5 @@
 import { AgentsTerminal } from "../components/landing/agents-terminal";
+import { HumansTerminal } from "../components/landing/humans-terminal";
 import { Flow } from "../components/landing/flow";
 import { Hero } from "../components/landing/hero";
 import { HowItWorks } from "../components/landing/how-it-works";
@@ -23,12 +24,13 @@ export default function Home() {
         <Flow variant="page" />
         <Proof variant="page" />
         <Panorama variant="page" />
+        <HumansTerminal variant="page" />
         <AgentsTerminal variant="page" />
         <SiteFooter variant="page" />
       </div>
 
       <div className="desktop-wrap hidden lg:block">
-        <div className="desktop-canvas relative h-[5302px] w-[1728px] overflow-hidden bg-white">
+        <div className="desktop-canvas relative h-[6008px] w-[1728px] overflow-hidden bg-white">
           <Hero variant="canvas" nav={<Navbar />} />
           <div className="absolute inset-x-0 top-[307px]">
             <WhatWeDo variant="canvas" />
@@ -38,8 +40,9 @@ export default function Home() {
               <Proof variant="canvas" />
               <Panorama variant="canvas" />
             </div>
+            <HumansTerminal variant="canvas" />
             <AgentsTerminal variant="canvas" />
-            <div className="absolute inset-x-0 top-[914px]">
+            <div className="absolute inset-x-0 top-[1620px]">
               <SiteFooter variant="canvas" />
             </div>
           </div>
